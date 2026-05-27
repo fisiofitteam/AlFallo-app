@@ -14,6 +14,7 @@ const config: Config = {
         muted: "var(--c-muted)",
         primary: "var(--c-primary)",
         "primary-fg": "var(--c-primary-fg)",
+        "primary-soft": "var(--c-primary-soft)",
       },
       borderRadius: {
         xl: "0.875rem",

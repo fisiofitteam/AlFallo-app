@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, Moon, Sun } from "lucide-react";
 import { navForRole, ROLE_LABELS, type Role } from "@/lib/roles";
+import { BrandLogo, BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/logout-button";
 
 type Props = {
@@ -17,9 +18,9 @@ const THEME_KEY = "afn-theme";
 export function PanelShell({ professional, children }: Props) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(false);
 
-  // Tema persistente (por defecto oscuro).
+  // Tema persistente (por defecto claro, estilo Al Fallo).
   useEffect(() => {
     const saved = window.localStorage.getItem(THEME_KEY);
     if (saved) setDark(saved === "dark");
@@ -44,17 +45,15 @@ export function PanelShell({ professional, children }: Props) {
         <button
           onClick={() => setMobileOpen(true)}
           aria-label="Abrir menú"
-          className="rounded-lg p-1.5 hover:bg-surface-2"
+          className="rounded-lg p-1.5 text-muted hover:bg-surface-2"
         >
           <Menu size={22} />
         </button>
-        <span className="font-bold">
-          Al Fallo <span className="text-primary">Nutrition</span>
-        </span>
+        <BrandMark size={24} />
         <button
           onClick={() => setDark((d) => !d)}
           aria-label="Cambiar tema"
-          className="rounded-lg p-1.5 hover:bg-surface-2"
+          className="rounded-lg p-1.5 text-muted hover:bg-surface-2"
         >
           {dark ? <Sun size={20} /> : <Moon size={20} />}
         </button>
@@ -64,7 +63,7 @@ export function PanelShell({ professional, children }: Props) {
         {/* Overlay móvil */}
         {mobileOpen && (
           <div
-            className="fixed inset-0 z-30 bg-black/50 md:hidden"
+            className="fixed inset-0 z-30 bg-black/40 md:hidden"
             onClick={() => setMobileOpen(false)}
           />
         )}
@@ -75,14 +74,14 @@ export function PanelShell({ professional, children }: Props) {
             mobileOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="flex items-center justify-between px-5 py-4">
-            <Link href="/" className="text-lg font-bold">
-              Al Fallo <span className="text-primary">Nutrition</span>
+          <div className="flex items-center justify-between px-5 py-5">
+            <Link href="/" aria-label="Inicio">
+              <BrandLogo />
             </Link>
             <button
               onClick={() => setMobileOpen(false)}
               aria-label="Cerrar menú"
-              className="rounded-lg p-1.5 hover:bg-surface-2 md:hidden"
+              className="rounded-lg p-1.5 text-muted hover:bg-surface-2 md:hidden"
             >
               <X size={20} />
             </button>
@@ -96,13 +95,13 @@ export function PanelShell({ professional, children }: Props) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
                     active
-                      ? "bg-primary text-primary-fg font-medium"
-                      : "text-muted hover:bg-surface-2 hover:text-text"
+                      ? "bg-primary-soft font-semibold text-primary"
+                      : "text-text/70 hover:bg-surface-2"
                   }`}
                 >
-                  <Icon size={18} />
+                  <Icon size={19} className={active ? "text-primary" : "text-muted"} />
                   {item.label}
                 </Link>
               );
@@ -110,23 +109,20 @@ export function PanelShell({ professional, children }: Props) {
           </nav>
 
           <div className="border-t border-border p-3">
-            <div className="mb-1 flex items-center gap-3 px-3 py-2">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-fg">
-                {professional.fullName.slice(0, 1).toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{professional.fullName}</p>
-                <p className="truncate text-xs text-muted">{roleLabel}</p>
-              </div>
-            </div>
             <button
               onClick={() => setDark((d) => !d)}
-              className="mb-1 hidden w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-surface-2 hover:text-text md:flex"
+              className="mb-1 hidden w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-surface-2 md:flex"
             >
               {dark ? <Sun size={16} /> : <Moon size={16} />}
               {dark ? "Tema claro" : "Tema oscuro"}
             </button>
-            <LogoutButton />
+            <div className="flex items-center justify-between px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-primary">{professional.fullName}</p>
+                <p className="truncate text-xs text-muted">{roleLabel}</p>
+              </div>
+              <LogoutButton />
+            </div>
           </div>
         </aside>
 

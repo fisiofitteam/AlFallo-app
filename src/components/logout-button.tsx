@@ -8,10 +8,11 @@ export function LogoutButton() {
     <form action={logout}>
       <button
         type="submit"
-        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-surface-2 hover:text-text"
+        aria-label="Cerrar sesión"
+        title="Cerrar sesión"
+        className="rounded-lg p-2 text-primary transition hover:bg-primary-soft"
       >
-        <LogOut size={16} />
-        Cerrar sesión
+        <LogOut size={18} />
       </button>
     </form>
   );
