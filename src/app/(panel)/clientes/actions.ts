@@ -101,6 +101,26 @@ export async function setClientPassword(formData: FormData) {
   revalidatePath(`/clientes/${clientId}`);
 }
 
+// El nutricionista responde y marca un check-in como revisado.
+export async function reviewCheckIn(formData: FormData) {
+  const prof = await requireClientAccess();
+  const checkInId = String(formData.get("checkInId"));
+  const checkIn = await prisma.checkIn.findUnique({ where: { id: checkInId } });
+  if (!checkIn) redirect("/clientes");
+  await loadClientForEdit(checkIn.clientId, prof);
+
+  await prisma.checkIn.update({
+    where: { id: checkInId },
+    data: {
+      reviewNotes: parseStr(formData.get("reviewNotes")),
+      status: "revisado",
+      reviewedById: prof.id,
+      reviewedAt: new Date(),
+    },
+  });
+  revalidatePath(`/clientes/${checkIn.clientId}`);
+}
+
 export async function updateNutritionProfile(formData: FormData) {
   const prof = await requireClientAccess();
   const clientId = String(formData.get("clientId"));

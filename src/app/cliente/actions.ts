@@ -11,7 +11,7 @@ import {
   createClientSession,
   deleteClientSession,
 } from "@/lib/client-auth";
-import { requireClient } from "@/lib/client-session";
+import { requireClient, requireOnboardedClient } from "@/lib/client-session";
 import { parseIntOrNull, parseList, parseNumber, parseStr } from "@/lib/clients";
 import { CONTRACT_TEXT, CONTRACT_VERSION } from "@/lib/contract";
 
@@ -112,5 +112,26 @@ export async function saveDailyLog(formData: FormData) {
 
   revalidatePath("/cliente/registro");
   revalidatePath("/cliente/progreso");
+  revalidatePath("/cliente");
+}
+
+export async function submitCheckIn(formData: FormData) {
+  const client = await requireOnboardedClient();
+
+  await prisma.checkIn.create({
+    data: {
+      clientId: client.id,
+      weightKg: parseNumber(formData.get("weightKg")),
+      waistCm: parseNumber(formData.get("waistCm")),
+      hipCm: parseNumber(formData.get("hipCm")),
+      armCm: parseNumber(formData.get("armCm")),
+      bodyFatPct: parseNumber(formData.get("bodyFatPct")),
+      adherencePct: parseIntOrNull(formData.get("adherencePct")),
+      energy: parseIntOrNull(formData.get("energy")),
+      notes: parseStr(formData.get("notes")),
+    },
+  });
+
+  revalidatePath("/cliente/checkin");
   revalidatePath("/cliente");
 }

@@ -2,12 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, UtensilsCrossed, NotebookPen, TrendingUp, type LucideIcon } from "lucide-react";
+import {
+  Home,
+  UtensilsCrossed,
+  NotebookPen,
+  TrendingUp,
+  ClipboardCheck,
+  type LucideIcon,
+} from "lucide-react";
 
 const ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/cliente", label: "Inicio", icon: Home },
   { href: "/cliente/plan", label: "Mi plan", icon: UtensilsCrossed },
   { href: "/cliente/registro", label: "Registro", icon: NotebookPen },
+  { href: "/cliente/checkin", label: "Check-in", icon: ClipboardCheck },
   { href: "/cliente/progreso", label: "Progreso", icon: TrendingUp },
 ];
 

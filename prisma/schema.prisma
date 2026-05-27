@@ -24,9 +24,10 @@ model Professional {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions     Session[]
-  clients      Client[]        @relation("NutritionistClients")
-  createdPlans NutritionPlan[]
+  sessions          Session[]
+  clients           Client[]        @relation("NutritionistClients")
+  createdPlans      NutritionPlan[]
+  reviewedCheckIns  CheckIn[]       @relation("CheckInReviewer")
 
   @@index([role])
 }
@@ -57,8 +58,38 @@ model Client {
   plans        NutritionPlan[]
   sessions     ClientSession[]
   dailyLogs    DailyLog[]
+  checkIns     CheckIn[]
 
   @@index([nutritionistId])
+  @@index([status])
+}
+
+// Check-in semanal del atleta; el nutricionista lo revisa y responde.
+model CheckIn {
+  id           String   @id @default(cuid())
+  clientId     String
+  date         DateTime @default(now())
+  weightKg     Float?
+  waistCm      Float?
+  hipCm        Float?
+  armCm        Float?
+  bodyFatPct   Float?
+  adherencePct Int?
+  energy       Int? // 1-5
+  notes        String?
+
+  status       String    @default("pendiente") // pendiente | revisado
+  reviewNotes  String?
+  reviewedById String?
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client     Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  reviewedBy Professional? @relation("CheckInReviewer", fields: [reviewedById], references: [id])
+
+  @@index([clientId])
   @@index([status])
 }
 

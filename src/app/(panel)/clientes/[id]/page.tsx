@@ -11,9 +11,16 @@ import {
   statusLabel,
 } from "@/lib/clients";
 import { TextInput } from "@/components/form-ui";
+import type { ChartPoint } from "@/components/line-chart";
 import { FichaForm } from "./ficha-form";
+import { CheckInsTab } from "./checkins-tab";
+import { EvolucionTab } from "./evolucion-tab";
 import { reassignNutritionist, setClientPassword, updateClientStatus } from "../actions";
 import { createPlan } from "../../planes/actions";
+
+function shortDate(d: Date): string {
+  return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+}
 
 const TABS = [
   { key: "ficha", label: "Ficha nutricional" },
@@ -41,6 +48,12 @@ export default async function ClientDetailPage({
       profile: true,
       nutritionist: { select: { fullName: true } },
       plans: { orderBy: { createdAt: "desc" }, include: { _count: { select: { days: true } } } },
+      checkIns: { orderBy: { date: "desc" } },
+      dailyLogs: {
+        where: { weightKg: { not: null } },
+        orderBy: { date: "asc" },
+        select: { date: true, weightKg: true },
+      },
     },
   });
   if (!client) redirect("/clientes");
@@ -57,6 +70,21 @@ export default async function ClientDetailPage({
         orderBy: { fullName: "asc" },
       })
     : [];
+
+  // Series para la pestaña Evolución (orden cronológico).
+  const checkInsAsc = [...client.checkIns].reverse();
+  const weightSeries: ChartPoint[] = [
+    ...client.dailyLogs.map((l) => ({ date: l.date, value: l.weightKg as number })),
+    ...checkInsAsc.filter((c) => c.weightKg != null).map((c) => ({ date: c.date, value: c.weightKg as number })),
+  ]
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .map((p) => ({ label: shortDate(p.date), value: Math.round(p.value * 10) / 10 }));
+  const waistSeries: ChartPoint[] = checkInsAsc
+    .filter((c) => c.waistCm != null)
+    .map((c) => ({ label: shortDate(c.date), value: c.waistCm as number }));
+  const bodyFatSeries: ChartPoint[] = checkInsAsc
+    .filter((c) => c.bodyFatPct != null)
+    .map((c) => ({ label: shortDate(c.date), value: c.bodyFatPct as number }));
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -235,6 +263,10 @@ export default async function ClientDetailPage({
             <p className="text-center text-sm text-muted">Aún no hay planes. Crea el primero arriba.</p>
           )}
         </div>
+      ) : activeTab.key === "evolucion" ? (
+        <EvolucionTab weight={weightSeries} waist={waistSeries} bodyFat={bodyFatSeries} />
+      ) : activeTab.key === "formularios" ? (
+        <CheckInsTab checkIns={client.checkIns} />
       ) : (
         <div className="rounded-2xl border border-dashed border-border p-12 text-center">
           <p className="font-medium">{activeTab.label}</p>

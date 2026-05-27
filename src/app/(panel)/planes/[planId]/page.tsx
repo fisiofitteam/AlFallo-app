@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import { CLIENT_ACCESS_ROLES, isManagerRole, optionLabel } from "@/lib/clients";
@@ -36,7 +36,16 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
   const plan = await prisma.nutritionPlan.findUnique({
     where: { id: params.planId },
     include: {
-      client: { select: { id: true, fullName: true, nutritionistId: true } },
+      client: {
+        select: {
+          id: true,
+          fullName: true,
+          nutritionistId: true,
+          profile: {
+            select: { allergies: true, intolerances: true, dislikes: true, dietaryStyle: true },
+          },
+        },
+      },
       days: {
         orderBy: { order: "asc" },
         include: {
@@ -88,6 +97,29 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
           <MacroBar m={planMacros} label="Total del plan:" />
         </div>
       </header>
+
+      {/* Restricciones del cliente a tener en cuenta */}
+      {(() => {
+        const p = plan.client.profile;
+        const restrictions = [
+          ...(p?.allergies ?? []).map((x) => `Alergia: ${x}`),
+          ...(p?.intolerances ?? []).map((x) => `Intolerancia: ${x}`),
+          ...(p?.dislikes ?? []).map((x) => `No quiere: ${x}`),
+        ];
+        if (restrictions.length === 0 && !p?.dietaryStyle) return null;
+        return (
+          <div className="mb-5 flex items-start gap-3 rounded-2xl border border-[#f3c89a] bg-[#fdecd9] p-4 text-sm text-[#7c4a03]">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold">Restricciones del cliente</p>
+              <p className="mt-0.5">
+                {p?.dietaryStyle && <span className="font-medium">Dieta {p.dietaryStyle}. </span>}
+                {restrictions.length > 0 ? restrictions.join(" · ") : "Sin alergias ni vetos registrados."}
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Días */}
       <div className="space-y-5">
