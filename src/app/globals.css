@@ -4,7 +4,13 @@
 
 /* Theming centralizado por variables CSS. El shell aplica la clase `.shell`
    (claro por defecto, estilo Al Fallo) o `.shell.dark` para modo oscuro. */
+/* App siempre en modo claro (no sigue el modo del sistema). */
+:root {
+  color-scheme: light;
+}
+
 .shell {
+  color-scheme: light;
   --c-bg: #ffffff;
   --c-surface: #ffffff;
   --c-surface-2: #f5f5f7;
@@ -16,18 +22,6 @@
   --c-primary-soft: #fdeaf3; /* fondo del menú activo / acentos suaves */
 }
 
-.shell.dark {
-  --c-bg: #131216;
-  --c-surface: #1b1a1f;
-  --c-surface-2: #26242b;
-  --c-border: #2e2c34;
-  --c-text: #f3f4f6;
-  --c-muted: #9aa0ab;
-  --c-primary: #f43f9d;
-  --c-primary-fg: #2a0716;
-  --c-primary-soft: #3a1228;
-}
-
 * {
   box-sizing: border-box;
 }
@@ -36,6 +30,8 @@ html,
 body {
   padding: 0;
   margin: 0;
+  background: #ffffff;
+  color: #18181b;
 }
 
 body {

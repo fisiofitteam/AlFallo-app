@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, Moon, Sun } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { navForRole, ROLE_LABELS, type Role } from "@/lib/roles";
 import { BrandLogo, BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/logout-button";
@@ -13,22 +13,9 @@ type Props = {
   children: React.ReactNode;
 };
 
-const THEME_KEY = "afn-theme";
-
 export function PanelShell({ professional, children }: Props) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [dark, setDark] = useState(false);
-
-  // Tema persistente (por defecto claro, estilo Al Fallo).
-  useEffect(() => {
-    const saved = window.localStorage.getItem(THEME_KEY);
-    if (saved) setDark(saved === "dark");
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
-  }, [dark]);
 
   // Cierra el menú móvil al navegar.
   useEffect(() => {
@@ -39,7 +26,7 @@ export function PanelShell({ professional, children }: Props) {
   const roleLabel = ROLE_LABELS[professional.role as Role] ?? professional.role;
 
   return (
-    <div className={`shell ${dark ? "dark" : ""} min-h-screen bg-bg text-text`}>
+    <div className="shell min-h-screen bg-bg text-text">
       {/* Cabecera móvil */}
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-surface px-4 py-3 md:hidden">
         <button
@@ -50,13 +37,7 @@ export function PanelShell({ professional, children }: Props) {
           <Menu size={22} />
         </button>
         <BrandMark size={24} />
-        <button
-          onClick={() => setDark((d) => !d)}
-          aria-label="Cambiar tema"
-          className="rounded-lg p-1.5 text-muted hover:bg-surface-2"
-        >
-          {dark ? <Sun size={20} /> : <Moon size={20} />}
-        </button>
+        <span className="w-8" />
       </header>
 
       <div className="flex">
@@ -109,13 +90,6 @@ export function PanelShell({ professional, children }: Props) {
           </nav>
 
           <div className="border-t border-border p-3">
-            <button
-              onClick={() => setDark((d) => !d)}
-              className="mb-1 hidden w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted transition hover:bg-surface-2 md:flex"
-            >
-              {dark ? <Sun size={16} /> : <Moon size={16} />}
-              {dark ? "Tema claro" : "Tema oscuro"}
-            </button>
             <div className="flex items-center justify-between px-3 py-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-primary">{professional.fullName}</p>
