@@ -93,30 +93,196 @@ model CheckIn {
   @@index([status])
 }
 
-// Pieza de contenido para Instagram (planificación de marketing).
-model ContentPiece {
-  id           String    @id @default(cuid())
-  title        String
-  type         String    @default("reel") // reel | carrusel | story | post
-  status       String    @default("idea") // idea | guion | para_grabar | grabado | publicado
-  platform     String    @default("instagram")
-  scheduledFor DateTime?
-  hook         String?
-  script       String?
-  notes        String?
-  createdById  String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+// ─── Módulo de Contenido (planificación de Instagram) ───
 
+model WeeklyTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  days        String   @default("[]") // JSON: array de 7 objetos {dayOfWeek, title, format, goals[]}
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+}
+
+model ScriptTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  format      String // "reel" | "carousel" | "infographic" | "image" | "live"
+  blocks      String   @default("[]") // JSON: [{id, label, order}]
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  @@index([format])
+}
+
+model ContentWeek {
+  id        String   @id @default(cuid())
+  weekNumber Int
+  year      Int
+  startDate DateTime // lunes
+  endDate   DateTime // domingo
+
+  // Briefing estratégico
+  centralTheme           String
+  bodyZone               String // pilar nutricional
+  weekType               String // educativa | objeciones | lanzamiento | recuperacion
+  limitingBeliefs        String  @default("[]")
+  leadMagnetName         String?
+  leadMagnetKeyword      String?
+  commercialTrigger      String?
+  previousWeekConnection String?
+  nextWeekSetup          String?
+
+  // Mix objetivo (suma 100%)
+  mixValue      Int @default(50)
+  mixBeliefs    Int @default(30)
+  mixConversion Int @default(20)
+
+  // KPI
+  kpiName   String?
+  kpiTarget Float?
+
+  status String @default("planning") // planning | production | publishing | closed
+
+  // Aprendizajes (al cerrar)
+  closingNotes String?
+  winningHooks String?
+  ideasEmerged String?
+
+  weekStories String @default("[]") // JSON array de 7 strings
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  closedAt  DateTime?
+
+  pieces ContentPiece[]
+
+  @@index([year, weekNumber])
   @@index([status])
 }
 
-// Banco de ideas de contenido.
+model ContentPiece {
+  id     String      @id @default(cuid())
+  weekId String
+  week   ContentWeek @relation(fields: [weekId], references: [id], onDelete: Cascade)
+
+  dayOfWeek Int // 1=Lun ... 7=Dom
+  format    String // reel | carousel | infographic | image | live
+  title     String?
+  goal      String
+  goals     String  @default("[]") // JSON array
+  ctaType   String
+  dmKeyword String?
+
+  hook    String?
+  blocks  String  @default("[]") // JSON: [{id, label, content, order}]
+  caption String?
+
+  // Producción
+  recordingLocation String?
+  recordingOutfit   String?
+  recordingMaterial String?
+  consentSigned     Boolean @default(false)
+  assignedCaseId    String?
+  finalFileUrl      String?
+  editorNotes       String?
+
+  status String @default("idea") // idea | script | recorded | edited | scheduled | published
+
+  // Métricas
+  metricsReach       Int?
+  metricsSaves       Int?
+  metricsShares      Int?
+  metricsComments    Int?
+  metricsDmKeyword   Int?
+  metricsConversions Int?
+  metricsFilledAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([weekId, dayOfWeek])
+  @@index([status])
+}
+
+model LeadMagnet {
+  id             String    @id @default(cuid())
+  name           String
+  keyword        String?
+  description    String?
+  url            String?
+  active         Boolean   @default(true)
+  lastPromotedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([active])
+}
+
+// Caso / testimonio de transformación de un atleta (para contenido).
+model ClinicalCase {
+  id              String    @id @default(cuid())
+  athleteName     String
+  injury          String // situación / objetivo de partida
+  insight         String?
+  consentSigned   Boolean   @default(false)
+  consentSignedAt DateTime?
+  videoUrls       String    @default("[]") // JSON array de URLs
+  notes           String?
+  patientId       String? // cliente vinculado (opcional)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([patientId])
+}
+
+model WinningHook {
+  id          String   @id @default(cuid())
+  text        String
+  format      String?
+  bodyZone    String?
+  weekId      String?
+  url         String?
+  reach       Int?
+  saves       Int?
+  dmKeyword   Int?
+  conversions Int?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([format])
+  @@index([bodyZone])
+}
+
 model ContentIdea {
+  id              String   @id @default(cuid())
+  title           String
+  description     String?
+  funnelStage     String   @default("educate") // attract | educate | convert
+  bodyZone        String?
+  suggestedFormat String?
+  used            Boolean  @default(false)
+  usedPieceId     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([funnelStage])
+  @@index([used])
+}
+
+model CalendarEvent {
   id        String   @id @default(cuid())
+  date      DateTime
   title     String
   notes     String?
+  color     String   @default("neutral") // neutral | amber | blue | emerald | purple | rose
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
 }
 
 // Sesión de la app del atleta (cookie httpOnly propia, distinta a la del equipo).

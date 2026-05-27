@@ -1,147 +1,196 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Lightbulb, Plus, Trash2, Calendar } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireProfessional } from "@/lib/session";
-import { optionLabel } from "@/lib/clients";
-import {
-  CONTENT_ACCESS_ROLES,
-  CONTENT_STATUSES,
-  CONTENT_STATUS_OPTIONS,
-  CONTENT_TYPE_OPTIONS,
-  contentStatusBadgeClass,
-} from "@/lib/content";
-import { Field, Select, TextInput } from "@/components/form-ui";
-import { createIdea, createPiece, deleteIdea, setPieceStatus } from "./actions";
+import { getActiveProfessional } from "@/lib/session";
+import { ContentNav } from "@/components/ContentNav";
+import { ThisWeekView } from "@/components/ThisWeekView";
+import { isoWeekFromDate } from "@/lib/content-templates";
 
-export const metadata = { title: "Contenido · Al Fallo Nutrition" };
+export default async function ContentPage({
+  searchParams,
+}: {
+  searchParams: { week?: string };
+}) {
+  const user = (await getActiveProfessional())!;
+  if (user.role !== "ceo" && user.role !== "head_coach") redirect("/");
 
-export default async function ContentPage() {
-  const prof = await requireProfessional();
-  if (!CONTENT_ACCESS_ROLES.includes(prof.role)) redirect("/");
+  // Lista de TODAS las semanas para el selector (más reciente primero)
+  const allWeeks = await prisma.contentWeek.findMany({
+    orderBy: [{ year: "desc" }, { weekNumber: "desc" }],
+    select: { id: true, year: true, weekNumber: true, centralTheme: true, status: true, startDate: true, endDate: true },
+  });
 
-  const [pieces, ideas] = await Promise.all([
-    prisma.contentPiece.findMany({ orderBy: [{ scheduledFor: "asc" }, { createdAt: "desc" }] }),
-    prisma.contentIdea.findMany({ orderBy: { createdAt: "desc" } }),
-  ]);
+  // Lógica de selección:
+  // - Si viene ?week=ID en la URL, mostrar esa
+  // - Si no, mostrar la semana activa más prioritaria (producción > publishing > planning)
+  // - Si no hay activas, la última cerrada
+  // - Si no hay ninguna, modo "crea tu primera semana"
+  const STATUS_PRIORITY: Record<string, number> = { production: 4, publishing: 3, planning: 2, closed: 1 };
+
+  let selectedId: string | null = null;
+  if (searchParams.week) {
+    const exists = allWeeks.find((w) => w.id === searchParams.week);
+    if (exists) selectedId = exists.id;
+  }
+
+  if (!selectedId && allWeeks.length > 0) {
+    // Buscar la semana con mayor prioridad
+    const sorted = [...allWeeks].sort((a, b) => {
+      const pa = STATUS_PRIORITY[a.status] ?? 0;
+      const pb = STATUS_PRIORITY[b.status] ?? 0;
+      if (pa !== pb) return pb - pa;
+      // Misma prioridad: la más cercana a hoy
+      return Math.abs(Date.now() - a.startDate.getTime()) - Math.abs(Date.now() - b.startDate.getTime());
+    });
+    selectedId = sorted[0].id;
+  }
+
+  // Si no hay semanas, sugerencia para crear la primera
+  const today = new Date();
+  const { year, weekNumber } = isoWeekFromDate(today);
+
+  if (!selectedId) {
+    return (
+      <main>
+        <ContentNav active="this-week" />
+        <ThisWeekView
+          week={null}
+          weekList={[]}
+          weekStats={null}
+          pendingMetrics={[]}
+          isFallback={false}
+          suggestion={{ year, weekNumber }}
+        />
+      </main>
+    );
+  }
+
+  const week = await prisma.contentWeek.findUnique({
+    where: { id: selectedId },
+    include: {
+      pieces: {
+        orderBy: { dayOfWeek: "asc" },
+      },
+    },
+  });
+
+  if (!week) {
+    redirect("/contenido");
+  }
+
+  // Calcular si esta selección es "fallback" (sólo hay cerradas y estamos mirando una)
+  const hasActive = allWeeks.some((w) => w.status !== "closed");
+  const isFallback = !hasActive && week.status === "closed" && !searchParams.week;
+
+  // Piezas pendientes de métricas EN TODAS LAS SEMANAS (no solo la actual): alerta global
+  // Una pieza está pendiente si está publicada y no tiene metricsFilledAt, y la publicación ya hace al menos 5 días
+  const reminderThresholdDays = 5;
+  const reminderCutoff = new Date();
+  reminderCutoff.setDate(reminderCutoff.getDate() - reminderThresholdDays);
+
+  // Buscamos todas las piezas published sin métricas. El filtro temporal
+  // (publicadas hace más de N días) se aplica en JS porque la fecha real
+  // se deriva de week.startDate + (dayOfWeek - 1).
+  const allPublishedNoMetrics = await prisma.contentPiece.findMany({
+    where: {
+      status: "published",
+      metricsFilledAt: null,
+    },
+    include: { week: { select: { id: true, year: true, weekNumber: true, centralTheme: true, startDate: true } } },
+  });
+  const pendingMetricsPieces = allPublishedNoMetrics
+    .map((p) => {
+      const start = new Date(p.week.startDate);
+      const publishDate = new Date(start);
+      publishDate.setUTCDate(publishDate.getUTCDate() + (p.dayOfWeek - 1));
+      return { ...p, _publishDate: publishDate };
+    })
+    .filter((p) => p._publishDate.getTime() <= reminderCutoff.getTime())
+    .sort((a, b) => a._publishDate.getTime() - b._publishDate.getTime());
+
+  // Stats agregadas de esta semana (para mostrar contexto al cerrar)
+  const weekStats = (() => {
+    const totals = { reach: 0, saves: 0, shares: 0, comments: 0, dmKeyword: 0, conversions: 0 };
+    let piecesPublished = 0;
+    let piecesWithoutMetrics = 0;
+    for (const p of week.pieces) {
+      if (p.status === "published") {
+        piecesPublished++;
+        if (!p.metricsFilledAt) piecesWithoutMetrics++;
+      }
+      totals.reach += p.metricsReach ?? 0;
+      totals.saves += p.metricsSaves ?? 0;
+      totals.shares += p.metricsShares ?? 0;
+      totals.comments += p.metricsComments ?? 0;
+      totals.dmKeyword += p.metricsDmKeyword ?? 0;
+      totals.conversions += p.metricsConversions ?? 0;
+    }
+    let kpiActual: number | null = null;
+    if (week.kpiName) {
+      const name = week.kpiName.toLowerCase();
+      if (name.includes("dm")) kpiActual = totals.dmKeyword;
+      else if (name.includes("alcance")) kpiActual = totals.reach;
+      else if (name.includes("guardad")) kpiActual = totals.saves;
+      else if (name.includes("conversion") || name.includes("venta")) kpiActual = totals.conversions;
+      else if (name.includes("compart")) kpiActual = totals.shares;
+      else if (name.includes("comentario")) kpiActual = totals.comments;
+    }
+    return { totals, piecesPublished, piecesWithoutMetrics, kpiActual };
+  })();
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold md:text-3xl">Contenido</h1>
-        <p className="mt-1 text-muted">Planificación de contenido para Instagram.</p>
-      </header>
-
-      {/* Nueva pieza */}
-      <form action={createPiece} className="mb-8 rounded-2xl border border-border bg-surface p-5">
-        <h2 className="mb-4 font-semibold">Nueva pieza</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Título" htmlFor="title">
-            <TextInput id="title" name="title" required placeholder="Ej. 5 errores con la proteína" />
-          </Field>
-          <Field label="Tipo" htmlFor="type">
-            <Select id="type" name="type" options={CONTENT_TYPE_OPTIONS} placeholder="Reel" />
-          </Field>
-          <Field label="Estado" htmlFor="status">
-            <Select id="status" name="status" options={CONTENT_STATUS_OPTIONS} placeholder="Idea" />
-          </Field>
-          <Field label="Fecha prevista" htmlFor="scheduledFor">
-            <TextInput id="scheduledFor" name="scheduledFor" type="date" />
-          </Field>
-        </div>
-        <div className="mt-4 flex justify-end">
-          <button className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition hover:opacity-90">
-            <Plus size={16} /> Añadir pieza
-          </button>
-        </div>
-      </form>
-
-      {/* Tablero por estado */}
-      <div className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-5">
-        {CONTENT_STATUSES.map((col) => {
-          const items = pieces.filter((p) => p.status === col.value);
-          return (
-            <div key={col.value} className="rounded-2xl bg-surface-2 p-3">
-              <div className="mb-3 flex items-center justify-between px-1">
-                <span className="text-sm font-semibold">{col.label}</span>
-                <span className="text-xs text-muted">{items.length}</span>
-              </div>
-              <div className="space-y-2">
-                {items.map((p) => (
-                  <div key={p.id} className="rounded-xl border border-border bg-surface p-3">
-                    <Link href={`/contenido/${p.id}`} className="block font-medium hover:text-primary">
-                      {p.title}
-                    </Link>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
-                      <span className="rounded-full bg-surface-2 px-2 py-0.5">
-                        {optionLabel(CONTENT_TYPE_OPTIONS, p.type)}
-                      </span>
-                      {p.scheduledFor && (
-                        <span className="flex items-center gap-1">
-                          <Calendar size={12} />
-                          {p.scheduledFor.toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
-                        </span>
-                      )}
-                    </div>
-                    {/* Cambio rápido de estado */}
-                    <form action={setPieceStatus} className="mt-2">
-                      <input type="hidden" name="id" value={p.id} />
-                      <select
-                        name="status"
-                        defaultValue={p.status}
-                        className={`w-full rounded-lg border-0 px-2 py-1 text-xs font-medium ${contentStatusBadgeClass(p.status)}`}
-                      >
-                        {CONTENT_STATUSES.map((s) => (
-                          <option key={s.value} value={s.value}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
-                    </form>
-                  </div>
-                ))}
-                {items.length === 0 && <p className="px-1 py-2 text-xs text-muted">—</p>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <p className="-mt-8 mb-10 text-xs text-muted">
-        Pulsa una pieza para escribir su gancho y guion. Cambia el estado con el desplegable de cada tarjeta.
-      </p>
-
-      {/* Banco de ideas */}
-      <section>
-        <h2 className="mb-3 flex items-center gap-2 text-lg font-bold">
-          <Lightbulb size={20} className="text-primary" /> Banco de ideas
-        </h2>
-        <form action={createIdea} className="mb-4 flex flex-wrap items-end gap-2">
-          <div className="min-w-[220px] flex-1">
-            <TextInput name="title" placeholder="Apunta una idea rápida…" required />
-          </div>
-          <button className="rounded-xl border border-border px-4 py-2.5 text-sm font-medium hover:bg-surface-2">
-            Guardar idea
-          </button>
-        </form>
-        {ideas.length > 0 && (
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {ideas.map((idea) => (
-              <li
-                key={idea.id}
-                className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-2.5 text-sm"
-              >
-                <span>{idea.title}</span>
-                <form action={deleteIdea}>
-                  <input type="hidden" name="id" value={idea.id} />
-                  <button className="text-muted hover:text-red-600">
-                    <Trash2 size={15} />
-                  </button>
-                </form>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+    <main>
+      <ContentNav active="this-week" />
+      <ThisWeekView
+        week={{
+          id: week.id,
+          year: week.year,
+          weekNumber: week.weekNumber,
+          startDate: week.startDate.toISOString(),
+          endDate: week.endDate.toISOString(),
+          centralTheme: week.centralTheme,
+          bodyZone: week.bodyZone,
+          weekType: week.weekType,
+          leadMagnetName: week.leadMagnetName,
+          leadMagnetKeyword: week.leadMagnetKeyword,
+          kpiName: week.kpiName,
+          kpiTarget: week.kpiTarget,
+          status: week.status,
+          closingNotes: week.closingNotes,
+          winningHooks: week.winningHooks,
+          ideasEmerged: week.ideasEmerged,
+          weekStories: week.weekStories,
+          pieces: week.pieces.map((p) => ({
+            id: p.id,
+            dayOfWeek: p.dayOfWeek,
+            format: p.format,
+            title: p.title,
+            goals: p.goals,
+            status: p.status,
+            hook: p.hook,
+            metricsFilledAt: p.metricsFilledAt?.toISOString() ?? null,
+          })),
+        }}
+        weekStats={weekStats}
+        pendingMetrics={pendingMetricsPieces.map((p) => ({
+          id: p.id,
+          dayOfWeek: p.dayOfWeek,
+          format: p.format,
+          weekTheme: p.week.centralTheme,
+          weekNumber: p.week.weekNumber,
+          weekYear: p.week.year,
+        }))}
+        weekList={allWeeks.map((w) => ({
+          id: w.id,
+          year: w.year,
+          weekNumber: w.weekNumber,
+          centralTheme: w.centralTheme,
+          status: w.status,
+          startDate: w.startDate.toISOString(),
+          endDate: w.endDate.toISOString(),
+        }))}
+        isFallback={isFallback}
+        suggestion={{ year, weekNumber }}
+      />
+    </main>
   );
 }
