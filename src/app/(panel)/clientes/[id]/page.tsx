@@ -12,7 +12,7 @@ import {
 } from "@/lib/clients";
 import { TextInput } from "@/components/form-ui";
 import { FichaForm } from "./ficha-form";
-import { reassignNutritionist, updateClientStatus } from "../actions";
+import { reassignNutritionist, setClientPassword, updateClientStatus } from "../actions";
 import { createPlan } from "../../planes/actions";
 
 const TABS = [
@@ -140,6 +140,39 @@ export default async function ClientDetailPage({
           )}
         </div>
       </header>
+
+      {/* Acceso a la app del atleta */}
+      <section className="mb-6 rounded-2xl border border-border bg-surface p-5">
+        <h2 className="font-semibold">Acceso a la app</h2>
+        {!client.email ? (
+          <p className="mt-2 text-sm text-muted">
+            Añade un email al cliente para poder darle acceso a su app.
+          </p>
+        ) : (
+          <>
+            <p className="mt-1 text-sm text-muted">
+              Inicia sesión en <span className="font-medium text-text">/cliente/login</span> con el email{" "}
+              <span className="font-medium text-text">{client.email}</span>.{" "}
+              {client.passwordHash ? "Ya tiene contraseña (puedes restablecerla)." : "Aún no tiene contraseña."}
+            </p>
+            <form action={setClientPassword} className="mt-3 flex flex-wrap items-end gap-2">
+              <input type="hidden" name="clientId" value={client.id} />
+              <div className="min-w-[200px] flex-1">
+                <TextInput
+                  name="password"
+                  type="text"
+                  minLength={6}
+                  placeholder={client.passwordHash ? "Nueva contraseña (mín. 6)" : "Contraseña (mín. 6)"}
+                  required
+                />
+              </div>
+              <button className="rounded-xl border border-border px-4 py-2.5 text-sm font-medium hover:bg-surface-2">
+                {client.passwordHash ? "Restablecer" : "Dar acceso"}
+              </button>
+            </form>
+          </>
+        )}
+      </section>
 
       {/* Pestañas */}
       <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-border">

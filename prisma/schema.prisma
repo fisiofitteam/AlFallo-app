@@ -40,15 +40,59 @@ model Client {
   status         String   @default("pendiente_revision")
   imageUrl       String?
   nutritionistId String?
+  passwordHash   String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  // Onboarding y evidencia legal del contrato.
+  anamnesisData        Json?
+  anamnesisCompletedAt DateTime?
+  contractSignedAt     DateTime?
+  contractDNI          String?
+  contractVersion      String?
+  contractTextSnapshot String?
 
   nutritionist Professional?     @relation("NutritionistClients", fields: [nutritionistId], references: [id])
   profile      NutritionProfile?
   plans        NutritionPlan[]
+  sessions     ClientSession[]
+  dailyLogs    DailyLog[]
 
   @@index([nutritionistId])
   @@index([status])
+}
+
+// Sesión de la app del atleta (cookie httpOnly propia, distinta a la del equipo).
+model ClientSession {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  clientId  String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+}
+
+// Registro diario del atleta: peso, sensaciones y adherencia.
+model DailyLog {
+  id           String   @id @default(cuid())
+  clientId     String
+  date         DateTime @db.Date
+  weightKg     Float?
+  energy       Int? // 1-5
+  hunger       Int? // 1-5
+  sleepHours   Float?
+  adherencePct Int? // 0-100
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, date])
+  @@index([clientId])
 }
 
 // Ficha nutricional del cliente: antropometría, deporte, restricciones y objetivo.

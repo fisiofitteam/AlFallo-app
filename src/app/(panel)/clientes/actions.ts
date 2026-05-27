@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
+import { hashPassword } from "@/lib/auth";
 import {
   CLIENT_ACCESS_ROLES,
   isManagerRole,
@@ -80,6 +81,23 @@ export async function updateClientStatus(formData: FormData) {
     data: { status: parseStr(formData.get("status")) ?? "pendiente_revision" },
   });
 
+  revalidatePath(`/clientes/${clientId}`);
+}
+
+// Establece/restablece la contraseña de acceso del cliente a la app.
+export async function setClientPassword(formData: FormData) {
+  const prof = await requireClientAccess();
+  const clientId = String(formData.get("clientId"));
+  const client = await loadClientForEdit(clientId, prof);
+
+  const password = parseStr(formData.get("password"));
+  if (!password || password.length < 6) return; // mínimo razonable
+  if (!client.email) return; // necesita email para poder iniciar sesión
+
+  await prisma.client.update({
+    where: { id: clientId },
+    data: { passwordHash: await hashPassword(password) },
+  });
   revalidatePath(`/clientes/${clientId}`);
 }
 

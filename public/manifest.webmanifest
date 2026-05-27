@@ -1,0 +1,11 @@
+{
+  "name": "Al Fallo Nutrition",
+  "short_name": "Al Fallo",
+  "description": "Tu app de nutrición para atletas de CrossFit/Hyrox.",
+  "start_url": "/cliente",
+  "scope": "/cliente",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#e6197e",
+  "lang": "es-ES"
+}
