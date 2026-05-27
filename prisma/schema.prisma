@@ -25,8 +25,69 @@ model Professional {
   updatedAt    DateTime @updatedAt
 
   sessions Session[]
+  clients  Client[] @relation("NutritionistClients")
 
   @@index([role])
+}
+
+// Cliente / atleta. La ficha nutricional rica vive en NutritionProfile (1-1).
+model Client {
+  id             String   @id @default(cuid())
+  fullName       String
+  email          String?  @unique
+  phone          String?
+  status         String   @default("pendiente_revision")
+  imageUrl       String?
+  nutritionistId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  nutritionist Professional?     @relation("NutritionistClients", fields: [nutritionistId], references: [id])
+  profile      NutritionProfile?
+
+  @@index([nutritionistId])
+  @@index([status])
+}
+
+// Ficha nutricional del cliente: antropometría, deporte, restricciones y objetivo.
+model NutritionProfile {
+  id       String @id @default(cuid())
+  clientId String @unique
+
+  // Antropometría
+  sex        String? // male | female | other
+  birthDate  DateTime?
+  heightCm   Int?
+  weightKg   Float?
+  bodyFatPct Float?
+  waistCm    Float?
+  hipCm      Float?
+  armCm      Float?
+
+  // Deporte
+  boxName          String?
+  yearsTraining    Int?
+  weeklyFrequency  Int?
+  level            String? // amateur | scaled | rx | competicion
+  trainingSchedule String?
+
+  // Restricciones
+  allergies         String[]
+  intolerances      String[]
+  dislikes          String[]
+  dietaryStyle      String? // omnivoro | vegetariano | vegano | ...
+  supplements       String[]
+  medicalConditions String?
+  medication        String?
+
+  // Objetivo
+  goal          String? // perdida_grasa | recomposicion | ganancia_masa | rendimiento | definicion
+  targetWeightKg Float?
+  timeframe     String?
+
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 }
 
 // Sesión opaca: la cookie httpOnly guarda `token`; se valida en servidor.

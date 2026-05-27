@@ -1,21 +1,33 @@
 import { Users, UserCheck, Clock, ArrowRight } from "lucide-react";
+import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import { isManager, navForRole } from "@/lib/roles";
+import { CLIENT_ACCESS_ROLES, clientScopeWhere } from "@/lib/clients";
 
 export const metadata = { title: "Panel · Al Fallo Nutrition" };
-
-// Tarjetas de resumen. En Fase 1 los números son placeholders (0);
-// se conectarán a datos reales al construir Clientes (Fase 2).
-const STATS = [
-  { label: "Total clientes", value: 0, icon: Users, cardClass: "bg-[#fbe9f1]", numClass: "text-[#e6197e]" },
-  { label: "Pendientes", value: 0, icon: Clock, cardClass: "bg-[#fdecd9]", numClass: "text-[#e07b1a]" },
-  { label: "Activos", value: 0, icon: UserCheck, cardClass: "bg-[#e7f6ec]", numClass: "text-[#1fa971]" },
-];
 
 export default async function DashboardPage() {
   const prof = await requireProfessional();
   const shortcuts = navForRole(prof.role).filter((i) => i.href !== "/");
   const firstName = prof.fullName.split(" ")[0];
+
+  // Conteos reales de clientes (alcance según rol). Los roles sin acceso a
+  // clientes (setter/closer) no ven estas tarjetas.
+  const canSeeClients = CLIENT_ACCESS_ROLES.includes(prof.role);
+  const scope = canSeeClients ? clientScopeWhere(prof) : null;
+  const [total, pendientes, activos] = scope
+    ? await Promise.all([
+        prisma.client.count({ where: scope }),
+        prisma.client.count({ where: { ...scope, status: { in: ["pendiente_revision", "onboarding"] } } }),
+        prisma.client.count({ where: { ...scope, status: "activo" } }),
+      ])
+    : [0, 0, 0];
+
+  const STATS = [
+    { label: "Total clientes", value: total, icon: Users, cardClass: "bg-[#fbe9f1]", numClass: "text-[#e6197e]" },
+    { label: "Pendientes", value: pendientes, icon: Clock, cardClass: "bg-[#fdecd9]", numClass: "text-[#e07b1a]" },
+    { label: "Activos", value: activos, icon: UserCheck, cardClass: "bg-[#e7f6ec]", numClass: "text-[#1fa971]" },
+  ];
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -28,20 +40,22 @@ export default async function DashboardPage() {
       </header>
 
       {/* Tarjetas de resumen */}
-      <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {STATS.map((s) => {
-          const Icon = s.icon;
-          return (
-            <div key={s.label} className={`rounded-2xl p-5 ${s.cardClass}`}>
-              <div className="flex items-center gap-2 text-sm text-zinc-600">
-                <Icon size={16} />
-                {s.label}
+      {canSeeClients && (
+        <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {STATS.map((s) => {
+            const Icon = s.icon;
+            return (
+              <div key={s.label} className={`rounded-2xl p-5 ${s.cardClass}`}>
+                <div className="flex items-center gap-2 text-sm text-zinc-600">
+                  <Icon size={16} />
+                  {s.label}
+                </div>
+                <p className={`mt-2 text-3xl font-bold ${s.numClass}`}>{s.value}</p>
               </div>
-              <p className={`mt-2 text-3xl font-bold ${s.numClass}`}>{s.value}</p>
-            </div>
-          );
-        })}
-      </section>
+            );
+          })}
+        </section>
+      )}
 
       {/* Accesos rápidos a los módulos disponibles según el rol */}
       <section>
