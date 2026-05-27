@@ -93,6 +93,32 @@ model CheckIn {
   @@index([status])
 }
 
+// Pieza de contenido para Instagram (planificación de marketing).
+model ContentPiece {
+  id           String    @id @default(cuid())
+  title        String
+  type         String    @default("reel") // reel | carrusel | story | post
+  status       String    @default("idea") // idea | guion | para_grabar | grabado | publicado
+  platform     String    @default("instagram")
+  scheduledFor DateTime?
+  hook         String?
+  script       String?
+  notes        String?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status])
+}
+
+// Banco de ideas de contenido.
+model ContentIdea {
+  id        String   @id @default(cuid())
+  title     String
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
 // Sesión de la app del atleta (cookie httpOnly propia, distinta a la del equipo).
 model ClientSession {
   id        String   @id @default(cuid())
