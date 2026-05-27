@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import {
@@ -10,8 +10,10 @@ import {
   statusBadgeClass,
   statusLabel,
 } from "@/lib/clients";
+import { TextInput } from "@/components/form-ui";
 import { FichaForm } from "./ficha-form";
 import { reassignNutritionist, updateClientStatus } from "../actions";
+import { createPlan } from "../../planes/actions";
 
 const TABS = [
   { key: "ficha", label: "Ficha nutricional" },
@@ -35,7 +37,11 @@ export default async function ClientDetailPage({
 
   const client = await prisma.client.findUnique({
     where: { id: params.id },
-    include: { profile: true, nutritionist: { select: { fullName: true } } },
+    include: {
+      profile: true,
+      nutritionist: { select: { fullName: true } },
+      plans: { orderBy: { createdAt: "desc" }, include: { _count: { select: { days: true } } } },
+    },
   });
   if (!client) redirect("/clientes");
   // Un nutricionista solo accede a sus clientes.
@@ -158,6 +164,44 @@ export default async function ClientDetailPage({
       {/* Contenido de la pestaña */}
       {activeTab.key === "ficha" ? (
         <FichaForm clientId={client.id} profile={client.profile} />
+      ) : activeTab.key === "plan" ? (
+        <div className="space-y-4">
+          {client.plans.length > 0 && (
+            <ul className="space-y-2">
+              {client.plans.map((plan) => (
+                <li key={plan.id}>
+                  <Link
+                    href={`/planes/${plan.id}`}
+                    className="flex items-center justify-between rounded-2xl border border-border bg-surface p-4 transition hover:border-primary"
+                  >
+                    <span>
+                      <span className="font-semibold">{plan.name}</span>
+                      {plan.goal && <span className="block text-sm text-muted">{plan.goal}</span>}
+                      <span className="text-xs text-muted">{plan._count.days} día(s)</span>
+                    </span>
+                    <ChevronRight size={18} className="text-muted" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <form
+            action={createPlan}
+            className="flex flex-wrap items-end gap-2 rounded-2xl border border-dashed border-border p-4"
+          >
+            <input type="hidden" name="clientId" value={client.id} />
+            <div className="min-w-[180px] flex-1">
+              <TextInput name="name" placeholder="Nombre del plan (ej. Definición 12 semanas)" required />
+            </div>
+            <button className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition hover:opacity-90">
+              <Plus size={16} /> Crear plan
+            </button>
+          </form>
+          {client.plans.length === 0 && (
+            <p className="text-center text-sm text-muted">Aún no hay planes. Crea el primero arriba.</p>
+          )}
+        </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-border p-12 text-center">
           <p className="font-medium">{activeTab.label}</p>

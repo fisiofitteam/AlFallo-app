@@ -24,8 +24,9 @@ model Professional {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions Session[]
-  clients  Client[] @relation("NutritionistClients")
+  sessions     Session[]
+  clients      Client[]        @relation("NutritionistClients")
+  createdPlans NutritionPlan[]
 
   @@index([role])
 }
@@ -44,6 +45,7 @@ model Client {
 
   nutritionist Professional?     @relation("NutritionistClients", fields: [nutritionistId], references: [id])
   profile      NutritionProfile?
+  plans        NutritionPlan[]
 
   @@index([nutritionistId])
   @@index([status])
@@ -88,6 +90,87 @@ model NutritionProfile {
   updatedAt DateTime @updatedAt
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// Banco de alimentos reutilizable, con macros por 100 g.
+model FoodLibrary {
+  id            String   @id @default(cuid())
+  name          String
+  brand         String?
+  category      String?
+  imageUrl      String?
+  kcalPer100    Float    @default(0)
+  proteinPer100 Float    @default(0)
+  carbsPer100   Float    @default(0)
+  fatPer100     Float    @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items MealItem[]
+
+  @@index([name])
+}
+
+// Plan nutricional asignado a un cliente. Estructura: Plan -> Día -> Comida -> Item.
+model NutritionPlan {
+  id          String   @id @default(cuid())
+  name        String
+  goal        String?
+  notes       String?
+  clientId    String
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client    Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy Professional? @relation(fields: [createdById], references: [id])
+  days      PlanDay[]
+
+  @@index([clientId])
+}
+
+model PlanDay {
+  id     String @id @default(cuid())
+  planId String
+  name   String
+  order  Int    @default(0)
+
+  plan  NutritionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  meals Meal[]
+
+  @@index([planId])
+}
+
+model Meal {
+  id        String @id @default(cuid())
+  planDayId String
+  name      String // tipo de comida (desayuno, pre_wod, ...)
+  order     Int    @default(0)
+
+  planDay PlanDay    @relation(fields: [planDayId], references: [id], onDelete: Cascade)
+  items   MealItem[]
+
+  @@index([planDayId])
+}
+
+// Item de una comida. Guarda una "foto" de los macros del alimento por 100 g
+// para que el plan no cambie si luego se edita o borra el alimento de la biblioteca.
+model MealItem {
+  id            String  @id @default(cuid())
+  mealId        String
+  foodId        String?
+  nameSnapshot  String
+  quantityG     Float   @default(0)
+  kcalPer100    Float   @default(0)
+  proteinPer100 Float   @default(0)
+  carbsPer100   Float   @default(0)
+  fatPer100     Float   @default(0)
+  order         Int     @default(0)
+
+  meal Meal         @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  food FoodLibrary? @relation(fields: [foodId], references: [id], onDelete: SetNull)
+
+  @@index([mealId])
 }
 
 // Sesión opaca: la cookie httpOnly guarda `token`; se valida en servidor.
