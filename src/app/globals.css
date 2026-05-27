@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theming centralizado por variables CSS. El shell aplica la clase `.shell`
+   (claro por defecto) o `.shell.dark` para remapear todos los colores aquí. */
+.shell {
+  --c-bg: #f6f7f9;
+  --c-surface: #ffffff;
+  --c-surface-2: #eef0f3;
+  --c-border: #e2e5ea;
+  --c-text: #14161a;
+  --c-muted: #6b7280;
+  --c-primary: #16a34a; /* verde deportivo */
+  --c-primary-fg: #ffffff;
+}
+
+.shell.dark {
+  --c-bg: #0f0f12;
+  --c-surface: #17181d;
+  --c-surface-2: #202229;
+  --c-border: #2a2d35;
+  --c-text: #f3f4f6;
+  --c-muted: #9aa0ab;
+  --c-primary: #22c55e;
+  --c-primary-fg: #06210f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}

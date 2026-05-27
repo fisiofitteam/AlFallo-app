@@ -1,0 +1,43 @@
+// Schema Prisma — Al Fallo Nutrition
+// Fase 1: identidad y sesión del equipo. Se irá ampliando por fases.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Miembro del equipo (dirección, nutricionistas, comercial).
+// El rol se guarda como String; los valores válidos viven en src/lib/roles.ts
+// para poder añadir roles sin migración.
+model Professional {
+  id           String   @id @default(cuid())
+  fullName     String
+  email        String   @unique
+  passwordHash String
+  role         String
+  isActive     Boolean  @default(true)
+  imageUrl     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions Session[]
+
+  @@index([role])
+}
+
+// Sesión opaca: la cookie httpOnly guarda `token`; se valida en servidor.
+model Session {
+  id             String   @id @default(cuid())
+  token          String   @unique
+  professionalId String
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@index([professionalId])
+}

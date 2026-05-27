@@ -7,17 +7,24 @@ Léelo siempre al arrancar una sesión nueva antes de hacer cualquier cosa.
 
 Las variables de entorno necesarias están documentadas en `docs/env-example-app-nutricion.md`.
 
+Para el modelo de datos de nutrición y la estructura de pantallas del panel,
+consulta `docs/referencias-panel-anterior.md` como inspiración conceptual.
+Ese documento es referencia de un panel anterior en otro stack (Vite + Supabase)
+que NO se reutiliza como código, solo como inventario de qué entidades y pantallas
+necesita la app.
+
 ## Qué es Al Fallo Nutrition
 
-Plataforma SaaS de gestión de un negocio de nutrición online para atletas de CrossFit/Hyrox.
-Tiene dos caras: panel del equipo (nutricionistas, comercial, dirección) y app del cliente/atleta (PWA móvil).
+Plataforma SaaS de gestión de un negocio de nutrición online para atletas de
+CrossFit/Hyrox. Tiene dos caras: panel del equipo y app del cliente (PWA).
 
-Está basada en una app de fisioterapia ya en producción (FisioFitCross), adaptada al dominio de la nutrición deportiva. Ver anexo de equivalencias en el brief.
+Está basada en una app de fisioterapia ya en producción (FisioFitCross), adaptada
+al dominio de la nutrición deportiva.
 
 ## Estado actual
 
 Proyecto recién iniciado. Aún no hay código.
-Próximo paso: Fase 1 del roadmap (cimientos + auth de equipo + shell del panel).
+Próximo paso: Fase 1 del roadmap del brief (cimientos + auth + shell del panel).
 
 ## Stack
 
