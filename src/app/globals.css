@@ -22,6 +22,22 @@
   --c-primary-soft: #fdeaf3; /* fondo del menú activo / acentos suaves */
 }
 
+/* Tema OSCURO solo para la app del atleta (/cliente), estilo "Al Fallo premium". */
+.shell-cliente {
+  color-scheme: dark;
+  --c-bg: #16101a;
+  --c-surface: #251622;
+  --c-surface-2: #2e1929;
+  --c-border: #3a1f2e;
+  --c-text: #f5f1f3;
+  --c-muted: #a89aa3;
+  --c-primary: #e6197e;
+  --c-primary-fg: #ffffff;
+  --c-primary-soft: #3d1428;
+  background: radial-gradient(ellipse at top, #2a1424 0%, #16101a 60%);
+  min-height: 100%;
+}
+
 * {
   box-sizing: border-box;
 }

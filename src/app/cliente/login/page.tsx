@@ -9,7 +9,7 @@ export default async function ClientLoginPage() {
   if (await getActiveClient()) redirect("/cliente");
 
   return (
-    <main className="shell min-h-screen bg-bg text-text flex items-center justify-center px-5">
+    <main className="shell-cliente min-h-screen bg-bg text-text flex items-center justify-center px-5">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
           <BrandMark size={48} />

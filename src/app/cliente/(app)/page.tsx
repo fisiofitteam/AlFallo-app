@@ -1,66 +1,80 @@
 import Link from "next/link";
-import { NotebookPen, UtensilsCrossed, CheckCircle2, Circle } from "lucide-react";
-import { prisma } from "@/lib/prisma";
+import {
+  ChefHat,
+  ClipboardCheck,
+  Dumbbell,
+  MessageCircle,
+  NotebookPen,
+  ShoppingCart,
+  Stethoscope,
+  TrendingUp,
+  UtensilsCrossed,
+  type LucideIcon,
+} from "lucide-react";
 import { requireOnboardedClient } from "@/lib/client-session";
 
-export const metadata = { title: "Inicio · Al Fallo" };
+export const metadata = { title: "Al Fallo" };
 
-function todayUtc(): Date {
-  return new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
-}
+type Section = { href: string; label: string; icon: LucideIcon; ready: boolean };
+
+const SECTIONS: Section[] = [
+  { href: "/cliente/plan", label: "Mi plan", icon: UtensilsCrossed, ready: true },
+  { href: "/cliente/recetas", label: "Recetas", icon: ChefHat, ready: false },
+  { href: "/cliente/compra", label: "Tu compra", icon: ShoppingCart, ready: false },
+  { href: "/cliente/checkin", label: "Check-in", icon: ClipboardCheck, ready: true },
+  { href: "/cliente/registro", label: "Registro", icon: NotebookPen, ready: true },
+  { href: "/cliente/progreso", label: "Mi progreso", icon: TrendingUp, ready: true },
+  { href: "/cliente/training", label: "Entreno", icon: Dumbbell, ready: false },
+  { href: "/cliente/nutricionista", label: "Tu nutri", icon: Stethoscope, ready: false },
+];
 
 export default async function ClientHomePage() {
-  const me = await requireOnboardedClient();
-
-  const [plan, todayLog] = await Promise.all([
-    prisma.nutritionPlan.findFirst({
-      where: { clientId: me.id },
-      orderBy: { createdAt: "desc" },
-      select: { name: true },
-    }),
-    prisma.dailyLog.findUnique({
-      where: { clientId_date: { clientId: me.id, date: todayUtc() } },
-      select: { id: true },
-    }),
-  ]);
-
-  const logged = Boolean(todayLog);
+  await requireOnboardedClient();
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold">Hola, {me.fullName.split(" ")[0]} 👋</h1>
-      <p className="mt-1 text-muted">Este es tu resumen de hoy.</p>
-
-      {/* Estado del registro de hoy */}
-      <Link
-        href="/cliente/registro"
-        className="mt-5 flex items-center gap-3 rounded-2xl border border-border bg-surface p-4"
+    <div className="relative pt-1">
+      {/* Marca de agua: "A" gigante semitransparente al fondo */}
+      <svg
+        aria-hidden
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={0.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="pointer-events-none absolute left-1/2 top-32 h-[120vmin] w-[120vmin] -translate-x-1/2 -translate-y-1/4 text-primary opacity-[0.05]"
       >
-        {logged ? (
-          <CheckCircle2 className="text-[#1fa971]" size={26} />
-        ) : (
-          <Circle className="text-muted" size={26} />
-        )}
-        <div>
-          <p className="font-semibold">{logged ? "Registro de hoy hecho" : "Aún no has registrado hoy"}</p>
-          <p className="text-sm text-muted">
-            {logged ? "Puedes editarlo cuando quieras." : "Apunta tu peso y sensaciones."}
-          </p>
-        </div>
-      </Link>
+        <path d="M4 21 L12 3 L20 21" />
+        <path d="M7.7 14 H16.3" />
+      </svg>
 
-      {/* Accesos */}
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <Link href="/cliente/plan" className="rounded-2xl border border-border bg-surface p-4">
-          <UtensilsCrossed className="text-primary" size={24} />
-          <p className="mt-2 font-semibold">Mi plan</p>
-          <p className="text-xs text-muted">{plan ? plan.name : "Aún sin plan"}</p>
-        </Link>
-        <Link href="/cliente/registro" className="rounded-2xl border border-border bg-surface p-4">
-          <NotebookPen className="text-primary" size={24} />
-          <p className="mt-2 font-semibold">Registro diario</p>
-          <p className="text-xs text-muted">Peso, energía, sueño…</p>
-        </Link>
+      {/* Frase motivacional */}
+      <h1 className="relative text-[2rem] font-extrabold leading-tight tracking-tight">
+        Lo difícil era empezar.
+        <br />
+        <span className="text-primary">Ya estás aquí.</span>
+      </h1>
+
+      {/* Mosaico de secciones */}
+      <div className="relative mt-7 grid grid-cols-2 gap-3">
+        {SECTIONS.map((s) => {
+          const Icon = s.icon;
+          return (
+            <Link
+              key={s.href}
+              href={s.href}
+              className="group relative flex aspect-square flex-col items-center justify-center gap-2.5 overflow-hidden rounded-2xl border border-border bg-surface p-4 text-center transition hover:border-primary hover:bg-surface-2"
+            >
+              <Icon size={44} className="text-primary transition group-hover:scale-110" strokeWidth={1.6} />
+              <span className="text-base font-bold">{s.label}</span>
+              {!s.ready && (
+                <span className="absolute right-2 top-2 rounded-full bg-primary-soft px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+                  Pronto
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </div>
     </div>
   );

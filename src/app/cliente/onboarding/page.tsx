@@ -14,7 +14,7 @@ export default async function OnboardingPage() {
   if (client.onboardingComplete) redirect("/cliente");
 
   return (
-    <main className="shell min-h-screen bg-bg text-text">
+    <main className="shell-cliente min-h-screen bg-bg text-text">
       <div className="mx-auto max-w-lg px-5 py-8">
         <div className="mb-6 flex flex-col items-center text-center">
           <BrandMark size={40} />
