@@ -8,7 +8,7 @@ import { setMemberPassword, toggleMemberActive, updateMember } from "./actions";
 
 export const metadata = { title: "Equipo · Al Fallo Nutrition" };
 
-export default async function TeamPage() {
+export default async function TeamPage({ searchParams }: { searchParams: { error?: string } }) {
   const me = await requireProfessional();
   if (me.role !== "ceo" && me.role !== "head_coach") redirect("/");
 
@@ -18,6 +18,10 @@ export default async function TeamPage() {
 
   const roleOptions = ALL_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }));
   const canManage = me.role === "ceo";
+  const errorMsg =
+    searchParams.error === "email-en-uso"
+      ? "Ese email ya lo usa otro miembro del equipo. Cambia uno de los dos."
+      : null;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -29,6 +33,10 @@ export default async function TeamPage() {
             : "Listado del equipo (solo el CEO puede editar)."}
         </p>
       </header>
+
+      {errorMsg && (
+        <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{errorMsg}</p>
+      )}
 
       {canManage && (
         <div className="mb-8">
@@ -75,6 +83,15 @@ export default async function TeamPage() {
                     <input
                       name="fullName"
                       defaultValue={m.fullName}
+                      placeholder="Nombre completo"
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
+                    />
+                    <input
+                      name="email"
+                      type="email"
+                      defaultValue={m.email}
+                      placeholder="Email"
+                      required
                       className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
                     />
                     <input

@@ -79,10 +79,22 @@ export async function updateMember(formData: FormData) {
   // Evita que el CEO se cambie a sí mismo el rol (queda sin acceso).
   if (id === me.id && role && role !== "ceo") return;
 
+  // Email: opcional editar, normalizado y único.
+  const emailRaw = parseStr(formData.get("email"));
+  const newEmail = emailRaw ? emailRaw.toLowerCase() : null;
+  if (newEmail) {
+    const current = await prisma.professional.findUnique({ where: { id }, select: { email: true } });
+    if (current && newEmail !== current.email) {
+      const dup = await prisma.professional.findFirst({ where: { email: newEmail, NOT: { id } } });
+      if (dup) redirect(`/equipo?error=email-en-uso`);
+    }
+  }
+
   await prisma.professional.update({
     where: { id },
     data: {
       fullName: parseStr(formData.get("fullName")) ?? undefined,
+      email: newEmail ?? undefined,
       role: role ?? undefined,
       title: parseStr(formData.get("title")),
     },
