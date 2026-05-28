@@ -21,15 +21,15 @@ export default async function ClientLoginPage({
       : null;
 
   return (
-    <main className="shell-cliente min-h-screen bg-bg text-text flex items-center justify-center px-5">
+    <main className="shell-cliente min-h-screen bg-bg text-text grid place-items-center px-5 py-10">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <BrandMark size={48} />
-          <h1 className="mt-3 text-2xl font-extrabold tracking-tight">Al Fallo</h1>
+        <div className="mb-10 flex flex-col items-center text-center">
+          <BrandMark size={56} />
+          <h1 className="mt-3 text-3xl font-extrabold tracking-tight">Al Fallo</h1>
           <p className="mt-1 text-sm text-muted">Tu app de nutrición</p>
         </div>
 
-        <form method="POST" action="/api/cliente/login" className="space-y-4">
+        <form method="POST" action="/api/cliente/login" className="space-y-5">
           <div className="space-y-1.5">
             <label htmlFor="email" className="text-sm font-medium">
               Email

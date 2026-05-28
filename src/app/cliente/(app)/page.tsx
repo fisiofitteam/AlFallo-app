@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+import Image from "next/image";
 import Link from "next/link";
 import {
   ChefHat,
@@ -15,18 +18,34 @@ import { requireOnboardedClient } from "@/lib/client-session";
 
 export const metadata = { title: "Al Fallo" };
 
-type Section = { href: string; label: string; icon: LucideIcon; ready: boolean };
+type Section = {
+  key: string; // también nombre del archivo en /public/avocados/<key>.png
+  href: string;
+  label: string;
+  icon: LucideIcon; // fallback si no hay imagen
+  ready: boolean;
+};
 
 const SECTIONS: Section[] = [
-  { href: "/cliente/plan", label: "Mi plan", icon: UtensilsCrossed, ready: true },
-  { href: "/cliente/recetas", label: "Recetas", icon: ChefHat, ready: false },
-  { href: "/cliente/compra", label: "Tu compra", icon: ShoppingCart, ready: false },
-  { href: "/cliente/checkin", label: "Check-in", icon: ClipboardCheck, ready: true },
-  { href: "/cliente/registro", label: "Registro", icon: NotebookPen, ready: true },
-  { href: "/cliente/progreso", label: "Mi progreso", icon: TrendingUp, ready: true },
-  { href: "/cliente/training", label: "Entreno", icon: Dumbbell, ready: false },
-  { href: "/cliente/nutricionista", label: "Tu nutri", icon: Stethoscope, ready: false },
+  { key: "plan", href: "/cliente/plan", label: "Mi plan", icon: UtensilsCrossed, ready: true },
+  { key: "recetas", href: "/cliente/recetas", label: "Recetas", icon: ChefHat, ready: false },
+  { key: "compra", href: "/cliente/compra", label: "Tu compra", icon: ShoppingCart, ready: false },
+  { key: "checkin", href: "/cliente/checkin", label: "Check-in", icon: ClipboardCheck, ready: true },
+  { key: "registro", href: "/cliente/registro", label: "Registro", icon: NotebookPen, ready: true },
+  { key: "progreso", href: "/cliente/progreso", label: "Mi progreso", icon: TrendingUp, ready: true },
+  { key: "training", href: "/cliente/training", label: "Entreno", icon: Dumbbell, ready: false },
+  { key: "nutri", href: "/cliente/nutricionista", label: "Tu nutri", icon: Stethoscope, ready: false },
 ];
+
+// Si existe public/avocados/<key>.png devuelve la ruta; si no, null.
+function avocadoSrc(key: string): string | null {
+  // Acepta png o webp.
+  for (const ext of ["png", "webp", "jpg"]) {
+    const file = path.join(process.cwd(), "public", "avocados", `${key}.${ext}`);
+    if (existsSync(file)) return `/avocados/${key}.${ext}`;
+  }
+  return null;
+}
 
 export default async function ClientHomePage() {
   await requireOnboardedClient();
@@ -59,13 +78,29 @@ export default async function ClientHomePage() {
       <div className="relative mt-7 grid grid-cols-2 gap-3">
         {SECTIONS.map((s) => {
           const Icon = s.icon;
+          const avocado = avocadoSrc(s.key);
           return (
             <Link
               key={s.href}
               href={s.href}
-              className="group relative flex aspect-square flex-col items-center justify-center gap-2.5 overflow-hidden rounded-2xl border border-border bg-surface p-4 text-center transition hover:border-primary hover:bg-surface-2"
+              className="group relative flex aspect-square flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border border-border bg-surface p-4 text-center transition hover:border-primary hover:bg-surface-2"
             >
-              <Icon size={44} className="text-primary transition group-hover:scale-110" strokeWidth={1.6} />
+              {avocado ? (
+                <Image
+                  src={avocado}
+                  alt={s.label}
+                  width={140}
+                  height={140}
+                  className="h-[58%] w-auto object-contain transition group-hover:scale-105"
+                  priority
+                />
+              ) : (
+                <Icon
+                  size={48}
+                  className="text-primary transition group-hover:scale-110"
+                  strokeWidth={1.6}
+                />
+              )}
               <span className="text-base font-bold">{s.label}</span>
               {!s.ready && (
                 <span className="absolute right-2 top-2 rounded-full bg-primary-soft px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
