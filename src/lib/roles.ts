@@ -59,7 +59,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/clientes", label: "Clientes", icon: Users, roles: ["ceo", "head_coach", "nutricionista"] },
   { href: "/biblioteca", label: "Biblioteca", icon: Library, roles: ["ceo", "head_coach", "nutricionista"] },
   { href: "/contenido", label: "Contenido", icon: Megaphone, roles: ["ceo", "head_coach"] },
-  { href: "/finanzas", label: "Finanzas", icon: Wallet, roles: ["ceo"] },
+  { href: "/finanzas", label: "Cuadro de mandos", icon: Wallet, roles: ["ceo"] },
   { href: "/comunidad", label: "Comunidad", icon: MessagesSquare, roles: ["ceo", "head_coach", "nutricionista"] },
   { href: "/tareas", label: "Tareas", icon: CheckSquare },
   { href: "/reuniones", label: "Reuniones", icon: CalendarDays, roles: ["ceo", "head_coach"] },

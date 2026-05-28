@@ -25,9 +25,10 @@ model Professional {
   updatedAt    DateTime @updatedAt
 
   sessions          Session[]
-  clients           Client[]        @relation("NutritionistClients")
+  clients           Client[]         @relation("NutritionistClients")
   createdPlans      NutritionPlan[]
-  reviewedCheckIns  CheckIn[]       @relation("CheckInReviewer")
+  reviewedCheckIns  CheckIn[]        @relation("CheckInReviewer")
+  payrolls          PayrollPayment[]
 
   @@index([role])
 }
@@ -283,6 +284,57 @@ model CalendarEvent {
   updatedAt DateTime @updatedAt
 
   @@index([date])
+}
+
+// ─── Cuadro de mandos: movimientos, facturas y objetivos ───
+
+model Transaction {
+  id          String   @id @default(cuid())
+  date        DateTime @default(now())
+  type        String // ingreso | gasto
+  category    String? // publicidad | sueldos | software | herramientas | otros | cliente | renovacion
+  description String?
+  amount      Float
+  source      String? // stripe | manual | meta_ads | ...
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+  @@index([type])
+}
+
+// Pago/factura de un miembro del equipo.
+model PayrollPayment {
+  id             String    @id @default(cuid())
+  professionalId String
+  period         String // "YYYY-MM" del mes facturado
+  concept        String?
+  amount         Float
+  status         String    @default("pendiente") // pendiente | pagado
+  invoiceUrl     String?
+  notes          String?
+  paidAt         DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@index([professionalId])
+  @@index([period])
+  @@index([status])
+}
+
+model QuarterlyGoal {
+  id           String   @id @default(cuid())
+  year         Int
+  quarter      Int // 1..4
+  name         String
+  targetAmount Float?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([year, quarter])
 }
 
 // Sesión de la app del atleta (cookie httpOnly propia, distinta a la del equipo).
