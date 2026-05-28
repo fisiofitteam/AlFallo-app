@@ -32,6 +32,10 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   if (!ok) return invalid;
 
   const { token } = await createSession(professional.id);
+  await prisma.professional.update({
+    where: { id: professional.id },
+    data: { lastLoginAt: new Date() },
+  });
   cookies().set(SESSION_COOKIE, token, sessionCookieOptions);
 
   // Evita open-redirect: solo rutas internas.

@@ -86,7 +86,7 @@ export async function updateMember(formData: FormData) {
     const current = await prisma.professional.findUnique({ where: { id }, select: { email: true } });
     if (current && newEmail !== current.email) {
       const dup = await prisma.professional.findFirst({ where: { email: newEmail, NOT: { id } } });
-      if (dup) redirect(`/equipo?error=email-en-uso`);
+      if (dup) redirect(`/equipo/${id}?error=email-en-uso`);
     }
   }
 
@@ -100,6 +100,16 @@ export async function updateMember(formData: FormData) {
     },
   });
   revalidatePath("/equipo");
+}
+
+export async function deleteMember(formData: FormData) {
+  const me = await requireCeo();
+  const id = String(formData.get("id"));
+  if (id === me.id) return; // no se borra a sí mismo
+  // Los clientes/planes/check-ins asociados se quedan sin asignar (FK onDelete: SetNull).
+  await prisma.professional.delete({ where: { id } });
+  revalidatePath("/equipo");
+  redirect("/equipo");
 }
 
 export async function toggleMemberActive(formData: FormData) {

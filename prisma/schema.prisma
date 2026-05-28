@@ -22,6 +22,7 @@ model Professional {
   title        String? // cargo visible (ej. "Head Success Nutritionist")
   isActive     Boolean  @default(true)
   imageUrl     String?
+  lastLoginAt  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -55,7 +56,7 @@ model Client {
   contractVersion      String?
   contractTextSnapshot String?
 
-  nutritionist Professional?     @relation("NutritionistClients", fields: [nutritionistId], references: [id])
+  nutritionist Professional?     @relation("NutritionistClients", fields: [nutritionistId], references: [id], onDelete: SetNull)
   profile      NutritionProfile?
   plans        NutritionPlan[]
   sessions     ClientSession[]
@@ -89,7 +90,7 @@ model CheckIn {
   updatedAt DateTime @updatedAt
 
   client     Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  reviewedBy Professional? @relation("CheckInReviewer", fields: [reviewedById], references: [id])
+  reviewedBy Professional? @relation("CheckInReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   @@index([clientId])
   @@index([status])
@@ -443,7 +444,7 @@ model NutritionPlan {
   updatedAt   DateTime @updatedAt
 
   client    Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  createdBy Professional? @relation(fields: [createdById], references: [id])
+  createdBy Professional? @relation(fields: [createdById], references: [id], onDelete: SetNull)
   days      PlanDay[]
 
   @@index([clientId])

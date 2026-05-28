@@ -1,14 +1,28 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { KeyRound, UserCheck, UserX } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import { ALL_ROLES, ROLE_LABELS, type Role } from "@/lib/roles";
 import { NewMemberForm } from "./new-member-form";
-import { setMemberPassword, toggleMemberActive, updateMember } from "./actions";
+import { DeleteMemberButton } from "./delete-button";
 
 export const metadata = { title: "Equipo · Al Fallo Nutrition" };
 
-export default async function TeamPage({ searchParams }: { searchParams: { error?: string } }) {
+function formatLastLogin(d: Date | null): string {
+  if (!d) return "—";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const t = new Date(d);
+  t.setHours(0, 0, 0, 0);
+  const diff = Math.round((today.getTime() - t.getTime()) / 86400000);
+  if (diff === 0) return "Hoy";
+  if (diff === 1) return "Ayer";
+  if (diff < 7) return `Hace ${diff} días`;
+  return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+}
+
+export default async function TeamPage() {
   const me = await requireProfessional();
   if (me.role !== "ceo" && me.role !== "head_coach") redirect("/");
 
@@ -18,158 +32,100 @@ export default async function TeamPage({ searchParams }: { searchParams: { error
 
   const roleOptions = ALL_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }));
   const canManage = me.role === "ceo";
-  const errorMsg =
-    searchParams.error === "email-en-uso"
-      ? "Ese email ya lo usa otro miembro del equipo. Cambia uno de los dos."
-      : null;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-5xl">
       <header className="mb-6">
         <h1 className="text-2xl font-bold md:text-3xl">Equipo</h1>
-        <p className="mt-1 text-muted">
-          {canManage
-            ? "Da de alta, edita y gestiona el acceso de los miembros del equipo."
-            : "Listado del equipo (solo el CEO puede editar)."}
-        </p>
+        <p className="mt-1 text-muted">Gestiona el acceso del equipo.</p>
       </header>
 
-      {errorMsg && (
-        <p className="mb-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{errorMsg}</p>
-      )}
-
+      {/* Botón "+ Invitar profesional" plegable, alineado a la derecha */}
       {canManage && (
-        <div className="mb-8">
-          <NewMemberForm roleOptions={roleOptions} />
-        </div>
+        <details className="group mb-5">
+          <summary className="ml-auto flex w-fit cursor-pointer items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-fg transition hover:opacity-90 [&::-webkit-details-marker]:hidden">
+            <Plus size={16} /> <span className="group-open:hidden">Invitar profesional</span>
+            <span className="hidden group-open:inline">Cerrar</span>
+          </summary>
+          <div className="mt-3">
+            <NewMemberForm roleOptions={roleOptions} />
+          </div>
+        </details>
       )}
 
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Miembros</h2>
-
-      <div className="space-y-3">
-        {members.map((m) => {
-          const isSelf = m.id === me.id;
-          return (
-            <article
-              key={m.id}
-              className={`rounded-2xl border border-border bg-surface p-5 ${m.isActive ? "" : "opacity-60"}`}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-soft text-base font-bold text-primary">
-                    {m.fullName.slice(0, 1).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="font-semibold">
-                      {m.fullName}
-                      {isSelf && <span className="ml-2 text-xs text-muted">(tú)</span>}
-                      {!m.isActive && <span className="ml-2 text-xs text-red-600">Inactivo</span>}
-                    </p>
-                    <p className="text-sm text-muted">{m.email}</p>
-                    {m.title && <p className="text-xs text-muted">{m.title}</p>}
-                  </div>
-                </div>
-                <span className="rounded-full bg-primary-soft px-2.5 py-1 text-xs font-semibold text-primary">
-                  {ROLE_LABELS[m.role as Role] ?? m.role}
-                </span>
-              </div>
-
-              {canManage && (
-                <div className="mt-4 grid grid-cols-1 gap-4 border-t border-border pt-4 md:grid-cols-2">
-                  {/* Editar nombre / rol / cargo */}
-                  <form action={updateMember} className="space-y-2">
-                    <input type="hidden" name="id" value={m.id} />
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">Editar</p>
-                    <input
-                      name="fullName"
-                      defaultValue={m.fullName}
-                      placeholder="Nombre completo"
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
-                    />
-                    <input
-                      name="email"
-                      type="email"
-                      defaultValue={m.email}
-                      placeholder="Email"
-                      required
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
-                    />
-                    <input
-                      name="title"
-                      defaultValue={m.title ?? ""}
-                      placeholder="Cargo (ej. Head Success Nutritionist)"
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
-                    />
-                    <select
-                      name="role"
-                      defaultValue={m.role}
-                      disabled={isSelf}
-                      title={isSelf ? "No puedes cambiar tu propio rol" : undefined}
-                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary disabled:opacity-60"
-                    >
-                      {roleOptions.map((r) => (
-                        <option key={r.value} value={r.value}>
-                          {r.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface-2">
-                      Guardar cambios
-                    </button>
-                  </form>
-
-                  {/* Restablecer contraseña + activar/desactivar */}
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">Acceso</p>
-                    <form action={setMemberPassword} className="flex items-end gap-2">
-                      <input type="hidden" name="id" value={m.id} />
-                      <input
-                        name="password"
-                        type="text"
-                        minLength={6}
-                        placeholder="Nueva contraseña (mín. 6)"
-                        required
-                        className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
-                      />
-                      <button
-                        title="Restablecer contraseña"
-                        className="flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-surface-2"
-                      >
-                        <KeyRound size={14} /> Restablecer
-                      </button>
-                    </form>
-                    {!isSelf && (
-                      <form action={toggleMemberActive}>
-                        <input type="hidden" name="id" value={m.id} />
-                        <button
-                          className={`flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-medium ${
-                            m.isActive
-                              ? "border-border text-muted hover:bg-red-50 hover:text-red-600"
-                              : "border-[#1fa971] text-[#1fa971] hover:bg-[#e7f6ec]"
-                          }`}
-                        >
-                          {m.isActive ? (
-                            <>
-                              <UserX size={14} /> Desactivar
-                            </>
-                          ) : (
-                            <>
-                              <UserCheck size={14} /> Reactivar
-                            </>
-                          )}
-                        </button>
-                      </form>
+      {/* Tabla de miembros */}
+      <section className="overflow-hidden rounded-2xl border border-border bg-surface">
+        <table className="w-full text-sm">
+          <thead className="bg-surface-2 text-left text-xs uppercase tracking-wider text-muted">
+            <tr>
+              <th className="px-5 py-3 font-semibold">Nombre</th>
+              <th className="hidden px-5 py-3 font-semibold md:table-cell">Email</th>
+              <th className="px-5 py-3 font-semibold">Rol</th>
+              <th className="hidden px-5 py-3 font-semibold sm:table-cell">Estado</th>
+              <th className="hidden px-5 py-3 font-semibold lg:table-cell">Último acceso</th>
+              <th className="px-3 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {members.map((m) => {
+              const isSelf = m.id === me.id;
+              return (
+                <tr key={m.id} className="border-t border-border hover:bg-surface-2/40">
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-sm font-bold text-primary">
+                        {m.fullName.slice(0, 1).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold">
+                          {m.fullName}
+                          {isSelf && <span className="ml-1.5 text-xs font-normal text-muted">(tú)</span>}
+                        </p>
+                        {m.title && <p className="truncate text-xs text-muted">{m.title}</p>}
+                        {/* Email en móvil bajo el nombre */}
+                        <p className="truncate text-xs text-muted md:hidden">{m.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="hidden px-5 py-4 text-muted md:table-cell">{m.email}</td>
+                  <td className="px-5 py-4">
+                    <span className="inline-block rounded-md bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-700">
+                      {ROLE_LABELS[m.role as Role] ?? m.role}
+                    </span>
+                  </td>
+                  <td className="hidden px-5 py-4 sm:table-cell">
+                    {m.isActive ? (
+                      <span className="inline-block rounded-full bg-[#e7f6ec] px-2.5 py-0.5 text-xs font-medium text-[#15803d]">
+                        ✓ Activo
+                      </span>
+                    ) : (
+                      <span className="inline-block rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600">
+                        Inactivo
+                      </span>
                     )}
-                    <p className="text-[11px] text-muted">
-                      Al restablecer contraseña o desactivar, se cierra su sesión activa.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </article>
-          );
-        })}
-      </div>
+                  </td>
+                  <td className="hidden px-5 py-4 text-muted lg:table-cell">{formatLastLogin(m.lastLoginAt)}</td>
+                  <td className="px-3 py-4">
+                    {canManage ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <Link
+                          href={`/equipo/${m.id}`}
+                          className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted transition hover:bg-surface-2 hover:text-text"
+                        >
+                          <Pencil size={13} /> Editar
+                        </Link>
+                        {!isSelf && <DeleteMemberButton id={m.id} name={m.fullName} />}
+                      </div>
+                    ) : (
+                      <span />
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
     </div>
   );
 }
