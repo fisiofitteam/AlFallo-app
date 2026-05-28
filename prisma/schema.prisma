@@ -19,6 +19,7 @@ model Professional {
   email        String   @unique
   passwordHash String
   role         String
+  title        String? // cargo visible (ej. "Head Success Nutritionist")
   isActive     Boolean  @default(true)
   imageUrl     String?
   createdAt    DateTime @default(now())
