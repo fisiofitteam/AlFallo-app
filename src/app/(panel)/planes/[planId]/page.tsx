@@ -16,6 +16,7 @@ import {
   type Macros,
 } from "@/lib/nutrition";
 import { Select } from "@/components/form-ui";
+import { Sparkles } from "lucide-react";
 import {
   addDay,
   addItem,
@@ -25,6 +26,7 @@ import {
   deleteItem,
   deleteMeal,
   deletePlan,
+  generatePlanFromAI,
   setDayType,
 } from "../actions";
 
@@ -165,6 +167,27 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
           </div>
         );
       })()}
+
+      {/* Plan vacío: hero para generar con IA */}
+      {plan.days.length === 0 && (
+        <section className="mb-5 rounded-2xl border border-primary bg-primary-soft p-6 text-center">
+          <Sparkles className="mx-auto text-primary" size={28} />
+          <h2 className="mt-2 text-lg font-bold text-primary">Tu plan está vacío</h2>
+          <p className="mt-1 text-sm text-primary/80">
+            Genera un borrador inicial con IA basado en el perfil y los objetivos del cliente.
+            Después editas a mano todo lo que quieras.
+          </p>
+          <form action={generatePlanFromAI} className="mt-4 inline-block">
+            <input type="hidden" name="planId" value={plan.id} />
+            <button className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-fg transition hover:opacity-90">
+              <Sparkles size={16} /> Generar borrador con IA
+            </button>
+          </form>
+          <p className="mt-3 text-[11px] text-primary/70">
+            Tarda ~10-20 segundos. Si no tienes <code className="font-mono">ANTHROPIC_API_KEY</code> configurada, se usa una plantilla genérica.
+          </p>
+        </section>
+      )}
 
       {/* Días */}
       <div className="space-y-5">
@@ -347,17 +370,30 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
       </div>
 
       {/* Añadir día */}
-      <form action={addDay} className="mt-5 flex flex-wrap items-end gap-2 rounded-2xl border border-dashed border-border p-4">
-        <input type="hidden" name="planId" value={plan.id} />
-        <input
-          name="name"
-          placeholder="Nombre del día (ej. Día de entreno)"
-          className="min-w-[200px] flex-1 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-primary"
-        />
-        <button className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition hover:opacity-90">
-          <Plus size={16} /> Añadir día
-        </button>
-      </form>
+      <div className="mt-5 space-y-2 rounded-2xl border border-dashed border-border p-4">
+        <form action={addDay} className="flex flex-wrap items-end gap-2">
+          <input type="hidden" name="planId" value={plan.id} />
+          <input
+            name="name"
+            placeholder="Nombre del día (ej. Día de entreno)"
+            className="min-w-[200px] flex-1 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-primary"
+          />
+          <button className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition hover:opacity-90">
+            <Plus size={16} /> Añadir día
+          </button>
+        </form>
+        {plan.days.length > 0 && (
+          <form action={generatePlanFromAI} className="flex justify-end">
+            <input type="hidden" name="planId" value={plan.id} />
+            <button
+              className="flex items-center gap-1.5 rounded-xl border border-primary px-3 py-2 text-xs font-medium text-primary hover:bg-primary-soft"
+              title="Añade más días generados con IA al plan actual"
+            >
+              <Sparkles size={13} /> Generar más días con IA
+            </button>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

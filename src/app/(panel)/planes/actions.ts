@@ -121,6 +121,88 @@ export async function deleteMeal(formData: FormData) {
   revalidatePath(`/planes/${planId}`);
 }
 
+// Genera un borrador completo del plan con IA (Claude) o plantilla fallback.
+// Se aplica sobre un plan existente; añade los días/comidas/items respetando el orden.
+export async function generatePlanFromAI(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  const plan = await loadPlanForEdit(planId, prof);
+
+  const client = await prisma.client.findUnique({
+    where: { id: plan.clientId },
+    include: { profile: true, macroTargets: true },
+  });
+  if (!client) return;
+
+  const { generatePlanDraft } = await import("@/lib/planGenerator");
+  const draft = await generatePlanDraft({
+    clientName: client.fullName,
+    sex: client.profile?.sex ?? null,
+    birthDate: client.profile?.birthDate ?? null,
+    heightCm: client.profile?.heightCm ?? null,
+    weightKg: client.profile?.weightKg ?? null,
+    weeklyFrequency: client.profile?.weeklyFrequency ?? null,
+    level: client.profile?.level ?? null,
+    boxName: client.profile?.boxName ?? null,
+    goal: client.profile?.goal ?? null,
+    targetWeightKg: client.profile?.targetWeightKg ?? null,
+    dietaryStyle: client.profile?.dietaryStyle ?? null,
+    allergies: client.profile?.allergies ?? [],
+    intolerances: client.profile?.intolerances ?? [],
+    dislikes: client.profile?.dislikes ?? [],
+    medicalConditions: client.profile?.medicalConditions ?? null,
+    medication: client.profile?.medication ?? null,
+    kcalTraining: client.macroTargets?.kcalTraining ?? null,
+    proteinTraining: client.macroTargets?.proteinTraining ?? null,
+    carbsTraining: client.macroTargets?.carbsTraining ?? null,
+    fatTraining: client.macroTargets?.fatTraining ?? null,
+    kcalRest: client.macroTargets?.kcalRest ?? null,
+    proteinRest: client.macroTargets?.proteinRest ?? null,
+    carbsRest: client.macroTargets?.carbsRest ?? null,
+    fatRest: client.macroTargets?.fatRest ?? null,
+  });
+
+  const existingDaysCount = await prisma.planDay.count({ where: { planId } });
+  for (let di = 0; di < draft.days.length; di++) {
+    const d = draft.days[di];
+    const newDay = await prisma.planDay.create({
+      data: { planId, name: d.name, dayType: d.dayType, order: existingDaysCount + di },
+    });
+    for (let mi = 0; mi < d.meals.length; mi++) {
+      const m = d.meals[mi];
+      const newMeal = await prisma.meal.create({
+        data: { planDayId: newDay.id, name: m.name, order: mi },
+      });
+      for (let ii = 0; ii < m.items.length; ii++) {
+        const it = m.items[ii];
+        await prisma.mealItem.create({
+          data: {
+            mealId: newMeal.id,
+            foodId: null,
+            nameSnapshot: it.text,
+            quantityG: 100,
+            kcalPer100: it.kcal,
+            proteinPer100: it.protein,
+            carbsPer100: it.carbs,
+            fatPer100: it.fat,
+            order: ii,
+          },
+        });
+      }
+    }
+  }
+
+  if (!plan.notes) {
+    const noteBase =
+      draft.source === "ai"
+        ? "Borrador generado con IA. Revísalo y ajústalo antes de mostrar al cliente."
+        : "Borrador genérico (sin IA). Edítalo para adaptarlo al cliente.";
+    await prisma.nutritionPlan.update({ where: { id: planId }, data: { notes: noteBase } });
+  }
+
+  revalidatePath(`/planes/${planId}`);
+}
+
 // Añade un item "freestyle" con macros estimadas por IA (texto libre).
 // Convención: para items freestyle (foodId === null), quantityG = 100 y los
 // campos *Per100 contienen los TOTALES (la UI lo detecta por foodId === null).
