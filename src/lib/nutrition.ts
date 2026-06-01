@@ -25,6 +25,22 @@ export const MEAL_TYPE_OPTIONS: Option[] = [
   { value: "otro", label: "Otro" },
 ];
 
+// Sub-tipos para descomponer una comida (estilo Intro · Grasas · Carbos · Proteína · Postre).
+// Permite agrupar items dentro de una comida y ofrecer alternativas con checkbox "elegida".
+export const SUB_TYPE_OPTIONS: Option[] = [
+  { value: "intro", label: "Intro" },
+  { value: "grasas", label: "Grasas" },
+  { value: "carbos", label: "Carbos" },
+  { value: "proteina", label: "Proteína" },
+  { value: "postre", label: "Postre" },
+  { value: "otro", label: "Otro" },
+];
+
+export function subTypeLabel(value: string | null | undefined): string {
+  if (!value) return "";
+  return SUB_TYPE_OPTIONS.find((s) => s.value === value)?.label ?? value;
+}
+
 export type Macros = { kcal: number; protein: number; carbs: number; fat: number };
 
 export const ZERO_MACROS: Macros = { kcal: 0, protein: 0, carbs: 0, fat: 0 };

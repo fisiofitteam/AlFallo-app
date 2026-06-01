@@ -42,8 +42,11 @@ export default async function ClientPlanPage() {
     );
   }
 
+  // El cliente solo ve los items "elegidos" (los alternativos quedan ocultos).
+  const selItem = (it: { selected: boolean }) => it.selected !== false;
+
   const planMacros = sumMacros(
-    plan.days.flatMap((d) => d.meals.flatMap((m) => m.items.map((it) => itemMacros(it)))),
+    plan.days.flatMap((d) => d.meals.flatMap((m) => m.items.filter(selItem).map((it) => itemMacros(it)))),
   );
 
   return (
@@ -57,7 +60,9 @@ export default async function ClientPlanPage() {
 
       <div className="mt-5 space-y-4">
         {plan.days.map((day) => {
-          const dayMacros = sumMacros(day.meals.flatMap((m) => m.items.map((it) => itemMacros(it))));
+          const dayMacros = sumMacros(
+            day.meals.flatMap((m) => m.items.filter(selItem).map((it) => itemMacros(it))),
+          );
           return (
             <section key={day.id} className="rounded-2xl border border-border bg-surface p-4">
               <div className="mb-3 flex items-center justify-between">
@@ -66,7 +71,8 @@ export default async function ClientPlanPage() {
               </div>
               <div className="space-y-3">
                 {day.meals.map((meal) => {
-                  const mealMacros = sumMacros(meal.items.map((it) => itemMacros(it)));
+                  const visibleItems = meal.items.filter(selItem);
+                  const mealMacros = sumMacros(visibleItems.map((it) => itemMacros(it)));
                   return (
                     <div key={meal.id} className="rounded-xl bg-surface-2 p-3">
                       <div className="mb-1.5 flex items-center justify-between">
@@ -74,13 +80,20 @@ export default async function ClientPlanPage() {
                         <MacroLine m={mealMacros} />
                       </div>
                       <ul className="space-y-1 text-sm">
-                        {meal.items.map((it) => (
-                          <li key={it.id} className="flex justify-between">
-                            <span>{it.nameSnapshot}</span>
-                            <span className="text-muted">{it.quantityG} g</span>
+                        {visibleItems.map((it) => (
+                          <li key={it.id} className="flex justify-between gap-2">
+                            <span className="min-w-0">
+                              {it.subType && (
+                                <span className="mr-1.5 inline-block rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                                  {it.subType === "intro" ? "Intro" : it.subType === "grasas" ? "Grasas" : it.subType === "carbos" ? "Carbos" : it.subType === "proteina" ? "Proteína" : it.subType === "postre" ? "Postre" : "Otro"}
+                                </span>
+                              )}
+                              {it.nameSnapshot}
+                            </span>
+                            {it.foodId && <span className="shrink-0 text-muted">{it.quantityG} g</span>}
                           </li>
                         ))}
-                        {meal.items.length === 0 && <li className="text-xs text-muted">Sin alimentos</li>}
+                        {visibleItems.length === 0 && <li className="text-xs text-muted">Sin alimentos</li>}
                       </ul>
                     </div>
                   );

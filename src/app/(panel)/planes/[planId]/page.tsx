@@ -7,10 +7,12 @@ import { CLIENT_ACCESS_ROLES, isManagerRole, optionLabel } from "@/lib/clients";
 import {
   DAY_TYPES,
   MEAL_TYPE_OPTIONS,
+  SUB_TYPE_OPTIONS,
   compareToTarget,
   dayTypeEmoji,
   fmtMacros,
   itemMacros,
+  subTypeLabel,
   sumMacros,
   targetsForDayType,
   type Macros,
@@ -28,6 +30,8 @@ import {
   deletePlan,
   generatePlanFromAI,
   setDayType,
+  toggleItemSelected,
+  updatePlanNotes,
 } from "../actions";
 
 function MacroBar({ m, label }: { m: Macros; label?: string }) {
@@ -113,9 +117,11 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
   });
   const foodOptions = foods.map((f) => ({ value: f.id, label: f.name }));
 
-  // Macros totales del plan = suma de todos los items.
+  // Macros totales del plan = suma de items "elegidos" (selected !== false).
   const planMacros = sumMacros(
-    plan.days.flatMap((d) => d.meals.flatMap((m) => m.items.map((it) => itemMacros(it)))),
+    plan.days.flatMap((d) =>
+      d.meals.flatMap((m) => m.items.filter((it) => it.selected !== false).map((it) => itemMacros(it))),
+    ),
   );
 
   return (
@@ -143,6 +149,28 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
         <div className="mt-4 border-t border-border pt-3">
           <MacroBar m={planMacros} label="Total del plan:" />
         </div>
+
+        {/* Notas del plan (visibles al cliente cuando se publique) */}
+        <details className="mt-3 border-t border-border pt-3">
+          <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-muted hover:text-text">
+            Notas del plan {plan.notes ? `(${plan.notes.length} chars)` : "(vacías)"}
+          </summary>
+          <form action={updatePlanNotes} className="mt-2 space-y-2">
+            <input type="hidden" name="planId" value={plan.id} />
+            <textarea
+              name="notes"
+              defaultValue={plan.notes ?? ""}
+              rows={4}
+              placeholder="Observaciones, recordatorios, consejos generales para el cliente…"
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+            <div className="flex justify-end">
+              <button className="rounded-xl border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface-2">
+                Guardar notas
+              </button>
+            </div>
+          </form>
+        </details>
       </header>
 
       {/* Restricciones del cliente a tener en cuenta */}
@@ -192,7 +220,11 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
       {/* Días */}
       <div className="space-y-5">
         {plan.days.map((day) => {
-          const dayMacros = sumMacros(day.meals.flatMap((m) => m.items.map((it) => itemMacros(it))));
+          const dayMacros = sumMacros(
+            day.meals.flatMap((m) =>
+              m.items.filter((it) => it.selected !== false).map((it) => itemMacros(it)),
+            ),
+          );
           const targets = targetsForDayType(plan.client.macroTargets, day.dayType);
           const cmpKcal = compareToTarget(dayMacros.kcal, targets.kcal);
           const cmpP = compareToTarget(dayMacros.protein, targets.protein);
@@ -252,7 +284,9 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
               {/* Comidas del día */}
               <div className="space-y-3">
                 {day.meals.map((meal) => {
-                  const mealMacros = sumMacros(meal.items.map((it) => itemMacros(it)));
+                  const mealMacros = sumMacros(
+                    meal.items.filter((it) => it.selected !== false).map((it) => itemMacros(it)),
+                  );
                   return (
                     <div key={meal.id} className="rounded-xl border border-border p-4">
                       <div className="mb-2 flex items-center justify-between">
@@ -275,18 +309,46 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
                           {meal.items.map((it) => {
                             const im = fmtMacros(itemMacros(it));
                             return (
-                              <li key={it.id} className="flex items-center justify-between py-1.5 text-sm">
-                                <span>
-                                  {it.nameSnapshot}
-                                  {it.foodId && (
-                                    <span className="ml-1 text-muted">· {it.quantityG} g</span>
-                                  )}
-                                  {!it.foodId && (
-                                    <span className="ml-1 text-[10px] uppercase tracking-wider text-primary">✨</span>
-                                  )}
+                              <li
+                                key={it.id}
+                                className={`flex items-center justify-between gap-2 py-1.5 text-sm ${
+                                  it.selected === false ? "opacity-50" : ""
+                                }`}
+                              >
+                                <span className="flex min-w-0 items-center gap-2">
+                                  {/* Checkbox "elegida" → toggle */}
+                                  <form action={toggleItemSelected} className="flex items-center">
+                                    <input type="hidden" name="planId" value={plan.id} />
+                                    <input type="hidden" name="itemId" value={it.id} />
+                                    <button
+                                      type="submit"
+                                      title={it.selected === false ? "Marcar como elegida" : "Quitar del recuento"}
+                                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                                        it.selected === false
+                                          ? "border-border bg-transparent text-transparent"
+                                          : "border-primary bg-primary text-primary-fg"
+                                      }`}
+                                    >
+                                      ✓
+                                    </button>
+                                  </form>
+                                  <span className="truncate">
+                                    {it.subType && (
+                                      <span className="mr-1.5 inline-block rounded bg-primary-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                                        {subTypeLabel(it.subType)}
+                                      </span>
+                                    )}
+                                    {it.nameSnapshot}
+                                    {it.foodId && (
+                                      <span className="ml-1 text-muted">· {it.quantityG} g</span>
+                                    )}
+                                    {!it.foodId && (
+                                      <span className="ml-1 text-[10px] uppercase tracking-wider text-primary">✨</span>
+                                    )}
+                                  </span>
                                 </span>
-                                <span className="flex items-center gap-3">
-                                  <span className="text-xs text-muted">
+                                <span className="flex shrink-0 items-center gap-3">
+                                  <span className="whitespace-nowrap text-xs text-muted">
                                     {im.kcal} kcal · P{im.protein} C{im.carbs} G{im.fat}
                                   </span>
                                   <form action={deleteItem}>
@@ -308,15 +370,18 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
                         <form action={addItem} className="flex flex-wrap items-end gap-2">
                           <input type="hidden" name="planId" value={plan.id} />
                           <input type="hidden" name="mealId" value={meal.id} />
-                          <div className="min-w-[160px] flex-1">
+                          <div className="min-w-[140px] flex-1">
                             <Select name="foodId" options={foodOptions} placeholder="Alimento de biblioteca…" required />
                           </div>
                           <input
                             name="quantityG"
                             inputMode="decimal"
-                            placeholder="gramos"
-                            className="w-24 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-primary"
+                            placeholder="g"
+                            className="w-20 rounded-xl border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-primary"
                           />
+                          <div className="w-28">
+                            <Select name="subType" options={SUB_TYPE_OPTIONS} placeholder="Sin sub-tipo" />
+                          </div>
                           <button className="rounded-xl bg-primary-soft px-3 py-2.5 text-sm font-medium text-primary">
                             Añadir
                           </button>
@@ -327,13 +392,16 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
                       <form action={addItemFromText} className="mt-2 flex flex-wrap items-end gap-2">
                         <input type="hidden" name="planId" value={plan.id} />
                         <input type="hidden" name="mealId" value={meal.id} />
-                        <div className="min-w-[200px] flex-1">
+                        <div className="min-w-[180px] flex-1">
                           <input
                             name="text"
-                            placeholder="Ej. 200g pechuga de pollo + 100g arroz integral + ensalada"
+                            placeholder="Ej. 200g pollo + 100g arroz + ensalada"
                             required
                             className="w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-primary"
                           />
+                        </div>
+                        <div className="w-28">
+                          <Select name="subType" options={SUB_TYPE_OPTIONS} placeholder="Sin sub-tipo" />
                         </div>
                         <button
                           className="flex items-center gap-1 rounded-xl border border-primary px-3 py-2.5 text-sm font-medium text-primary hover:bg-primary-soft"

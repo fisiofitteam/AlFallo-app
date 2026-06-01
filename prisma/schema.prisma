@@ -632,6 +632,11 @@ model Meal {
 
 // Item de una comida. Guarda una "foto" de los macros del alimento por 100 g
 // para que el plan no cambie si luego se edita o borra el alimento de la biblioteca.
+//
+// subType: agrupa items dentro de una comida (intro | grasas | carbos | proteina
+//          | postre | otro). Si null, el item va sin sub-sección.
+// selected: cuando hay varios items en el mismo subType (alternativas para el
+//           cliente), solo los marcados cuentan para los macros del día.
 model MealItem {
   id            String  @id @default(cuid())
   mealId        String
@@ -642,6 +647,8 @@ model MealItem {
   proteinPer100 Float   @default(0)
   carbsPer100   Float   @default(0)
   fatPer100     Float   @default(0)
+  subType       String?
+  selected      Boolean @default(true)
   order         Int     @default(0)
 
   meal Meal         @relation(fields: [mealId], references: [id], onDelete: Cascade)

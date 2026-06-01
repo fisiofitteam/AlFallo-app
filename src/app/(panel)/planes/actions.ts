@@ -228,8 +228,46 @@ export async function addItemFromText(formData: FormData) {
       proteinPer100: macros.protein,
       carbsPer100: macros.carbs,
       fatPer100: macros.fat,
+      subType: parseStr(formData.get("subType")),
       order: count,
     },
+  });
+  revalidatePath(`/planes/${planId}`);
+}
+
+// Marca/desmarca un item como "elegido" (cuenta para los macros del día).
+// Útil cuando se ofrecen varias alternativas dentro del mismo subType.
+export async function toggleItemSelected(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  const itemId = String(formData.get("itemId"));
+  const item = await prisma.mealItem.findUnique({ where: { id: itemId }, select: { selected: true } });
+  if (!item) return;
+  await prisma.mealItem.update({ where: { id: itemId }, data: { selected: !item.selected } });
+  revalidatePath(`/planes/${planId}`);
+}
+
+// Cambia el subType de un item (intro/grasas/carbos/proteina/postre/otro).
+export async function updateItemSubType(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  await prisma.mealItem.update({
+    where: { id: String(formData.get("itemId")) },
+    data: { subType: parseStr(formData.get("subType")) },
+  });
+  revalidatePath(`/planes/${planId}`);
+}
+
+// Edita las notas (informe) del plan — texto libre, lo ve el nutri y el cliente.
+export async function updatePlanNotes(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  await prisma.nutritionPlan.update({
+    where: { id: planId },
+    data: { notes: parseStr(formData.get("notes")) },
   });
   revalidatePath(`/planes/${planId}`);
 }
@@ -257,6 +295,7 @@ export async function addItem(formData: FormData) {
       proteinPer100: food.proteinPer100,
       carbsPer100: food.carbsPer100,
       fatPer100: food.fatPer100,
+      subType: parseStr(formData.get("subType")),
       order: count,
     },
   });
