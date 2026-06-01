@@ -9,6 +9,11 @@ const CLIENT_SESSION_COOKIE = "afn_client_session";
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // ── Landing pública de agenda (/agenda/*): sin auth ─────────
+  if (pathname.startsWith("/agenda")) {
+    return NextResponse.next();
+  }
+
   // ── App del atleta (/cliente/*) ──────────────────────────────
   if (pathname.startsWith("/cliente")) {
     if (pathname.startsWith("/cliente/login")) return NextResponse.next();

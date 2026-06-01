@@ -22,18 +22,28 @@ model Professional {
   title        String? // cargo visible (ej. "Head Success Nutritionist")
   isActive     Boolean  @default(true)
   imageUrl     String?
-  lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  workSchedule String? // texto libre del horario para mostrar en el equipo
+  notificationPrefs Json? // preferencias de notificaciones por tipo
 
-  sessions          Session[]
-  clients           Client[]         @relation("NutritionistClients")
-  createdPlans      NutritionPlan[]
-  reviewedCheckIns  CheckIn[]        @relation("CheckInReviewer")
-  payrolls          PayrollPayment[]
-  assignedLeads     Lead[]           @relation("LeadAssignee")
-  assignedCalls     ScheduledCall[]  @relation("CallCloser")
-  closedSales       Sale[]           @relation("SaleCloser")
+  // Restablecer contraseña por email
+  passwordResetToken   String?   @unique
+  passwordResetExpires DateTime?
+  passwordSetAt        DateTime?
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  sessions             Session[]
+  clients              Client[]              @relation("NutritionistClients")
+  createdPlans         NutritionPlan[]
+  reviewedCheckIns     CheckIn[]             @relation("CheckInReviewer")
+  payrolls             PayrollPayment[]
+  leadsAsSetter        Lead[]                @relation("LeadsAsSetter")
+  leadsAsCloser        Lead[]                @relation("LeadsAsCloser")
+  closingShifts        ClosingShift[]        @relation("ClosingShifts")
+  defaultShifts        DefaultClosingShift[]
+  closedSales          Sale[]                @relation("SaleCloser")
 
   @@index([role])
 }
@@ -59,14 +69,15 @@ model Client {
   contractVersion      String?
   contractTextSnapshot String?
 
-  nutritionist Professional?     @relation("NutritionistClients", fields: [nutritionistId], references: [id], onDelete: SetNull)
-  profile      NutritionProfile?
-  plans        NutritionPlan[]
-  sessions     ClientSession[]
-  dailyLogs    DailyLog[]
-  checkIns     CheckIn[]
-  lead         Lead?
-  sales        Sale[]
+  nutritionist     Professional?     @relation("NutritionistClients", fields: [nutritionistId], references: [id], onDelete: SetNull)
+  profile          NutritionProfile?
+  plans            NutritionPlan[]
+  sessions         ClientSession[]
+  dailyLogs        DailyLog[]
+  checkIns         CheckIn[]
+  convertedLeads   Lead[]
+  sales            Sale[]
+  scheduledCalls   ScheduledCall[]
 
   @@index([nutritionistId])
   @@index([status])
@@ -346,51 +357,92 @@ model QuarterlyGoal {
 
 // ─── CRM de ventas ───
 
+// ─── Lead: corazón del flujo comercial (landing pública + setter/closer) ───
 model Lead {
-  id           String    @id @default(cuid())
-  fullName     String
-  email        String?
-  phone        String?
-  source       String? // landing | ads | manual | referral | otros
-  status       String    @default("nuevo") // nuevo | cualificado | agendado | seguimiento | cliente | perdido
-  assignedToId String?
-  notes        String?
-  lostReason   String?
-  qualifiedAt  DateTime?
-  clientId     String?   @unique
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id              String   @id @default(cuid())
+  fullName        String
+  contactType     String // "phone" | "instagram" | "email"
+  contactValue    String // ej. "+34 600 123 456" o "@usuario"
+  aiSummary       String? // resumen breve auto/manual
+  callScheduledAt DateTime // fecha/hora de la videoconsulta
 
-  assignedTo Professional?   @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  client     Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  calls      ScheduledCall[]
-  sale       Sale?
+  // status: "scheduled" | "won" | "lost" | "cancelled" | "no_show"
+  status       String    @default("scheduled")
+  inFollowUp   Boolean   @default(false)
+  followUpNote String?
+  followUpDate DateTime?
+
+  // ─── Follow-up automático: 4 fechas + checkbox por cada una ───
+  followUpStartedAt DateTime?
+  followUp24hDate   DateTime?
+  followUp24hDone   Boolean   @default(false)
+  followUp48hDate   DateTime?
+  followUp48hDone   Boolean   @default(false)
+  followUp30dDate   DateTime?
+  followUp30dDone   Boolean   @default(false)
+  followUp90dDate   DateTime?
+  followUp90dDone   Boolean   @default(false)
+
+  setterId String?
+  setter   Professional? @relation("LeadsAsSetter", fields: [setterId], references: [id], onDelete: SetNull)
+
+  closerId String?
+  closer   Professional? @relation("LeadsAsCloser", fields: [closerId], references: [id], onDelete: SetNull)
+
+  // Conversión: cuando se gana, se vincula al Cliente creado
+  convertedClientId String?
+  convertedClient   Client? @relation(fields: [convertedClientId], references: [id], onDelete: SetNull)
+
+  lostReason String? // "precio" | "no_encaja" | "ghosting" | "otro"
+
+  // ─── Campos rellenados por la landing pública ───
+  email                String?
+  phone                String?
+  instagram            String?
+  aiScheduled          Boolean   @default(false)
+  country              String?
+  motivo               String? // "¿Qué te trae aquí?"
+  intentosPrevios      String? // qué ha probado antes (dietas, suplementos, coaches…)
+  objetivoNutricional  String? // cómo le impacta y qué quiere conseguir (renombrado desde "impactoCrossfit")
+  meetingUrl           String? // URL de Google Meet
+  googleEventId        String? // id del evento en Calendar
+  source               String? // "landing" | "manual" | "ads_meta" | ...
+  bookedAt             DateTime?
+
+  // ─── Etapas del flujo comercial ───
+  setterNotifiedAt  DateTime? // setter avisó al closer
+  closerContactedAt DateTime? // closer envió caso de éxito
+  reminderSentAt    DateTime? // closer mandó recordatorio del día anterior
+
+  sale Sale?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  decidedAt DateTime?
 
   @@index([status])
-  @@index([assignedToId])
+  @@index([callScheduledAt])
+  @@index([closerId])
+  @@index([inFollowUp])
 }
 
+// Llamadas post-conversión (a clientes ya activos): optimización, renovación…
+// Independiente del flujo comercial. Antes de la venta, las videollamadas viven
+// en Lead.callScheduledAt.
 model ScheduledCall {
-  id           String    @id @default(cuid())
-  leadId       String
-  scheduledFor DateTime
-  closerId     String?
-  durationMin  Int?
-  result       String    @default("pendiente") // pendiente | vendida | perdida | cancelada | no_acude | follow_up
-  resultNotes  String?
-  objections   String?
-  lostReason   String?
-  followUpAt   DateTime?
-  completedAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  clientId    String
+  scheduledAt DateTime
+  type        String    @default("optimizacion") // "optimizacion" | "renovacion"
+  notes       String?
+  completedAt DateTime?
+  outcome     String?
+  createdAt   DateTime  @default(now())
 
-  lead   Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  closer Professional? @relation("CallCloser", fields: [closerId], references: [id], onDelete: SetNull)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  @@index([leadId])
-  @@index([result])
-  @@index([scheduledFor])
+  @@index([scheduledAt])
+  @@index([clientId])
 }
 
 model Sale {
@@ -581,4 +633,108 @@ model Session {
   professional Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
 
   @@index([professionalId])
+}
+
+// ─── Agenda pública: plantilla de turnos del equipo (CEO la mantiene) ───
+// Indica para cada día de la semana qué franjas cubren qué closers, con
+// duración de slot en minutos. La landing /agenda usa esto como fuente de verdad.
+model DefaultClosingShift {
+  id                  String   @id @default(cuid())
+  dayOfWeek           Int // 1=L, 2=M, ..., 7=D
+  startTime           String // "HH:MM"
+  endTime             String // "HH:MM"
+  closerId            String
+  closer              Professional @relation(fields: [closerId], references: [id])
+  slotDurationMinutes Int      @default(60)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([dayOfWeek])
+  @@index([closerId])
+}
+
+// Override de semana concreta: si una semana se edita, se crea WeekOverride
+// con useDefault=false + ClosingShift específicos. Si no, se usa la plantilla.
+model WeekOverride {
+  id            String   @id @default(cuid())
+  weekStartDate DateTime @unique // lunes 00:00 UTC
+  useDefault    Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([weekStartDate])
+}
+
+// Franja específica de una semana (cuando hay override).
+model ClosingShift {
+  id                  String   @id @default(cuid())
+  weekStartDate       DateTime
+  dayOfWeek           Int
+  startTime           String
+  endTime             String
+  closerId            String
+  closer              Professional @relation("ClosingShifts", fields: [closerId], references: [id], onDelete: Cascade)
+  notes               String?
+  slotDurationMinutes Int          @default(60)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([weekStartDate, dayOfWeek])
+  @@index([closerId])
+}
+
+// Bloqueos puntuales (vacaciones, festivos) que la landing descarta.
+model AgendaBlock {
+  id               String   @id @default(cuid())
+  blockedDate      DateTime // YYYY-MM-DD a las 00:00 Madrid
+  blockedStartTime String? // "HH:MM" o null (= todo el día)
+  blockedEndTime   String?
+  reason           String?
+  createdBy        String?
+  createdAt        DateTime @default(now())
+
+  @@index([blockedDate])
+}
+
+// ─── Notificaciones in-app del equipo ───
+// 1. Lead reserva en /agenda → "lead_new" para todos los SETTERS.
+// 2. Setter marca "avisado" → "lead_assigned" para el CLOSER asignado.
+// 3. Cron 09:00 día anterior → "call_reminder" para el CLOSER.
+model TeamNotification {
+  id                   String    @id @default(cuid())
+  targetRole           String? // "setter" | "closer" | "ceo" | "head_success"
+  targetProfessionalId String?
+  type                 String // "lead_new" | "lead_assigned" | "call_reminder" | ...
+  leadId               String?
+  title                String
+  body                 String
+  actionUrl            String?
+  refKey               String? // clave estable para deduplicación (cron)
+  readAt               DateTime?
+  createdAt            DateTime  @default(now())
+
+  @@index([targetRole, readAt])
+  @@index([targetProfessionalId, readAt])
+  @@index([leadId])
+  @@index([refKey])
+}
+
+// Config CMS de landings (el CEO edita el copy en runtime desde Biblioteca).
+model LandingConfig {
+  id        String   @id // "agenda" | "agenda_gracias" | "renewal" | "contract"
+  content   String // JSON serializado
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+// Conexión OAuth a Google Calendar (singleton). El CEO conecta una cuenta
+// (ej. videoconsultas@al-fallo.com) en Ajustes → Integraciones.
+model GoogleCalendarConnection {
+  id              String    @id @default(cuid())
+  googleEmail     String // calendar primary
+  accessTokenEnc  String // encrypted (lib/encryption)
+  refreshTokenEnc String?
+  tokenExpiresAt  DateTime
+  lastUsedAt      DateTime?
+  createdAt       DateTime  @default(now())
 }

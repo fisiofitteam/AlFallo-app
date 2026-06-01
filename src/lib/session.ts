@@ -12,7 +12,12 @@ export type ActiveProfessional = {
   email: string;
   role: string;
   imageUrl: string | null;
+  isManager: boolean; // ceo || head_coach
 };
+
+function calcIsManager(role: string): boolean {
+  return role === "ceo" || role === "head_coach";
+}
 
 // Resuelve cookie -> sesión válida -> Professional activo. Devuelve null si no hay.
 // `cache` evita re-consultar dentro de la misma petición (layout + página).
@@ -25,6 +30,7 @@ export const getActiveProfessional = cache(async (): Promise<ActiveProfessional 
       email: "dev@local",
       role: "ceo",
       imageUrl: null,
+      isManager: true,
     };
   }
 
@@ -41,7 +47,7 @@ export const getActiveProfessional = cache(async (): Promise<ActiveProfessional 
   if (!session.professional.isActive) return null;
 
   const { id, fullName, email, role, imageUrl } = session.professional;
-  return { id, fullName, email, role, imageUrl };
+  return { id, fullName, email, role, imageUrl, isManager: calcIsManager(role) };
 });
 
 // Para páginas/server actions del panel: exige sesión o redirige a /login.
