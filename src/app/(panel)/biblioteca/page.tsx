@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Trash2, Apple, Search } from "lucide-react";
+import { Trash2, Apple, Search, Globe, ChevronRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import { CLIENT_ACCESS_ROLES, optionLabel } from "@/lib/clients";
@@ -12,6 +13,7 @@ export const metadata = { title: "Biblioteca · Al Fallo Nutrition" };
 export default async function LibraryPage({ searchParams }: { searchParams: { q?: string } }) {
   const prof = await requireProfessional();
   if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/");
+  const isManager = prof.role === "ceo" || prof.role === "head_coach";
 
   const q = (searchParams.q ?? "").trim();
   const foods = await prisma.foodLibrary.findMany({
@@ -22,9 +24,31 @@ export default async function LibraryPage({ searchParams }: { searchParams: { q?
   return (
     <div className="mx-auto max-w-5xl">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold md:text-3xl">Biblioteca de alimentos</h1>
-        <p className="mt-1 text-muted">Banco de alimentos con macros por 100 g, reutilizable en los planes.</p>
+        <h1 className="text-2xl font-bold md:text-3xl">Biblioteca</h1>
+        <p className="mt-1 text-muted">Recursos reutilizables del equipo.</p>
       </header>
+
+      {/* Acceso a otras secciones de la biblioteca */}
+      {isManager && (
+        <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Link
+            href="/biblioteca/landings"
+            className="flex items-center justify-between rounded-2xl border border-border bg-surface p-5 transition hover:border-primary"
+          >
+            <span className="flex items-center gap-3">
+              <Globe size={22} className="text-primary" />
+              <span>
+                <span className="block font-semibold">Landings</span>
+                <span className="block text-xs text-muted">Editar el texto de /agenda y /gracias</span>
+              </span>
+            </span>
+            <ChevronRight size={18} className="text-muted" />
+          </Link>
+        </div>
+      )}
+
+      <h2 className="mb-3 text-lg font-bold">Alimentos</h2>
+      <p className="mb-3 text-sm text-muted">Banco de alimentos con macros por 100 g, reutilizable en los planes.</p>
 
       {/* Alta de alimento */}
       <form action={createFood} className="mb-8 rounded-2xl border border-border bg-surface p-5">
