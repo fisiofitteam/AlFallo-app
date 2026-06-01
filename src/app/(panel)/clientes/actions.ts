@@ -121,6 +121,33 @@ export async function reviewCheckIn(formData: FormData) {
   revalidatePath(`/clientes/${checkIn.clientId}`);
 }
 
+// Guarda los objetivos diarios de macros del cliente (entreno y descanso).
+export async function updateMacroTargets(formData: FormData) {
+  const prof = await requireClientAccess();
+  const clientId = String(formData.get("clientId"));
+  await loadClientForEdit(clientId, prof);
+
+  const data = {
+    kcalTraining: parseNumber(formData.get("kcalTraining")),
+    proteinTraining: parseNumber(formData.get("proteinTraining")),
+    carbsTraining: parseNumber(formData.get("carbsTraining")),
+    fatTraining: parseNumber(formData.get("fatTraining")),
+    kcalRest: parseNumber(formData.get("kcalRest")),
+    proteinRest: parseNumber(formData.get("proteinRest")),
+    carbsRest: parseNumber(formData.get("carbsRest")),
+    fatRest: parseNumber(formData.get("fatRest")),
+    notes: parseStr(formData.get("notes")),
+  };
+
+  await prisma.macroTargets.upsert({
+    where: { clientId },
+    create: { clientId, ...data },
+    update: data,
+  });
+
+  revalidatePath(`/clientes/${clientId}`);
+}
+
 export async function updateNutritionProfile(formData: FormData) {
   const prof = await requireClientAccess();
   const clientId = String(formData.get("clientId"));

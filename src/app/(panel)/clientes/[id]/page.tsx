@@ -13,6 +13,7 @@ import {
 import { TextInput } from "@/components/form-ui";
 import type { ChartPoint } from "@/components/line-chart";
 import { FichaForm } from "./ficha-form";
+import { MacroTargetsForm } from "./macro-targets-form";
 import { CheckInsTab } from "./checkins-tab";
 import { EvolucionTab } from "./evolucion-tab";
 import { reassignNutritionist, setClientPassword, updateClientStatus } from "../actions";
@@ -46,6 +47,7 @@ export default async function ClientDetailPage({
     where: { id: params.id },
     include: {
       profile: true,
+      macroTargets: true,
       nutritionist: { select: { fullName: true } },
       plans: { orderBy: { createdAt: "desc" }, include: { _count: { select: { days: true } } } },
       checkIns: { orderBy: { date: "desc" } },
@@ -201,6 +203,11 @@ export default async function ClientDetailPage({
           </>
         )}
       </section>
+
+      {/* Objetivos de macros */}
+      <div className="mb-6">
+        <MacroTargetsForm clientId={client.id} targets={client.macroTargets} />
+      </div>
 
       {/* Pestañas */}
       <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-border">

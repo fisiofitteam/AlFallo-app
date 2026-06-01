@@ -79,6 +79,20 @@ export async function addDay(formData: FormData) {
   revalidatePath(`/planes/${planId}`);
 }
 
+// Cambia el tipo del día (entreno / descanso / mixto) para comparar macros
+// contra los objetivos del cliente.
+export async function setDayType(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  const dayType = parseStr(formData.get("dayType")) ?? "entreno";
+  await prisma.planDay.update({
+    where: { id: String(formData.get("dayId")) },
+    data: { dayType },
+  });
+  revalidatePath(`/planes/${planId}`);
+}
+
 export async function deleteDay(formData: FormData) {
   const prof = await requireAccess();
   const planId = String(formData.get("planId"));

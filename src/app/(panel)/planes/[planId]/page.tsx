@@ -4,7 +4,17 @@ import { AlertTriangle, ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import { CLIENT_ACCESS_ROLES, isManagerRole, optionLabel } from "@/lib/clients";
-import { MEAL_TYPE_OPTIONS, fmtMacros, itemMacros, sumMacros, type Macros } from "@/lib/nutrition";
+import {
+  DAY_TYPES,
+  MEAL_TYPE_OPTIONS,
+  compareToTarget,
+  dayTypeEmoji,
+  fmtMacros,
+  itemMacros,
+  sumMacros,
+  targetsForDayType,
+  type Macros,
+} from "@/lib/nutrition";
 import { Select } from "@/components/form-ui";
 import {
   addDay,
@@ -14,6 +24,7 @@ import {
   deleteItem,
   deleteMeal,
   deletePlan,
+  setDayType,
 } from "../actions";
 
 function MacroBar({ m, label }: { m: Macros; label?: string }) {
@@ -26,6 +37,38 @@ function MacroBar({ m, label }: { m: Macros; label?: string }) {
       <span>C {f.carbs} g</span>
       <span>G {f.fat} g</span>
     </div>
+  );
+}
+
+// Estado visual del valor actual vs el objetivo (verde / ámbar / rojo).
+function Comparable({
+  label,
+  actual,
+  target,
+  state,
+  unit,
+}: {
+  label: string;
+  actual: number;
+  target: number | null;
+  state: "low" | "ok" | "high" | "none";
+  unit: string;
+}) {
+  if (target == null) return null;
+  const color =
+    state === "ok"
+      ? "bg-[#e7f6ec] text-[#15803d]"
+      : state === "high"
+      ? "bg-[#fdecd9] text-[#b45309]"
+      : "bg-[#fbe9f1] text-[#e6197e]";
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${color}`}>
+      <span className="font-medium">{label}</span>
+      <span>
+        {Math.round(actual)}/{Math.round(target)}
+        {unit}
+      </span>
+    </span>
   );
 }
 
@@ -44,6 +87,7 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
           profile: {
             select: { allergies: true, intolerances: true, dislikes: true, dietaryStyle: true },
           },
+          macroTargets: true,
         },
       },
       days: {
@@ -125,20 +169,60 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
       <div className="space-y-5">
         {plan.days.map((day) => {
           const dayMacros = sumMacros(day.meals.flatMap((m) => m.items.map((it) => itemMacros(it))));
+          const targets = targetsForDayType(plan.client.macroTargets, day.dayType);
+          const cmpKcal = compareToTarget(dayMacros.kcal, targets.kcal);
+          const cmpP = compareToTarget(dayMacros.protein, targets.protein);
+          const cmpC = compareToTarget(dayMacros.carbs, targets.carbs);
+          const cmpF = compareToTarget(dayMacros.fat, targets.fat);
           return (
             <section key={day.id} className="rounded-2xl border border-border bg-surface p-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-bold">{day.name}</h2>
-                <form action={deleteDay}>
-                  <input type="hidden" name="planId" value={plan.id} />
-                  <input type="hidden" name="dayId" value={day.id} />
-                  <button className="rounded-lg p-1.5 text-muted transition hover:bg-red-50 hover:text-red-600">
-                    <Trash2 size={15} />
-                  </button>
-                </form>
+                <div className="flex items-center gap-2">
+                  <span aria-hidden className="text-xl">{dayTypeEmoji(day.dayType)}</span>
+                  <h2 className="text-lg font-bold">{day.name}</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Selector de tipo de día */}
+                  <form action={setDayType} className="flex items-center gap-1">
+                    <input type="hidden" name="planId" value={plan.id} />
+                    <input type="hidden" name="dayId" value={day.id} />
+                    <select
+                      name="dayType"
+                      defaultValue={day.dayType}
+                      className="rounded-lg border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-primary"
+                    >
+                      {DAY_TYPES.map((dt) => (
+                        <option key={dt.value} value={dt.value}>
+                          {dt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button className="rounded-lg px-2 py-1 text-xs text-muted hover:bg-surface-2 hover:text-text">
+                      Guardar
+                    </button>
+                  </form>
+                  <form action={deleteDay}>
+                    <input type="hidden" name="planId" value={plan.id} />
+                    <input type="hidden" name="dayId" value={day.id} />
+                    <button className="rounded-lg p-1.5 text-muted transition hover:bg-red-50 hover:text-red-600">
+                      <Trash2 size={15} />
+                    </button>
+                  </form>
+                </div>
               </div>
-              <div className="mb-3">
+
+              {/* Macros del día + comparativa con objetivos (si están configurados) */}
+              <div className="mb-3 space-y-1">
                 <MacroBar m={dayMacros} />
+                {plan.client.macroTargets && (targets.kcal || targets.protein || targets.carbs || targets.fat) && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+                    <span className="font-medium text-text">Objetivo:</span>
+                    <Comparable label="kcal" actual={dayMacros.kcal} target={targets.kcal} state={cmpKcal.state} unit="" />
+                    <Comparable label="P" actual={dayMacros.protein} target={targets.protein} state={cmpP.state} unit="g" />
+                    <Comparable label="C" actual={dayMacros.carbs} target={targets.carbs} state={cmpC.state} unit="g" />
+                    <Comparable label="G" actual={dayMacros.fat} target={targets.fat} state={cmpF.state} unit="g" />
+                  </div>
+                )}
               </div>
 
               {/* Comidas del día */}

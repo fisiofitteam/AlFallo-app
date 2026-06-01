@@ -71,6 +71,7 @@ model Client {
 
   nutritionist     Professional?     @relation("NutritionistClients", fields: [nutritionistId], references: [id], onDelete: SetNull)
   profile          NutritionProfile?
+  macroTargets     MacroTargets?
   plans            NutritionPlan[]
   sessions         ClientSession[]
   dailyLogs        DailyLog[]
@@ -541,6 +542,31 @@ model NutritionProfile {
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 }
 
+// Objetivos diarios de macros del cliente. Diferencia días de entreno vs
+// descanso para que el plan pueda compararse contra ellos automáticamente.
+model MacroTargets {
+  id       String @id @default(cuid())
+  clientId String @unique
+
+  // Día de entreno (la mayoría de los días normalmente)
+  kcalTraining    Float?
+  proteinTraining Float?
+  carbsTraining   Float?
+  fatTraining     Float?
+
+  // Día de descanso
+  kcalRest    Float?
+  proteinRest Float?
+  carbsRest   Float?
+  fatRest     Float?
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
 // Banco de alimentos reutilizable, con macros por 100 g.
 model FoodLibrary {
   id            String   @id @default(cuid())
@@ -579,10 +605,12 @@ model NutritionPlan {
 }
 
 model PlanDay {
-  id     String @id @default(cuid())
-  planId String
-  name   String
-  order  Int    @default(0)
+  id      String @id @default(cuid())
+  planId  String
+  name    String
+  // entreno | descanso | mixto — para comparar macros con MacroTargets
+  dayType String @default("entreno")
+  order   Int    @default(0)
 
   plan  NutritionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   meals Meal[]

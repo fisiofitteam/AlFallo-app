@@ -29,6 +29,75 @@ export type Macros = { kcal: number; protein: number; carbs: number; fat: number
 
 export const ZERO_MACROS: Macros = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
 
+// Tipos de día del plan, para comparar contra los objetivos del cliente.
+export const DAY_TYPES = [
+  { value: "entreno", label: "Día de entreno", emoji: "💪" },
+  { value: "descanso", label: "Día de descanso", emoji: "🛌" },
+  { value: "mixto", label: "Día mixto", emoji: "🔄" },
+] as const;
+
+export type DayType = (typeof DAY_TYPES)[number]["value"];
+
+export function dayTypeLabel(value: string): string {
+  return DAY_TYPES.find((d) => d.value === value)?.label ?? value;
+}
+
+export function dayTypeEmoji(value: string): string {
+  return DAY_TYPES.find((d) => d.value === value)?.emoji ?? "";
+}
+
+// Calcula kcal a partir de macros con la fórmula clásica 4-9-4.
+// Sirve para validar coherencia entre el kcal mostrado y los macros.
+export function kcalFromMacros(protein: number, carbs: number, fat: number): number {
+  return protein * 4 + fat * 9 + carbs * 4;
+}
+
+// Objetivos diarios para un tipo de día concreto, sacados del modelo MacroTargets.
+export type DayTargets = { kcal: number | null; protein: number | null; carbs: number | null; fat: number | null };
+
+export function targetsForDayType(
+  mt: {
+    kcalTraining: number | null;
+    proteinTraining: number | null;
+    carbsTraining: number | null;
+    fatTraining: number | null;
+    kcalRest: number | null;
+    proteinRest: number | null;
+    carbsRest: number | null;
+    fatRest: number | null;
+  } | null,
+  dayType: string,
+): DayTargets {
+  if (!mt) return { kcal: null, protein: null, carbs: null, fat: null };
+  if (dayType === "descanso") {
+    return {
+      kcal: mt.kcalRest ?? mt.kcalTraining ?? null,
+      protein: mt.proteinRest ?? mt.proteinTraining ?? null,
+      carbs: mt.carbsRest ?? mt.carbsTraining ?? null,
+      fat: mt.fatRest ?? mt.fatTraining ?? null,
+    };
+  }
+  // entreno o mixto → usa el de entreno por defecto
+  return {
+    kcal: mt.kcalTraining ?? null,
+    protein: mt.proteinTraining ?? null,
+    carbs: mt.carbsTraining ?? null,
+    fat: mt.fatTraining ?? null,
+  };
+}
+
+// Compara una macro real con su objetivo. Devuelve el porcentaje y un estado
+// (bajo / ok / alto) según el margen de tolerancia (±7% por defecto).
+export type Comparison = { pct: number | null; state: "low" | "ok" | "high" | "none" };
+
+export function compareToTarget(actual: number, target: number | null, marginPct = 7): Comparison {
+  if (target == null || target <= 0) return { pct: null, state: "none" };
+  const pct = (actual / target) * 100;
+  if (pct < 100 - marginPct) return { pct, state: "low" };
+  if (pct > 100 + marginPct) return { pct, state: "high" };
+  return { pct, state: "ok" };
+}
+
 type PerHundred = {
   kcalPer100: number;
   proteinPer100: number;
