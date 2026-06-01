@@ -19,6 +19,7 @@ import { Select } from "@/components/form-ui";
 import {
   addDay,
   addItem,
+  addItemFromText,
   addMeal,
   deleteDay,
   deleteItem,
@@ -253,8 +254,13 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
                             return (
                               <li key={it.id} className="flex items-center justify-between py-1.5 text-sm">
                                 <span>
-                                  {it.nameSnapshot}{" "}
-                                  <span className="text-muted">· {it.quantityG} g</span>
+                                  {it.nameSnapshot}
+                                  {it.foodId && (
+                                    <span className="ml-1 text-muted">· {it.quantityG} g</span>
+                                  )}
+                                  {!it.foodId && (
+                                    <span className="ml-1 text-[10px] uppercase tracking-wider text-primary">✨</span>
+                                  )}
                                 </span>
                                 <span className="flex items-center gap-3">
                                   <span className="text-xs text-muted">
@@ -274,17 +280,13 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
                         </ul>
                       )}
 
-                      {/* Añadir alimento */}
-                      {foodOptions.length === 0 ? (
-                        <p className="text-xs text-muted">
-                          Añade alimentos en la Biblioteca para poder usarlos aquí.
-                        </p>
-                      ) : (
+                      {/* Añadir alimento de la biblioteca */}
+                      {foodOptions.length > 0 && (
                         <form action={addItem} className="flex flex-wrap items-end gap-2">
                           <input type="hidden" name="planId" value={plan.id} />
                           <input type="hidden" name="mealId" value={meal.id} />
                           <div className="min-w-[160px] flex-1">
-                            <Select name="foodId" options={foodOptions} placeholder="Alimento…" required />
+                            <Select name="foodId" options={foodOptions} placeholder="Alimento de biblioteca…" required />
                           </div>
                           <input
                             name="quantityG"
@@ -296,6 +298,32 @@ export default async function PlanBuilderPage({ params }: { params: { planId: st
                             Añadir
                           </button>
                         </form>
+                      )}
+
+                      {/* Añadir item con IA (texto libre) */}
+                      <form action={addItemFromText} className="mt-2 flex flex-wrap items-end gap-2">
+                        <input type="hidden" name="planId" value={plan.id} />
+                        <input type="hidden" name="mealId" value={meal.id} />
+                        <div className="min-w-[200px] flex-1">
+                          <input
+                            name="text"
+                            placeholder="Ej. 200g pechuga de pollo + 100g arroz integral + ensalada"
+                            required
+                            className="w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm outline-none focus:border-primary"
+                          />
+                        </div>
+                        <button
+                          className="flex items-center gap-1 rounded-xl border border-primary px-3 py-2.5 text-sm font-medium text-primary hover:bg-primary-soft"
+                          title="La IA calcula los macros automáticamente"
+                        >
+                          ✨ Añadir con IA
+                        </button>
+                      </form>
+
+                      {foodOptions.length === 0 && (
+                        <p className="mt-2 text-xs text-muted">
+                          También puedes añadir alimentos a la Biblioteca para reutilizarlos con cantidad exacta.
+                        </p>
                       )}
                     </div>
                   );

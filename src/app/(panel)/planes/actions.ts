@@ -121,6 +121,37 @@ export async function deleteMeal(formData: FormData) {
   revalidatePath(`/planes/${planId}`);
 }
 
+// Añade un item "freestyle" con macros estimadas por IA (texto libre).
+// Convención: para items freestyle (foodId === null), quantityG = 100 y los
+// campos *Per100 contienen los TOTALES (la UI lo detecta por foodId === null).
+export async function addItemFromText(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  const mealId = String(formData.get("mealId"));
+  const text = parseStr(formData.get("text"));
+  if (!text) return;
+
+  const { estimateMacros } = await import("@/lib/macroEstimator");
+  const macros = await estimateMacros(text);
+
+  const count = await prisma.mealItem.count({ where: { mealId } });
+  await prisma.mealItem.create({
+    data: {
+      mealId,
+      foodId: null,
+      nameSnapshot: text.slice(0, 200),
+      quantityG: 100,
+      kcalPer100: macros.kcal,
+      proteinPer100: macros.protein,
+      carbsPer100: macros.carbs,
+      fatPer100: macros.fat,
+      order: count,
+    },
+  });
+  revalidatePath(`/planes/${planId}`);
+}
+
 // Añade un alimento de la biblioteca a una comida (con su cantidad en gramos).
 export async function addItem(formData: FormData) {
   const prof = await requireAccess();
