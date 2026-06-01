@@ -29,7 +29,7 @@ type Section = {
 const SECTIONS: Section[] = [
   { key: "plan", href: "/cliente/plan", label: "Mi plan", icon: UtensilsCrossed, ready: true },
   { key: "recetas", href: "/cliente/recetas", label: "Recetas", icon: ChefHat, ready: false },
-  { key: "compra", href: "/cliente/compra", label: "Tu compra", icon: ShoppingCart, ready: false },
+  { key: "compra", href: "/cliente/compra", label: "Tu compra", icon: ShoppingCart, ready: true },
   { key: "checkin", href: "/cliente/checkin", label: "Check-in", icon: ClipboardCheck, ready: true },
   { key: "registro", href: "/cliente/registro", label: "Registro", icon: NotebookPen, ready: true },
   { key: "progreso", href: "/cliente/progreso", label: "Mi progreso", icon: TrendingUp, ready: true },
