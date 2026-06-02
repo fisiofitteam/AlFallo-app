@@ -45,6 +45,10 @@ model Professional {
   defaultShifts        DefaultClosingShift[]
   closedSales          Sale[]                @relation("SaleCloser")
 
+  communityFeedPosts     CommunityFeedPost[] @relation("FeedPostAuthorPro")
+  communityFeedComments  CommunityComment[]  @relation("FeedCommentAuthorPro")
+  communityFeedReactions CommunityReaction[] @relation("FeedReactionAuthorPro")
+
   @@index([role])
 }
 
@@ -69,6 +73,9 @@ model Client {
   contractVersion      String?
   contractTextSnapshot String?
 
+  // Reset del badge "novedades en comunidad" al entrar la última vez.
+  communityLastSeenAt DateTime?
+
   nutritionist     Professional?     @relation("NutritionistClients", fields: [nutritionistId], references: [id], onDelete: SetNull)
   profile          NutritionProfile?
   macroTargets     MacroTargets?
@@ -79,6 +86,11 @@ model Client {
   convertedLeads   Lead[]
   sales            Sale[]
   scheduledCalls   ScheduledCall[]
+
+  communityFeedPosts CommunityFeedPost[]        @relation("FeedPostAuthorClient")
+  communityComments  CommunityComment[]         @relation("FeedCommentAuthorClient")
+  communityReactions CommunityReaction[]        @relation("FeedReactionAuthorClient")
+  communityProgress  CommunityLessonProgress[]
 
   @@index([nutritionistId])
   @@index([status])
@@ -772,4 +784,131 @@ model GoogleCalendarConnection {
   tokenExpiresAt  DateTime
   lastUsedAt      DateTime?
   createdAt       DateTime  @default(now())
+}
+
+// ─── Comunidad (Classroom + Muro social) ───────────────────────────
+// Dos subsistemas: cursos con lecciones y progreso por cliente, y muro
+// social con autoría doble (equipo o cliente, mutuamente excluyentes).
+
+model CommunityModule {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  coverUrl    String?
+  order       Int      @default(0)
+  published   Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sections CommunitySection[]
+
+  @@index([order])
+}
+
+model CommunitySection {
+  id        String   @id @default(cuid())
+  moduleId  String
+  title     String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  module  CommunityModule   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  lessons CommunityLesson[]
+
+  @@index([moduleId, order])
+}
+
+model CommunityLesson {
+  id          String   @id @default(cuid())
+  sectionId   String
+  title       String
+  description String?
+  videoUrl    String
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  section  CommunitySection          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  progress CommunityLessonProgress[]
+
+  @@index([sectionId, order])
+}
+
+// Progreso por cliente. La barra del curso = completed / total lecciones.
+model CommunityLessonProgress {
+  id          String   @id @default(cuid())
+  lessonId    String
+  clientId    String
+  completedAt DateTime @default(now())
+
+  lesson CommunityLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  client Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonId, clientId])
+  @@index([clientId])
+}
+
+// Post del muro. Autoría doble (uno de los dos campos, nunca ambos).
+model CommunityFeedPost {
+  id String @id @default(cuid())
+
+  authorProfessionalId String?
+  authorProfessional   Professional? @relation("FeedPostAuthorPro", fields: [authorProfessionalId], references: [id], onDelete: SetNull)
+  authorClientId       String?
+  authorClient         Client?       @relation("FeedPostAuthorClient", fields: [authorClientId], references: [id], onDelete: Cascade)
+
+  category  String  @default("general")
+  title     String?
+  body      String
+  imageUrl  String?
+  videoUrl  String?
+  pinned    Boolean @default(false)
+  published Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comments  CommunityComment[]
+  reactions CommunityReaction[]
+
+  @@index([pinned, createdAt])
+  @@index([category])
+}
+
+model CommunityComment {
+  id     String @id @default(cuid())
+  postId String
+
+  professionalId String?
+  professional   Professional? @relation("FeedCommentAuthorPro", fields: [professionalId], references: [id], onDelete: SetNull)
+  clientId       String?
+  client         Client?       @relation("FeedCommentAuthorClient", fields: [clientId], references: [id], onDelete: Cascade)
+
+  body      String
+  createdAt DateTime @default(now())
+
+  post CommunityFeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+}
+
+// Reacción tipo "like". Único por (post, actor) → es un toggle.
+model CommunityReaction {
+  id     String @id @default(cuid())
+  postId String
+
+  professionalId String?
+  professional   Professional? @relation("FeedReactionAuthorPro", fields: [professionalId], references: [id], onDelete: SetNull)
+  clientId       String?
+  client         Client?       @relation("FeedReactionAuthorClient", fields: [clientId], references: [id], onDelete: Cascade)
+
+  type      String   @default("like")
+  createdAt DateTime @default(now())
+
+  post CommunityFeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, clientId])
+  @@unique([postId, professionalId])
 }

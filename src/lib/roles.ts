@@ -60,7 +60,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/biblioteca", label: "Biblioteca", icon: Library, roles: ["ceo", "head_coach", "nutricionista"] },
   { href: "/contenido", label: "Contenido", icon: Megaphone, roles: ["ceo", "head_coach"] },
   { href: "/finanzas", label: "Cuadro de mandos", icon: Wallet, roles: ["ceo"] },
-  { href: "/comunidad", label: "Comunidad", icon: MessagesSquare, roles: ["ceo", "head_coach", "nutricionista"] },
+  { href: "/comunidad", label: "Comunidad", icon: MessagesSquare, roles: ["ceo", "head_coach", "nutricionista", "setter", "closer"] },
   { href: "/tareas", label: "Tareas", icon: CheckSquare },
   { href: "/reuniones", label: "Reuniones", icon: CalendarDays, roles: ["ceo", "head_coach"] },
   { href: "/equipo", label: "Equipo", icon: UserCog, roles: ["ceo", "head_coach"] },

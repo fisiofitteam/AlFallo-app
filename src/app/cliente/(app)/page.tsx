@@ -11,9 +11,11 @@ import {
   ShoppingCart,
   Stethoscope,
   TrendingUp,
+  Users,
   UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
+import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
 
 export const metadata = { title: "Al Fallo" };
@@ -28,6 +30,7 @@ type Section = {
 
 const SECTIONS: Section[] = [
   { key: "plan", href: "/cliente/plan", label: "Mi plan", icon: UtensilsCrossed, ready: true },
+  { key: "comunidad", href: "/cliente/comunidad", label: "Comunidad", icon: Users, ready: true },
   { key: "recetas", href: "/cliente/recetas", label: "Recetas", icon: ChefHat, ready: false },
   { key: "compra", href: "/cliente/compra", label: "Tu compra", icon: ShoppingCart, ready: true },
   { key: "checkin", href: "/cliente/checkin", label: "Check-in", icon: ClipboardCheck, ready: true },
@@ -47,8 +50,27 @@ function avocadoSrc(key: string): string | null {
   return null;
 }
 
+// Calcula si hay publicaciones en /comunidad que el cliente todavía no ha visto.
+// Compara el último post (ajeno) con `communityLastSeenAt`. Si nunca ha entrado,
+// cualquier post cuenta como novedad.
+async function hasNewCommunity(clientId: string): Promise<boolean> {
+  const me = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { communityLastSeenAt: true },
+  });
+  const latest = await prisma.communityFeedPost.findFirst({
+    where: { published: true, NOT: { authorClientId: clientId } },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  if (!latest) return false;
+  if (!me?.communityLastSeenAt) return true;
+  return latest.createdAt > me.communityLastSeenAt;
+}
+
 export default async function ClientHomePage() {
-  await requireOnboardedClient();
+  const me = await requireOnboardedClient();
+  const newCommunity = await hasNewCommunity(me.id);
 
   return (
     <div className="relative pt-1">
@@ -105,6 +127,15 @@ export default async function ClientHomePage() {
               {!s.ready && (
                 <span className="absolute right-2 top-2 rounded-full bg-primary-soft px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
                   Pronto
+                </span>
+              )}
+              {s.key === "comunidad" && newCommunity && (
+                <span
+                  aria-label="Hay novedades"
+                  className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary-fg shadow-md"
+                >
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                  Nuevo
                 </span>
               )}
             </Link>

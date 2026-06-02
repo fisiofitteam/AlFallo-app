@@ -5,16 +5,18 @@ import { usePathname } from "next/navigation";
 import {
   Home,
   UtensilsCrossed,
-  NotebookPen,
+  Users,
   TrendingUp,
   ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 
+// Bottom-nav del atleta. Sustituimos "Registro" por "Comunidad" para meter
+// el nuevo módulo sin saturar la barra (max 5 ítems en móvil).
 const ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/cliente", label: "Inicio", icon: Home },
   { href: "/cliente/plan", label: "Mi plan", icon: UtensilsCrossed },
-  { href: "/cliente/registro", label: "Registro", icon: NotebookPen },
+  { href: "/cliente/comunidad", label: "Comunidad", icon: Users },
   { href: "/cliente/checkin", label: "Check-in", icon: ClipboardCheck },
   { href: "/cliente/progreso", label: "Progreso", icon: TrendingUp },
 ];
