@@ -59,6 +59,9 @@ model Professional {
 
   meetingsCreated Meeting[] @relation("MeetingCreator")
 
+  recipesCreated Recipe[]        @relation("RecipeCreator")
+  videosCreated  VideoResource[] @relation("VideoCreator")
+
   @@index([role])
 }
 
@@ -1063,4 +1066,46 @@ model Meeting {
 
   @@index([category, pinned, date])
   @@index([category, createdAt])
+}
+
+// Receta reutilizable en la biblioteca. Texto libre para ingredientes y
+// preparación; macros calculadas no se guardan aquí (eso lo hace el builder
+// de planes con FoodLibrary).
+model Recipe {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  // desayuno | comida | cena | snack | postre (string libre para evitar
+  // migraciones cuando se añaden tipos).
+  mealType     String?
+  ingredients  String   @default("")
+  instructions String   @default("")
+  imageUrl     String?
+
+  createdById String?
+  createdBy   Professional? @relation("RecipeCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([mealType])
+}
+
+// Vídeo educativo / motivacional para reutilizar (YouTube, Vimeo, etc.).
+// El parser de video.ts ya devuelve la URL embebible.
+model VideoResource {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  url         String
+  // Categoría libre (ej. "técnica", "motivación", "educación nutricional").
+  category    String?
+
+  createdById String?
+  createdBy   Professional? @relation("VideoCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
 }

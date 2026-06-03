@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, ExternalLink, RotateCcw } from "lucide-react";
+import { ExternalLink, RotateCcw } from "lucide-react";
 import { requireProfessional } from "@/lib/session";
 import { getAgendaLandingCopy, getAgendaGraciasCopy } from "@/lib/landing-config";
 import { Field, TextArea, TextInput } from "@/components/form-ui";
@@ -11,23 +11,24 @@ export const dynamic = "force-dynamic";
 
 export default async function LandingsEditorPage() {
   const prof = await requireProfessional();
-  if (prof.role !== "ceo" && prof.role !== "head_coach") redirect("/");
+  // Solo CEO + head_coach pueden editar el copy. El resto del equipo verá
+  // un mensaje informativo en lugar de un redirect feo.
+  if (prof.role !== "ceo" && prof.role !== "head_coach") {
+    return (
+      <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
+        Solo CEO y Head Coach pueden editar el copy de las landings.
+      </p>
+    );
+  }
 
   const [agenda, gracias] = await Promise.all([getAgendaLandingCopy(), getAgendaGraciasCopy()]);
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/biblioteca" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted hover:text-primary">
-        <ArrowLeft size={16} /> Biblioteca
-      </Link>
-
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold md:text-3xl">Landings</h1>
-        <p className="mt-1 text-muted">
-          Edita el texto de la landing pública de agenda y la página de confirmación. Los cambios se ven
-          inmediatamente en <Link href="/agenda" className="text-primary underline" target="_blank">/agenda</Link>.
-        </p>
-      </header>
+      <p className="mb-6 text-sm text-muted">
+        Edita el texto de la landing pública de agenda y la página de confirmación. Los cambios se ven
+        inmediatamente en <Link href="/agenda" className="text-primary underline" target="_blank">/agenda</Link>.
+      </p>
 
       {/* ─── LANDING DE AGENDA ─── */}
       <section className="mb-10 rounded-2xl border border-border bg-surface p-6">

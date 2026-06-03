@@ -30,12 +30,12 @@ export async function createFood(formData: FormData) {
     },
   });
 
-  revalidatePath("/biblioteca");
+  revalidatePath("/biblioteca/alimentos");
 }
 
 export async function deleteFood(formData: FormData) {
   await requireLibraryAccess();
   const id = String(formData.get("id"));
   await prisma.foodLibrary.delete({ where: { id } });
-  revalidatePath("/biblioteca");
+  revalidatePath("/biblioteca/alimentos");
 }
