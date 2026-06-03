@@ -57,6 +57,8 @@ model Professional {
   oneOffTasksAssigned OneOffTaskTemplate[]   @relation("OneOffTaskAssignee")
   oneOffTasksDone     OneOffTaskCompletion[]
 
+  meetingsCreated Meeting[] @relation("MeetingCreator")
+
   @@index([role])
 }
 
@@ -1035,4 +1037,30 @@ model OneOffTaskCompletion {
 
   @@unique([templateId, professionalId, instanceDate])
   @@index([professionalId, instanceDate])
+}
+
+// Acta / nota de una reunión del equipo. Toda la empresa puede leer; solo
+// CEO + head_coach crean y editan. La vista del feed muestra título +
+// objetivo (resumen) y al expandir el body completo. Se categoriza para
+// poder tener tres pestañas (ceos | nutris | otras).
+model Meeting {
+  id        String   @id @default(cuid())
+  title     String
+  // Resumen visible siempre en el feed colapsado. Lo escribe quien crea.
+  objective String?
+  // ceos | nutris | otras
+  category  String
+  // Fecha de la reunión (puede dejarse en blanco; se usa createdAt como fallback).
+  date      DateTime?
+  body      String   @default("")
+  pinned    Boolean  @default(false)
+
+  createdById String?
+  createdBy   Professional? @relation("MeetingCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, pinned, date])
+  @@index([category, createdAt])
 }
