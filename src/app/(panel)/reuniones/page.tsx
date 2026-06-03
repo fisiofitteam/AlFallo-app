@@ -1,16 +1,24 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import { isManager } from "@/lib/roles";
-import { CATEGORIES, CATEGORY_LABEL, type MeetingCategory } from "./categories";
+import {
+  CATEGORIES,
+  CATEGORY_LABEL,
+  canViewCategory,
+  categoriesForRole,
+  defaultCategoryFor,
+  type MeetingCategory,
+} from "./categories";
 import { MeetingsFeed, type MeetingItem } from "@/components/MeetingsFeed";
 
 export const metadata = { title: "Reuniones · Al Fallo Nutrition" };
 export const dynamic = "force-dynamic";
 
-function parseTab(value: string | string[] | undefined): MeetingCategory {
+function parseTab(value: string | string[] | undefined): MeetingCategory | null {
   const v = typeof value === "string" ? value : Array.isArray(value) ? value[0] : "";
-  return (CATEGORIES as readonly string[]).includes(v) ? (v as MeetingCategory) : "ceos";
+  return (CATEGORIES as readonly string[]).includes(v) ? (v as MeetingCategory) : null;
 }
 
 export default async function ReunionesPage({
@@ -19,7 +27,15 @@ export default async function ReunionesPage({
   searchParams: { tab?: string };
 }) {
   const prof = await requireProfessional();
-  const activeTab = parseTab(searchParams?.tab);
+  const requestedTab = parseTab(searchParams?.tab);
+
+  // Si no especifica tab o pide una que no puede ver, lo mandamos a su default.
+  // El redirect mantiene URLs limpias y evita renderizar contenido vetado.
+  if (!requestedTab || !canViewCategory(prof.role, requestedTab)) {
+    redirect(`/reuniones?tab=${defaultCategoryFor(prof.role)}`);
+  }
+  const activeTab: MeetingCategory = requestedTab;
+  const visibleTabs = categoriesForRole(prof.role);
   const canManage = isManager(prof.role);
 
   const meetings = await prisma.meeting.findMany({
@@ -51,9 +67,9 @@ export default async function ReunionesPage({
         </p>
       </header>
 
-      {/* Tabs */}
+      {/* Tabs (solo las que el rol puede ver) */}
       <nav className="mb-6 flex flex-wrap gap-1 rounded-xl border border-border bg-surface p-1">
-        {CATEGORIES.map((c) => {
+        {visibleTabs.map((c) => {
           const active = c === activeTab;
           return (
             <Link
