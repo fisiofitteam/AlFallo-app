@@ -4,7 +4,9 @@ import { requireProfessional } from "@/lib/session";
 import { isManager, navForRole } from "@/lib/roles";
 import { CLIENT_ACCESS_ROLES, clientScopeWhere } from "@/lib/clients";
 import { WeeklyTasksCard, type WeeklyTaskItem } from "@/components/WeeklyTasksCard";
+import { OneOffTasksCard, type OneOffCardItem } from "@/components/OneOffTasksCard";
 import { weekStartFor } from "@/lib/weekly-tasks";
+import { activeInstanceFor, shortDueLabel, todayInMadrid } from "@/lib/oneoff-tasks";
 
 export const metadata = { title: "Panel · Al Fallo Nutrition" };
 export const dynamic = "force-dynamic";
@@ -43,6 +45,46 @@ export default async function DashboardPage() {
     }));
   }
 
+  // Puntuales: misma audiencia que las semanales. Filtramos en el servidor a
+  // las que (a) están activas hoy según su regla y (b) no han sido marcadas
+  // en su instancia actual por este profesional.
+  let oneOffItems: OneOffCardItem[] = [];
+  if (showTasksCard) {
+    const today = todayInMadrid();
+    const oneOffs = await prisma.oneOffTaskTemplate.findMany({
+      where: {
+        active: true,
+        targetRole: prof.role,
+        OR: [{ assigneeId: null }, { assigneeId: prof.id }],
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    const instances = oneOffs
+      .map((t) => ({ t, instance: activeInstanceFor(t, today) }))
+      .filter((x): x is { t: typeof x.t; instance: Date } => x.instance !== null);
+
+    if (instances.length > 0) {
+      const completions = await prisma.oneOffTaskCompletion.findMany({
+        where: {
+          professionalId: prof.id,
+          templateId: { in: instances.map((x) => x.t.id) },
+        },
+        select: { templateId: true, instanceDate: true },
+      });
+      const doneKey = new Set(
+        completions.map((c) => `${c.templateId}:${c.instanceDate.getTime()}`),
+      );
+
+      oneOffItems = instances
+        .filter((x) => !doneKey.has(`${x.t.id}:${x.instance.getTime()}`))
+        .map((x) => ({
+          id: x.t.id,
+          title: x.t.title,
+          due: shortDueLabel(x.t),
+        }));
+    }
+  }
+
   // Conteos reales de clientes (alcance según rol). Los roles sin acceso a
   // clientes (setter/closer) no ven estas tarjetas.
   const canSeeClients = CLIENT_ACCESS_ROLES.includes(prof.role);
@@ -73,6 +115,9 @@ export default async function DashboardPage() {
 
       {/* Tareas semanales del equipo (nutris + head_coach) */}
       {showTasksCard && <WeeklyTasksCard tasks={weeklyTasks} />}
+
+      {/* Tareas puntuales pendientes hoy */}
+      {showTasksCard && <OneOffTasksCard items={oneOffItems} />}
 
       {/* Tarjetas de resumen */}
       {canSeeClients && (
