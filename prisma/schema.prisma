@@ -49,6 +49,10 @@ model Professional {
   communityFeedComments  CommunityComment[]  @relation("FeedCommentAuthorPro")
   communityFeedReactions CommunityReaction[] @relation("FeedReactionAuthorPro")
 
+  weeklyTasksCreated  WeeklyTaskTemplate[]   @relation("WeeklyTaskCreator")
+  weeklyTasksAssigned WeeklyTaskTemplate[]   @relation("WeeklyTaskAssignee")
+  weeklyTasksDone     WeeklyTaskCompletion[]
+
   @@index([role])
 }
 
@@ -911,4 +915,49 @@ model CommunityReaction {
 
   @@unique([postId, clientId])
   @@unique([postId, professionalId])
+}
+
+// Plantilla de tarea recurrente del equipo. Aparece cada semana en el panel
+// principal del nutri al que se asigne (o de todos los nutris si assigneeId
+// es null). Solo CEO + head_coach pueden crearlas/editarlas.
+model WeeklyTaskTemplate {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  // 1=lunes, 2=martes, 3=miércoles, 4=jueves, 5=viernes. Sin findes.
+  dayOfWeek   Int
+  order       Int      @default(0)
+  active      Boolean  @default(true)
+
+  // null = "para todos los nutris". Si se borra el profesional asignado,
+  // la tarea queda "para todos" en lugar de desaparecer.
+  assigneeId String?
+  assignee   Professional? @relation("WeeklyTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   Professional? @relation("WeeklyTaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  completions WeeklyTaskCompletion[]
+
+  @@index([dayOfWeek, order])
+  @@index([assigneeId])
+}
+
+// Marca de "hecho" por (tarea, profesional, semana). La presencia del registro
+// = completada. La ausencia = pendiente. weekStart = lunes 00:00 (Europa/Madrid).
+model WeeklyTaskCompletion {
+  id             String   @id @default(cuid())
+  templateId     String
+  professionalId String
+  weekStart      DateTime
+  completedAt    DateTime @default(now())
+
+  template     WeeklyTaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  professional Professional       @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, professionalId, weekStart])
+  @@index([professionalId, weekStart])
 }

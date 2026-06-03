@@ -3,13 +3,51 @@ import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import { isManager, navForRole } from "@/lib/roles";
 import { CLIENT_ACCESS_ROLES, clientScopeWhere } from "@/lib/clients";
+import { WeeklyTasksCard, type WeeklyTaskItem } from "@/components/WeeklyTasksCard";
+import { weekStartFor } from "@/lib/weekly-tasks";
 
 export const metadata = { title: "Panel · Al Fallo Nutrition" };
+export const dynamic = "force-dynamic";
+
+// Roles que ven y marcan el checklist semanal. El CEO no marca pero sí ve la
+// tarjeta (sin checks) cuando hay tareas, con su botón de configurar.
+const WEEKLY_TASKS_VIEWERS = ["nutricionista", "head_coach"];
 
 export default async function DashboardPage() {
   const prof = await requireProfessional();
   const shortcuts = navForRole(prof.role).filter((i) => i.href !== "/");
   const firstName = prof.fullName.split(" ")[0];
+
+  // Tareas semanales. Mostramos la tarjeta a nutris+head_coach (que las marcan)
+  // y también al CEO (solo lectura/configuración).
+  const canCheckTasks = WEEKLY_TASKS_VIEWERS.includes(prof.role);
+  const showTasksCard = canCheckTasks || isManager(prof.role);
+  const weekStart = weekStartFor();
+  let weeklyTasks: WeeklyTaskItem[] = [];
+  if (showTasksCard) {
+    const where = canCheckTasks
+      ? { active: true, OR: [{ assigneeId: null }, { assigneeId: prof.id }] }
+      : { active: true };
+    const templates = await prisma.weeklyTaskTemplate.findMany({
+      where,
+      orderBy: [{ dayOfWeek: "asc" }, { order: "asc" }],
+      include: {
+        assignee: { select: { fullName: true } },
+        completions: canCheckTasks
+          ? { where: { professionalId: prof.id, weekStart }, select: { id: true } }
+          : false,
+      },
+    });
+    weeklyTasks = templates.map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      dayOfWeek: t.dayOfWeek,
+      order: t.order,
+      assigneeName: t.assignee?.fullName ?? null,
+      done: canCheckTasks ? (t.completions?.length ?? 0) > 0 : false,
+    }));
+  }
 
   // Conteos reales de clientes (alcance según rol). Los roles sin acceso a
   // clientes (setter/closer) no ven estas tarjetas.
@@ -38,6 +76,16 @@ export default async function DashboardPage() {
           {isManager(prof.role) && " · acceso completo como manager"}
         </p>
       </header>
+
+      {/* Tareas semanales del equipo */}
+      {showTasksCard && (
+        <WeeklyTasksCard
+          tasks={weeklyTasks}
+          weekStartIso={weekStart.toISOString()}
+          canConfigure={isManager(prof.role)}
+          canCheck={canCheckTasks}
+        />
+      )}
 
       {/* Tarjetas de resumen */}
       {canSeeClients && (
