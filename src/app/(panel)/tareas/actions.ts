@@ -38,7 +38,7 @@ export async function createWeeklyTask(formData: FormData) {
       createdById: prof.id,
     },
   });
-  revalidatePath("/equipo/tareas-semanales");
+  revalidatePath("/tareas");
   revalidatePath("/");
 }
 
@@ -60,7 +60,7 @@ export async function updateWeeklyTask(formData: FormData) {
       assigneeId: assigneeId || null,
     },
   });
-  revalidatePath("/equipo/tareas-semanales");
+  revalidatePath("/tareas");
   revalidatePath("/");
 }
 
@@ -70,7 +70,7 @@ export async function deleteWeeklyTask(formData: FormData) {
   if (!id) return;
   // Borrado real: las completions se borran en cascada (FK Cascade).
   await prisma.weeklyTaskTemplate.delete({ where: { id } });
-  revalidatePath("/equipo/tareas-semanales");
+  revalidatePath("/tareas");
   revalidatePath("/");
 }
 
@@ -87,6 +87,6 @@ export async function toggleActive(formData: FormData) {
     where: { id },
     data: { active: !current.active },
   });
-  revalidatePath("/equipo/tareas-semanales");
+  revalidatePath("/tareas");
   revalidatePath("/");
 }

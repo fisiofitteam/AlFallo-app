@@ -12,7 +12,7 @@ import {
   updateWeeklyTask,
 } from "./actions";
 
-export const metadata = { title: "Tareas semanales · Equipo · Al Fallo" };
+export const metadata = { title: "Tareas semanales · Al Fallo" };
 export const dynamic = "force-dynamic";
 
 // Roles que pueden ser asignatarios (los que ven el checklist y lo marcan).

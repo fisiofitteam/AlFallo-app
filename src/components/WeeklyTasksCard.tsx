@@ -85,7 +85,7 @@ export function WeeklyTasksCard({
           ) : null}
           {canConfigure ? (
             <Link
-              href="/equipo/tareas-semanales"
+              href="/tareas"
               className="flex items-center gap-1 rounded-lg border border-border bg-bg px-2.5 py-1.5 text-xs font-medium text-muted transition hover:border-primary hover:text-text"
               title="Configurar tareas"
             >
@@ -101,7 +101,7 @@ export function WeeklyTasksCard({
           {canConfigure ? (
             <>
               {" "}
-              <Link href="/equipo/tareas-semanales" className="font-semibold text-primary hover:underline">
+              <Link href="/tareas" className="font-semibold text-primary hover:underline">
                 Crear la primera
               </Link>
               .
