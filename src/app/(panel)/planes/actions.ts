@@ -309,3 +309,176 @@ export async function deleteItem(formData: FormData) {
   await prisma.mealItem.delete({ where: { id: String(formData.get("itemId")) } });
   revalidatePath(`/planes/${planId}`);
 }
+
+// ── Builder nuevo (3 opciones por comida) ───────────────────────────────
+
+// Añade una opción vacía (freestyle, sin alimento) a una comida.
+// La convención: foodId=null, quantityG=100 y los kcalPer100/...Per100
+// contienen los totales reales de la opción. selected=false.
+export async function addOptionToMeal(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  const mealId = String(formData.get("mealId"));
+  const count = await prisma.mealItem.count({ where: { mealId } });
+  await prisma.mealItem.create({
+    data: {
+      mealId,
+      foodId: null,
+      nameSnapshot: "",
+      quantityG: 100,
+      kcalPer100: 0,
+      proteinPer100: 0,
+      carbsPer100: 0,
+      fatPer100: 0,
+      selected: false,
+      order: count,
+    },
+  });
+  revalidatePath(`/planes/${planId}`);
+}
+
+// Edita el texto descriptivo de una opción. Autosave desde la UI.
+export async function updateOptionText(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  const itemId = String(formData.get("itemId"));
+  const text = parseStr(formData.get("text")) ?? "";
+  await prisma.mealItem.update({
+    where: { id: itemId },
+    data: { nameSnapshot: text.slice(0, 1000) },
+  });
+  // No revalidamos para no romper foco/scroll mientras teclean. El componente
+  // ya tiene el estado local correcto.
+}
+
+// Edita los 4 macros (totales) de una opción. Autosave desde la UI.
+export async function updateOptionMacros(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  const itemId = String(formData.get("itemId"));
+  const kcal = parseNumber(formData.get("kcal")) ?? 0;
+  const protein = parseNumber(formData.get("protein")) ?? 0;
+  const carbs = parseNumber(formData.get("carbs")) ?? 0;
+  const fat = parseNumber(formData.get("fat")) ?? 0;
+  await prisma.mealItem.update({
+    where: { id: itemId },
+    data: {
+      quantityG: 100,
+      kcalPer100: kcal,
+      proteinPer100: protein,
+      carbsPer100: carbs,
+      fatPer100: fat,
+    },
+  });
+  // No revalidamos en cada teclazo; la suma se recalcula en cliente.
+}
+
+// Genera la estructura inicial de un plan con Harris-Benedict:
+// 1) Calcula objetivos (kcal/prot/carbs/grasa) a partir del perfil del cliente
+//    y la config global de macros (/biblioteca/macros).
+// 2) Persiste los objetivos en MacroTargets (campos *Training; rest = -10%).
+// 3) Borra los días/comidas/items existentes del plan.
+// 4) Crea 1 día con 5 comidas estándar (desayuno, media mañana, comida,
+//    merienda, cena) y 3 opciones placeholder vacías por comida.
+export async function generatePlanFromHB(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  const plan = await loadPlanForEdit(planId, prof);
+
+  const client = await prisma.client.findUnique({
+    where: { id: plan.clientId },
+    include: { profile: true },
+  });
+  if (!client) return;
+
+  const { getMacroConfig } = await import("@/lib/macroConfig");
+  const { computeTargets } = await import("@/lib/harrisBenedict");
+  const config = await getMacroConfig();
+  const targets = computeTargets(
+    {
+      sex: client.profile?.sex ?? null,
+      birthDate: client.profile?.birthDate ?? null,
+      heightCm: client.profile?.heightCm ?? null,
+      weightKg: client.profile?.weightKg ?? null,
+      weeklyFrequency: client.profile?.weeklyFrequency ?? null,
+      goal: client.profile?.goal ?? null,
+    },
+    config,
+  );
+
+  if (targets) {
+    // -10% en kcal/carbos para día de descanso por defecto. Protein/Fat se mantienen.
+    await prisma.macroTargets.upsert({
+      where: { clientId: client.id },
+      create: {
+        clientId: client.id,
+        kcalTraining: targets.kcal,
+        proteinTraining: targets.protein,
+        carbsTraining: targets.carbs,
+        fatTraining: targets.fat,
+        kcalRest: Math.round(targets.kcal * 0.9),
+        proteinRest: targets.protein,
+        carbsRest: Math.round(targets.carbs * 0.85),
+        fatRest: targets.fat,
+      },
+      update: {
+        kcalTraining: targets.kcal,
+        proteinTraining: targets.protein,
+        carbsTraining: targets.carbs,
+        fatTraining: targets.fat,
+        kcalRest: Math.round(targets.kcal * 0.9),
+        proteinRest: targets.protein,
+        carbsRest: Math.round(targets.carbs * 0.85),
+        fatRest: targets.fat,
+      },
+    });
+  }
+
+  // Limpiamos y recreamos la estructura del plan.
+  await prisma.planDay.deleteMany({ where: { planId } });
+
+  const day = await prisma.planDay.create({
+    data: { planId, name: "Día tipo", dayType: "entreno", order: 0 },
+  });
+
+  const MEAL_TEMPLATES = [
+    { name: "desayuno", order: 0 },
+    { name: "media_manana", order: 1 },
+    { name: "comida", order: 2 },
+    { name: "merienda", order: 3 },
+    { name: "cena", order: 4 },
+  ];
+
+  for (const m of MEAL_TEMPLATES) {
+    const meal = await prisma.meal.create({
+      data: { planDayId: day.id, name: m.name, order: m.order },
+    });
+    // 3 opciones vacías; sugerimos kcal/macros distribuidos por comida si
+    // hay targets, para que el nutri tenga una pista visual.
+    const splitKcal = targets ? Math.round(targets.kcal / 5) : 0;
+    const splitProt = targets ? Math.round(targets.protein / 5) : 0;
+    const splitCarb = targets ? Math.round(targets.carbs / 5) : 0;
+    const splitFat = targets ? Math.round(targets.fat / 5) : 0;
+    for (let i = 0; i < 3; i++) {
+      await prisma.mealItem.create({
+        data: {
+          mealId: meal.id,
+          foodId: null,
+          nameSnapshot: "",
+          quantityG: 100,
+          kcalPer100: splitKcal,
+          proteinPer100: splitProt,
+          carbsPer100: splitCarb,
+          fatPer100: splitFat,
+          selected: i === 0, // primera opción marcada por defecto
+          order: i,
+        },
+      });
+    }
+  }
+
+  revalidatePath(`/planes/${planId}`);
+}

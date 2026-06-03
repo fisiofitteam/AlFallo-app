@@ -11,5 +11,6 @@ export const LIBRARY_TABS: LibraryTab[] = [
   { href: "/biblioteca/alimentos", label: "Alimentos", emoji: "🥦" },
   { href: "/biblioteca/recetas", label: "Recetas", emoji: "🍳" },
   { href: "/biblioteca/videos", label: "Vídeos", emoji: "🎥" },
+  { href: "/biblioteca/macros", label: "Cálculo macros", emoji: "🧮" },
   { href: "/biblioteca/landings", label: "Landings", emoji: "🌐" },
 ];

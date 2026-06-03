@@ -1091,6 +1091,25 @@ model Recipe {
   @@index([mealType])
 }
 
+// Configuración global (singleton) del calculador de macros Harris-Benedict.
+// Define los factores de actividad, los ajustes por objetivo y la
+// distribución de macros. Editable desde /biblioteca/macros por managers.
+// Todos los campos se guardan como Json para añadir más opciones sin
+// migraciones (ej. brackets nuevos de actividad).
+model MacroCalcConfig {
+  id                  String   @id @default("default")
+  // { sedentario: {label,minFreq,maxFreq,factor}, ligero: {...}, ... }
+  activityMultipliers Json
+  // { perdida_grasa: {label,kcalDeltaPct}, ... }
+  goalAdjustments     Json
+  // { perdida_grasa: {protein,carbs,fat}, ... }  (% sobre kcal totales)
+  macroDistribution   Json
+  // Fórmula base. Por defecto "roza-shizgal" (HB revisada). Lo dejamos string
+  // por si en el futuro queremos elegir mifflin-st-jeor u otra.
+  formula             String   @default("roza-shizgal")
+  updatedAt           DateTime @updatedAt
+}
+
 // Vídeo educativo / motivacional para reutilizar (YouTube, Vimeo, etc.).
 // El parser de video.ts ya devuelve la URL embebible.
 model VideoResource {
