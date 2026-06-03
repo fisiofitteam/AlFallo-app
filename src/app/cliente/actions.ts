@@ -48,34 +48,73 @@ export async function submitOnboarding(formData: FormData) {
   const dni = parseStr(formData.get("contractDNI"));
   if (!accepted || !dni) return; // el form valida estos campos
 
-  const profileData = {
-    goal: parseStr(formData.get("goal")),
-    weightKg: parseNumber(formData.get("weightKg")),
-    heightCm: parseIntOrNull(formData.get("heightCm")),
-    targetWeightKg: parseNumber(formData.get("targetWeightKg")),
-    weeklyFrequency: parseIntOrNull(formData.get("weeklyFrequency")),
-    level: parseStr(formData.get("level")),
-    boxName: parseStr(formData.get("boxName")),
-    dietaryStyle: parseStr(formData.get("dietaryStyle")),
-    allergies: parseList(formData.get("allergies")),
-    intolerances: parseList(formData.get("intolerances")),
-    dislikes: parseList(formData.get("dislikes")),
-    supplements: parseList(formData.get("supplements")),
-    medicalConditions: parseStr(formData.get("medicalConditions")),
-    medication: parseStr(formData.get("medication")),
-  };
+  // El form es CONFIGURABLE desde /biblioteca/onboarding. Leemos su estructura
+  // para saber qué campos pedir y qué tipo tienen. Los IDs CORE mapean a
+  // columnas tipadas de NutritionProfile; los IDs "extra:*" van a JSON.
+  const { getOnboardingFormConfig } = await import("@/lib/onboardingFormConfig");
+  const { isCustomField } = await import("@/lib/onboarding-form");
+  const config = await getOnboardingFormConfig();
 
-  // La ficha nutricional se rellena con lo que declara el atleta.
+  // Recolector de respuestas tipadas para campos core conocidos. Los que
+  // no aparecen en la config (porque están hidden) quedan en null.
+  const core: Record<string, unknown> = {
+    sex: null,
+    birthDate: null,
+    goal: null,
+    weightKg: null,
+    heightCm: null,
+    targetWeightKg: null,
+    weeklyFrequency: null,
+    level: null,
+    boxName: null,
+    dietaryStyle: null,
+    allergies: [],
+    intolerances: [],
+    dislikes: [],
+    supplements: [],
+    medicalConditions: null,
+    medication: null,
+  };
+  const extras: Record<string, unknown> = {};
+
+  for (const section of config.sections) {
+    for (const f of section.fields) {
+      if (f.hidden) continue;
+      const raw = formData.get(f.id);
+      const value =
+        f.type === "number"
+          ? parseNumber(raw)
+          : f.type === "date"
+            ? (parseStr(raw) ? new Date(parseStr(raw) + "T00:00:00.000Z") : null)
+            : f.type === "tags"
+              ? parseList(raw)
+              : f.type === "checkbox"
+                ? raw === "on"
+                : parseStr(raw);
+
+      if (isCustomField(f.id)) {
+        extras[f.id.slice("extra:".length)] = value;
+      } else if (f.id === "heightCm" || f.id === "weeklyFrequency") {
+        core[f.id] = parseIntOrNull(raw);
+      } else {
+        core[f.id] = value;
+      }
+    }
+  }
+
+  // Snapshot completo para auditoría (anamnesisData en Client).
+  const snapshot = { ...core, extras };
+
   await prisma.nutritionProfile.upsert({
     where: { clientId: client.id },
-    create: { clientId: client.id, ...profileData },
-    update: profileData,
+    create: { clientId: client.id, ...(core as object), extraAnswers: extras as object },
+    update: { ...(core as object), extraAnswers: extras as object },
   });
 
   await prisma.client.update({
     where: { id: client.id },
     data: {
-      anamnesisData: profileData as object,
+      anamnesisData: snapshot as object,
       anamnesisCompletedAt: new Date(),
       contractSignedAt: new Date(),
       contractDNI: dni,

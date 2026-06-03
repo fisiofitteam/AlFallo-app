@@ -557,6 +557,10 @@ model NutritionProfile {
   medicalConditions String?
   medication        String?
 
+  // Respuestas a preguntas custom del onboarding configurable.
+  // Mapeo { "extra:slug" -> valor (string | string[] | number | boolean) }.
+  extraAnswers Json?
+
   // Objetivo
   goal          String? // perdida_grasa | recomposicion | ganancia_masa | rendimiento | definicion
   targetWeightKg Float?
@@ -1089,6 +1093,16 @@ model Recipe {
   updatedAt DateTime @updatedAt
 
   @@index([mealType])
+}
+
+// Plantilla configurable del formulario de onboarding del atleta. Singleton.
+// Las secciones y campos viven como JSON para poder añadir preguntas custom
+// y reordenar sin migraciones. Editable desde /biblioteca/onboarding.
+model OnboardingFormConfig {
+  id        String   @id @default("default")
+  // [{ id, title, fields: [{ id, label, type, hint?, options?, required?, hidden? }] }]
+  sections  Json
+  updatedAt DateTime @updatedAt
 }
 
 // Configuración global (singleton) del calculador de macros Harris-Benedict.
