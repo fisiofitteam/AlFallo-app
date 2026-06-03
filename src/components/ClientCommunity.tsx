@@ -3,10 +3,11 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
-  Heart, MessageCircle, Send, Image as ImageIcon, X, BadgeCheck,
+  Heart, MessageCircle, Send, X, BadgeCheck,
   GraduationCap, Loader2, Pin,
 } from "lucide-react";
 import { CourseCover } from "@/components/CourseCover";
+import { ImageUpload } from "@/components/ImageUpload";
 import { parseVideo } from "@/lib/video";
 
 type CourseCard = {
@@ -102,11 +103,6 @@ function TeamBadge({ role }: { role: string | null }) {
       <BadgeCheck size={14} fill="currentColor" className="text-primary" />
     </span>
   );
-}
-
-// Imagen del post: en cliente solo permitimos pegar URL externa (no upload).
-function isUrl(s: string) {
-  return /^https?:\/\//i.test(s.trim());
 }
 
 function CourseRow({ c }: { c: CourseCard }) {
@@ -336,10 +332,6 @@ function ComposerCard({
     setError(null);
     const text = body.trim();
     if (!text) return;
-    if (imageUrl && !isUrl(imageUrl)) {
-      setError("Pega una URL completa (https://…) o deja el campo vacío.");
-      return;
-    }
     setPosting(true);
     try {
       const created = await api("/api/community/feed", "POST", {
@@ -400,15 +392,13 @@ function ComposerCard({
         placeholder="¿Qué quieres compartir? Un PR, una comida, una duda…"
         className="w-full resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none placeholder:text-muted focus:border-primary"
       />
-      <div className="mt-2">
-        <label className="mb-1 flex items-center gap-1 text-xs text-muted">
-          <ImageIcon size={12} /> URL de imagen o vídeo (opcional)
-        </label>
-        <input
+      <div className="mt-3">
+        <ImageUpload
           value={imageUrl}
-          onChange={(e) => setImageUrl(e.target.value)}
-          placeholder="https://…"
-          className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text outline-none placeholder:text-muted focus:border-primary"
+          onChange={setImageUrl}
+          accept="image/*"
+          label="Adjuntar foto"
+          hint="JPG, PNG o WebP. Hasta 80 MB."
         />
       </div>
       {error ? <p className="mt-2 text-xs text-red-400">{error}</p> : null}
