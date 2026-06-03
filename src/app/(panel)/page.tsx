@@ -9,8 +9,8 @@ import { weekStartFor } from "@/lib/weekly-tasks";
 export const metadata = { title: "Panel · Al Fallo Nutrition" };
 export const dynamic = "force-dynamic";
 
-// Roles que ven y marcan el checklist semanal. El CEO no marca pero sí ve la
-// tarjeta (sin checks) cuando hay tareas, con su botón de configurar.
+// Roles que ven y marcan su checklist semanal en el panel principal. El CEO
+// no aparece aquí porque no tiene tareas operativas: las gestiona desde /tareas.
 const WEEKLY_TASKS_VIEWERS = ["nutricionista", "head_coach"];
 
 export default async function DashboardPage() {
@@ -18,34 +18,28 @@ export default async function DashboardPage() {
   const shortcuts = navForRole(prof.role).filter((i) => i.href !== "/");
   const firstName = prof.fullName.split(" ")[0];
 
-  // Tareas semanales. Mostramos la tarjeta a nutris+head_coach (que las marcan)
-  // y también al CEO (solo lectura/configuración).
-  const canCheckTasks = WEEKLY_TASKS_VIEWERS.includes(prof.role);
-  const showTasksCard = canCheckTasks || isManager(prof.role);
+  // Cargamos las tareas con targetRole === su rol y assignee compatible.
+  const showTasksCard = WEEKLY_TASKS_VIEWERS.includes(prof.role);
   const weekStart = weekStartFor();
   let weeklyTasks: WeeklyTaskItem[] = [];
   if (showTasksCard) {
-    const where = canCheckTasks
-      ? { active: true, OR: [{ assigneeId: null }, { assigneeId: prof.id }] }
-      : { active: true };
     const templates = await prisma.weeklyTaskTemplate.findMany({
-      where,
+      where: {
+        active: true,
+        targetRole: prof.role,
+        OR: [{ assigneeId: null }, { assigneeId: prof.id }],
+      },
       orderBy: [{ dayOfWeek: "asc" }, { order: "asc" }],
       include: {
-        assignee: { select: { fullName: true } },
-        completions: canCheckTasks
-          ? { where: { professionalId: prof.id, weekStart }, select: { id: true } }
-          : false,
+        completions: { where: { professionalId: prof.id, weekStart }, select: { id: true } },
       },
     });
     weeklyTasks = templates.map((t) => ({
       id: t.id,
       title: t.title,
-      description: t.description,
       dayOfWeek: t.dayOfWeek,
       order: t.order,
-      assigneeName: t.assignee?.fullName ?? null,
-      done: canCheckTasks ? (t.completions?.length ?? 0) > 0 : false,
+      done: t.completions.length > 0,
     }));
   }
 
@@ -77,15 +71,8 @@ export default async function DashboardPage() {
         </p>
       </header>
 
-      {/* Tareas semanales del equipo */}
-      {showTasksCard && (
-        <WeeklyTasksCard
-          tasks={weeklyTasks}
-          weekStartIso={weekStart.toISOString()}
-          canConfigure={isManager(prof.role)}
-          canCheck={canCheckTasks}
-        />
-      )}
+      {/* Tareas semanales del equipo (nutris + head_coach) */}
+      {showTasksCard && <WeeklyTasksCard tasks={weeklyTasks} />}
 
       {/* Tarjetas de resumen */}
       {canSeeClients && (

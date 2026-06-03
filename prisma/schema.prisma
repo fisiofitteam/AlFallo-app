@@ -929,8 +929,12 @@ model WeeklyTaskTemplate {
   order       Int      @default(0)
   active      Boolean  @default(true)
 
-  // null = "para todos los nutris". Si se borra el profesional asignado,
-  // la tarea queda "para todos" en lugar de desaparecer.
+  // Rol al que está dirigida la tarea. Determina en qué sección de /tareas
+  // aparece y quién la ve en su panel principal. Valores: nutricionista | head_coach.
+  targetRole String @default("nutricionista")
+
+  // null = "para todos los del rol target". Si se borra el profesional
+  // asignado, la tarea queda para todos en lugar de desaparecer.
   assigneeId String?
   assignee   Professional? @relation("WeeklyTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
@@ -944,6 +948,7 @@ model WeeklyTaskTemplate {
 
   @@index([dayOfWeek, order])
   @@index([assigneeId])
+  @@index([targetRole])
 }
 
 // Marca de "hecho" por (tarea, profesional, semana). La presencia del registro
