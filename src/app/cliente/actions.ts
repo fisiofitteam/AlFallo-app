@@ -111,6 +111,11 @@ export async function submitOnboarding(formData: FormData) {
     update: { ...(core as object), extraAnswers: extras as object },
   });
 
+  // Snapshot del contrato firmado: el efectivo en el momento del clic
+  // (el de la config si lo hay, si no el default). Así queda evidencia legal.
+  const effectiveContract =
+    config.contractText && config.contractText.trim() ? config.contractText : CONTRACT_TEXT;
+
   await prisma.client.update({
     where: { id: client.id },
     data: {
@@ -119,7 +124,7 @@ export async function submitOnboarding(formData: FormData) {
       contractSignedAt: new Date(),
       contractDNI: dni,
       contractVersion: CONTRACT_VERSION,
-      contractTextSnapshot: CONTRACT_TEXT,
+      contractTextSnapshot: effectiveContract,
       status: "onboarding",
     },
   });

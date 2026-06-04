@@ -1126,8 +1126,12 @@ model AIPlanBrief {
 // y reordenar sin migraciones. Editable desde /biblioteca/onboarding.
 model OnboardingFormConfig {
   id        String   @id @default("default")
-  // [{ id, title, fields: [{ id, label, type, hint?, options?, required?, hidden? }] }]
+  // [{ id, title, description?, fields: [{ id, label, type, hint?, options?, required?, hidden? }] }]
   sections  Json
+  // Texto del contrato firmado por el atleta. Si es null se usa el default
+  // de lib/contract.ts (CONTRACT_TEXT). El editor de biblioteca lo permite
+  // sobrescribir para personalizar la cláusula.
+  contractText String?
   updatedAt DateTime @updatedAt
 }
 

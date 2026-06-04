@@ -1,6 +1,7 @@
 import { requireProfessional } from "@/lib/session";
 import { isManager } from "@/lib/roles";
 import { getOnboardingFormConfig } from "@/lib/onboardingFormConfig";
+import { CONTRACT_TEXT } from "@/lib/contract";
 import { OnboardingFormEditor } from "@/components/OnboardingFormEditor";
 
 export const metadata = { title: "Formulario inicial · Biblioteca" };
@@ -16,5 +17,5 @@ export default async function OnboardingFormTab() {
     );
   }
   const config = await getOnboardingFormConfig();
-  return <OnboardingFormEditor initial={config} />;
+  return <OnboardingFormEditor initial={config} defaultContract={CONTRACT_TEXT} />;
 }

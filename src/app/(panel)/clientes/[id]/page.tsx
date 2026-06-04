@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   ArrowLeft, Plus,
-  UtensilsCrossed, ClipboardList, Target,
+  UtensilsCrossed, ClipboardList, Target, CalendarDays,
   TrendingUp, NotebookPen, KeyRound, Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -26,6 +26,8 @@ import { createPlan } from "../../planes/actions";
 import { PlanBuilder } from "@/components/PlanBuilder";
 import { PlanPicker } from "@/components/PlanPicker";
 import { loadPlanForBuilder } from "@/lib/loadPlanData";
+import { buildWeeklyMenu } from "@/lib/weeklyMenu";
+import { WeeklyMenuView } from "@/components/WeeklyMenuView";
 
 function shortDate(d: Date): string {
   return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
@@ -33,10 +35,19 @@ function shortDate(d: Date): string {
 
 // Sidebar lateral con descripciones. Sustituye al sidebar global del panel
 // (que está oculto en este path por PanelShell).
-type SectionKey = "plan" | "ficha" | "macros" | "evolucion" | "checkins" | "acceso" | "ajustes";
+type SectionKey =
+  | "plan"
+  | "semanal"
+  | "ficha"
+  | "macros"
+  | "evolucion"
+  | "checkins"
+  | "acceso"
+  | "ajustes";
 
 const SECTIONS: { key: SectionKey; label: string; description: string; icon: LucideIcon }[] = [
   { key: "plan", label: "Plan nutricional", description: "Comidas, opciones y macros", icon: UtensilsCrossed },
+  { key: "semanal", label: "Plan semanal", description: "L-D con opción asignada por día", icon: CalendarDays },
   { key: "ficha", label: "Ficha nutricional", description: "Anamnesis y datos personales", icon: ClipboardList },
   { key: "macros", label: "Macros objetivo", description: "Kcal y reparto entreno/descanso", icon: Target },
   { key: "evolucion", label: "Evolución", description: "Peso, cintura y % grasa", icon: TrendingUp },
@@ -81,15 +92,15 @@ export default async function ClientDetailPage({
   const manager = isManagerRole(prof.role);
   const active = parseSection(searchParams.tab);
 
-  // Si estamos en la pestaña Plan, resolvemos el plan a mostrar:
+  // Si estamos en la pestaña Plan o Semanal, resolvemos el plan a mostrar:
   // ?planId=X (si pertenece al cliente) o el más reciente. Cargamos su
   // estructura completa con el helper compartido.
   let activePlanData: Awaited<ReturnType<typeof loadPlanForBuilder>> = null;
-  if (active === "plan" && client.plans.length > 0) {
+  if ((active === "plan" || active === "semanal") && client.plans.length > 0) {
     const requested = searchParams.planId
       ? client.plans.find((p) => p.id === searchParams.planId)
       : null;
-    const chosen = requested ?? client.plans[0]; // plans vienen ordenados desc por createdAt
+    const chosen = requested ?? client.plans[0];
     activePlanData = await loadPlanForBuilder(chosen.id);
   }
 
@@ -202,6 +213,23 @@ export default async function ClientDetailPage({
                   initialDays={activePlanData.days}
                   initialTargets={activePlanData.targets}
                 />
+              </>
+            ) : (
+              <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
+                No se pudo cargar el plan seleccionado.
+              </p>
+            )
+          ) : active === "semanal" ? (
+            client.plans.length === 0 ? (
+              <PlanEmptyState clientId={client.id} />
+            ) : activePlanData ? (
+              <>
+                <PlanPicker
+                  clientId={client.id}
+                  plans={client.plans.map((p) => ({ id: p.id, name: p.name }))}
+                  selectedPlanId={activePlanData.plan.id}
+                />
+                <WeeklyMenuView days={buildWeeklyMenu(activePlanData.days)} />
               </>
             ) : (
               <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">

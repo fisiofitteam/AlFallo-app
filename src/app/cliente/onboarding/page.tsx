@@ -32,11 +32,12 @@ export default async function OnboardingPage() {
           {/* Bloques configurables desde /biblioteca/onboarding */}
           <OnboardingFormRenderer config={config} />
 
-          {/* Contrato (no configurable: protege a la empresa, vive en lib/contract) */}
+          {/* Contrato — texto editable desde /biblioteca/onboarding (tab Contrato).
+              Si el config no tiene texto, cae al default de lib/contract.ts. */}
           <section>
             <SectionTitle>Contrato y consentimiento</SectionTitle>
             <div className="max-h-48 overflow-y-auto whitespace-pre-line rounded-xl border border-border bg-bg p-4 text-xs text-muted">
-              {CONTRACT_TEXT}
+              {config.contractText && config.contractText.trim() ? config.contractText : CONTRACT_TEXT}
             </div>
             <div className="mt-4 space-y-4">
               <Field label="Tu DNI / NIE" htmlFor="contractDNI">

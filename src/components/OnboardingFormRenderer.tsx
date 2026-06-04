@@ -56,6 +56,9 @@ export function OnboardingFormRenderer({ config }: { config: OnboardingFormConfi
         return (
           <section key={s.id}>
             <SectionTitle>{s.title}</SectionTitle>
+            {s.description ? (
+              <p className="-mt-2 mb-3 text-xs text-muted">{s.description}</p>
+            ) : null}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {visible.map((f) => (
                 <FieldRender key={f.id} f={f} />

@@ -22,12 +22,13 @@ async function requireManager() {
 
 export async function saveOnboardingConfigAction(payload: OnboardingFormConfigShape) {
   await requireManager();
-  // El helper aplica críticos. También sanea: críticos no pueden ser hidden
-  // ni opcionales. Si el cliente pasara algo distinto, se sobrescribe.
+  // Saneo: criticos siempre required/visibles; trim de strings.
   const sanitized: OnboardingFormConfigShape = {
+    contractText: payload.contractText?.trim() ? payload.contractText.trim() : null,
     sections: payload.sections.map((s) => ({
       id: s.id,
       title: s.title.trim() || "Sección",
+      description: s.description?.trim() ? s.description.trim() : null,
       fields: s.fields.map((f) => {
         const critical = isCriticalField(f.id);
         return {
@@ -54,8 +55,6 @@ export async function resetOnboardingConfigAction() {
   revalidatePath("/cliente/onboarding");
 }
 
-// Helper para los components cliente (no exportable como dato; lo encapsulamos
-// como action que devuelve la config actual cuando hace falta).
 export async function getCurrentOnboardingConfig(): Promise<OnboardingFormConfigShape> {
   await requireManager();
   return getOnboardingFormConfig();

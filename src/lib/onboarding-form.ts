@@ -31,11 +31,14 @@ export type OnboardingField = {
 export type OnboardingSection = {
   id: string;
   title: string;
+  description?: string | null;
   fields: OnboardingField[];
 };
 
 export type OnboardingFormConfigShape = {
   sections: OnboardingSection[];
+  /** Texto del contrato. null = usa el default (lib/contract.ts). */
+  contractText?: string | null;
 };
 
 // Campos críticos para Harris-Benedict. Nunca se ocultan ni dejan de ser
@@ -69,7 +72,8 @@ export const DEFAULT_ONBOARDING_CONFIG: OnboardingFormConfigShape = {
   sections: [
     {
       id: "personal",
-      title: "Tus datos",
+      title: "Datos personales",
+      description: "Para conocerte y ajustar tu programa.",
       fields: [
         { id: "sex", label: "Sexo biológico", type: "select", required: true },
         { id: "birthDate", label: "Fecha de nacimiento", type: "date", required: true },
@@ -80,6 +84,7 @@ export const DEFAULT_ONBOARDING_CONFIG: OnboardingFormConfigShape = {
     {
       id: "objetivo",
       title: "Tu objetivo",
+      description: "Qué quieres conseguir y en cuánto tiempo.",
       fields: [
         { id: "goal", label: "¿Qué quieres conseguir?", type: "select", required: true },
         { id: "targetWeightKg", label: "Peso objetivo (kg)", type: "number" },
@@ -89,6 +94,7 @@ export const DEFAULT_ONBOARDING_CONFIG: OnboardingFormConfigShape = {
     {
       id: "entrenamiento",
       title: "Entrenamiento",
+      description: "Tu volumen de actividad para calcular las kcal.",
       fields: [
         { id: "weeklyFrequency", label: "Días de entreno / semana", type: "number", required: true },
         { id: "level", label: "Nivel", type: "select" },
@@ -98,6 +104,7 @@ export const DEFAULT_ONBOARDING_CONFIG: OnboardingFormConfigShape = {
     {
       id: "alimentacion",
       title: "Alimentación",
+      description: "Restricciones, gustos y suplementación.",
       fields: [
         { id: "dietaryStyle", label: "Estilo dietético", type: "select" },
         { id: "allergies", label: "Alergias", type: "tags", hint: "Separadas por comas" },
@@ -109,6 +116,7 @@ export const DEFAULT_ONBOARDING_CONFIG: OnboardingFormConfigShape = {
       ],
     },
   ],
+  contractText: null,
 };
 
 export function isCriticalField(id: string): boolean {
