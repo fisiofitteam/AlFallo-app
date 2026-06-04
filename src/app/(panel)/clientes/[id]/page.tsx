@@ -126,25 +126,33 @@ export default async function ClientDetailPage({
         <ArrowLeft size={16} /> Clientes
       </Link>
 
-      <header className="mb-6 flex flex-wrap items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-lg font-bold text-primary">
+      <header className="mb-8 flex flex-wrap items-start gap-4">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-soft text-xl font-semibold text-primary">
           {client.fullName.slice(0, 1).toUpperCase()}
         </div>
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold leading-tight md:text-3xl">{client.fullName}</h1>
-          <p className="text-sm text-muted">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl font-bold leading-tight tracking-tight md:text-4xl">
+              {client.fullName}
+            </h1>
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider ${statusBadgeClass(
+                client.status,
+              )}`}
+            >
+              {statusLabel(client.status)}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-muted">
             {client.email ?? "Sin email"}
             {client.phone && ` · ${client.phone}`}
           </p>
         </div>
-        <span className={`ml-2 rounded-full px-3 py-1 text-xs font-medium ${statusBadgeClass(client.status)}`}>
-          {statusLabel(client.status)}
-        </span>
       </header>
 
       {/* Layout 2 columnas: sidebar de secciones + contenido del tab activo */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
-        <aside className="space-y-1.5">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[260px_1fr]">
+        <aside className="space-y-1">
           {SECTIONS.map((s) => {
             const isActive = s.key === active;
             const Icon = s.icon;
@@ -152,19 +160,20 @@ export default async function ClientDetailPage({
               <Link
                 key={s.key}
                 href={`/clientes/${client.id}?tab=${s.key}`}
-                className={`flex items-start gap-3 rounded-xl border p-3 transition ${
+                className={`flex items-start gap-3 rounded-xl px-3 py-3 transition ${
                   isActive
-                    ? "border-text bg-text text-bg shadow-sm"
-                    : "border-border bg-surface hover:border-primary"
+                    ? "bg-text text-bg shadow-sm"
+                    : "text-text hover:bg-bg/50"
                 }`}
               >
                 <Icon
-                  size={20}
-                  className={isActive ? "mt-0.5 flex-shrink-0" : "mt-0.5 flex-shrink-0 text-primary"}
+                  size={22}
+                  strokeWidth={1.7}
+                  className={`mt-0.5 flex-shrink-0 ${isActive ? "" : "text-text"}`}
                 />
                 <div className="min-w-0">
-                  <p className={`text-sm font-semibold ${isActive ? "" : "text-text"}`}>{s.label}</p>
-                  <p className={`text-xs ${isActive ? "text-bg/70" : "text-muted"}`}>
+                  <p className="text-[15px] font-semibold leading-tight">{s.label}</p>
+                  <p className={`mt-0.5 text-xs leading-snug ${isActive ? "text-bg/70" : "text-muted"}`}>
                     {s.description}
                   </p>
                 </div>

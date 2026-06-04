@@ -20,6 +20,20 @@ const config: Config = {
         xl: "0.875rem",
         "2xl": "1.25rem",
       },
+      fontFamily: {
+        // Inter como sans default; fallback al stack del sistema si Inter no cargó.
+        sans: [
+          "var(--font-sans)",
+          "ui-sans-serif",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica",
+          "Arial",
+          "sans-serif",
+        ],
+      },
     },
   },
   plugins: [],

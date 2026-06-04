@@ -1,5 +1,14 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
+
+// Inter como tipografía base — clean sans-serif moderna, similar al look de
+// referencia (FisioFit) que el usuario tomó como guía visual.
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Al Fallo Nutrition",
@@ -17,8 +26,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
-      <body>{children}</body>
+    <html lang="es" className={inter.variable}>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }
