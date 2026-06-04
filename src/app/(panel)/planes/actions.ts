@@ -121,8 +121,12 @@ export async function deleteMeal(formData: FormData) {
   revalidatePath(`/planes/${planId}`);
 }
 
-// Genera un borrador completo del plan con IA (Claude) o plantilla fallback.
-// Se aplica sobre un plan existente; añade los días/comidas/items respetando el orden.
+// Genera un plan completo CON IA: borra estructura previa, calcula objetivos
+// con Harris-Benedict (los guarda en MacroTargets) y pide a Claude que
+// rellene 1 día tipo con 5 comidas × 3 opciones reales (alimentos + gramos).
+//
+// Diferencia con generatePlanFromHB: aquí la IA escribe el contenido. HB
+// solo crea placeholders vacíos con pista de macros.
 export async function generatePlanFromAI(formData: FormData) {
   const prof = await requireAccess();
   const planId = String(formData.get("planId"));
@@ -134,6 +138,51 @@ export async function generatePlanFromAI(formData: FormData) {
   });
   if (!client) return;
 
+  // 1) Calculamos/actualizamos los objetivos con HB para que la IA tenga
+  //    cifras concretas a las que apuntar (y queden guardadas para el cliente).
+  const { getMacroConfig } = await import("@/lib/macroConfig");
+  const { computeTargets } = await import("@/lib/harrisBenedict");
+  const config = await getMacroConfig();
+  const targets = computeTargets(
+    {
+      sex: client.profile?.sex ?? null,
+      birthDate: client.profile?.birthDate ?? null,
+      heightCm: client.profile?.heightCm ?? null,
+      weightKg: client.profile?.weightKg ?? null,
+      weeklyFrequency: client.profile?.weeklyFrequency ?? null,
+      goal: client.profile?.goal ?? null,
+    },
+    config,
+  );
+  if (targets) {
+    await prisma.macroTargets.upsert({
+      where: { clientId: client.id },
+      create: {
+        clientId: client.id,
+        kcalTraining: targets.kcal,
+        proteinTraining: targets.protein,
+        carbsTraining: targets.carbs,
+        fatTraining: targets.fat,
+        kcalRest: Math.round(targets.kcal * 0.9),
+        proteinRest: targets.protein,
+        carbsRest: Math.round(targets.carbs * 0.85),
+        fatRest: targets.fat,
+      },
+      update: {
+        kcalTraining: targets.kcal,
+        proteinTraining: targets.protein,
+        carbsTraining: targets.carbs,
+        fatTraining: targets.fat,
+        kcalRest: Math.round(targets.kcal * 0.9),
+        proteinRest: targets.protein,
+        carbsRest: Math.round(targets.carbs * 0.85),
+        fatRest: targets.fat,
+      },
+    });
+  }
+
+  // 2) Llamamos al generador. Usa el brief de /biblioteca/brief-ia (textos +
+  //    adjuntos PDF/Excel/CSV) y los targets recién recalculados.
   const { generatePlanDraft } = await import("@/lib/planGenerator");
   const draft = await generatePlanDraft({
     clientName: client.fullName,
@@ -152,40 +201,46 @@ export async function generatePlanFromAI(formData: FormData) {
     dislikes: client.profile?.dislikes ?? [],
     medicalConditions: client.profile?.medicalConditions ?? null,
     medication: client.profile?.medication ?? null,
-    kcalTraining: client.macroTargets?.kcalTraining ?? null,
-    proteinTraining: client.macroTargets?.proteinTraining ?? null,
-    carbsTraining: client.macroTargets?.carbsTraining ?? null,
-    fatTraining: client.macroTargets?.fatTraining ?? null,
+    kcalTraining: targets?.kcal ?? client.macroTargets?.kcalTraining ?? null,
+    proteinTraining: targets?.protein ?? client.macroTargets?.proteinTraining ?? null,
+    carbsTraining: targets?.carbs ?? client.macroTargets?.carbsTraining ?? null,
+    fatTraining: targets?.fat ?? client.macroTargets?.fatTraining ?? null,
     kcalRest: client.macroTargets?.kcalRest ?? null,
     proteinRest: client.macroTargets?.proteinRest ?? null,
     carbsRest: client.macroTargets?.carbsRest ?? null,
     fatRest: client.macroTargets?.fatRest ?? null,
   });
 
-  const existingDaysCount = await prisma.planDay.count({ where: { planId } });
+  // 3) Reset de la estructura del plan (igual que HB).
+  await prisma.planDay.deleteMany({ where: { planId } });
+
+  // 4) Persistimos las opciones generadas. Cada opción se guarda como
+  //    MealItem freestyle (foodId=null, quantityG=100, *Per100 = totales).
+  //    La primera opción de cada comida queda seleccionada por defecto.
   for (let di = 0; di < draft.days.length; di++) {
     const d = draft.days[di];
     const newDay = await prisma.planDay.create({
-      data: { planId, name: d.name, dayType: d.dayType, order: existingDaysCount + di },
+      data: { planId, name: d.name, dayType: d.dayType, order: di },
     });
     for (let mi = 0; mi < d.meals.length; mi++) {
       const m = d.meals[mi];
       const newMeal = await prisma.meal.create({
         data: { planDayId: newDay.id, name: m.name, order: mi },
       });
-      for (let ii = 0; ii < m.items.length; ii++) {
-        const it = m.items[ii];
+      for (let oi = 0; oi < m.options.length; oi++) {
+        const o = m.options[oi];
         await prisma.mealItem.create({
           data: {
             mealId: newMeal.id,
             foodId: null,
-            nameSnapshot: it.text,
+            nameSnapshot: o.text,
             quantityG: 100,
-            kcalPer100: it.kcal,
-            proteinPer100: it.protein,
-            carbsPer100: it.carbs,
-            fatPer100: it.fat,
-            order: ii,
+            kcalPer100: o.kcal,
+            proteinPer100: o.protein,
+            carbsPer100: o.carbs,
+            fatPer100: o.fat,
+            selected: oi === 0,
+            order: oi,
           },
         });
       }

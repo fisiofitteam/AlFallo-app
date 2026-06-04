@@ -10,6 +10,7 @@ import {
   addOptionToMeal,
   deleteItem,
   generatePlanFromHB,
+  generatePlanFromAI,
   toggleItemSelected,
   updateOptionMacros,
   updateOptionText,
@@ -89,6 +90,7 @@ export function PlanBuilder({
     initialDays[0]?.id ?? null,
   );
   const [generating, startGenerating] = useTransition();
+  const [generatingAI, startGeneratingAI] = useTransition();
 
   const activeDay = days.find((d) => d.id === activeDayId) ?? days[0] ?? null;
 
@@ -162,6 +164,16 @@ export function PlanBuilder({
     });
   }
 
+  function generateAI() {
+    if (!confirm("Esto borra el plan actual y pide a la IA que escriba 5 comidas × 3 opciones con alimentos y gramos. Puede tardar 10-20 s. ¿Seguro?")) return;
+    const fd = new FormData();
+    fd.set("planId", planId);
+    startGeneratingAI(async () => {
+      await generatePlanFromAI(fd);
+      window.location.reload();
+    });
+  }
+
   return (
     <div className="mx-auto max-w-6xl">
       {/* Cabecera */}
@@ -177,15 +189,25 @@ export function PlanBuilder({
           <h1 className="text-2xl font-bold md:text-3xl">{planName}</h1>
           <p className="text-sm text-muted">Plan nutricional · {clientName}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={generateHB}
-            disabled={generating}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
+            disabled={generating || generatingAI}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-bg px-4 py-2 text-sm font-semibold text-text shadow-sm hover:border-primary hover:text-primary disabled:opacity-60"
           >
             {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            Generar con Harris-Benedict
+            Generar con HB
+          </button>
+          <button
+            type="button"
+            onClick={generateAI}
+            disabled={generating || generatingAI}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
+            title="HB para objetivos + Claude para escribir cada opción con alimentos y gramos"
+          >
+            {generatingAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            Generar con IA
           </button>
         </div>
       </header>
@@ -212,7 +234,7 @@ export function PlanBuilder({
       ) : null}
 
       {!activeDay ? (
-        <EmptyPlan onGenerate={generateHB} planId={planId} />
+        <EmptyPlan onGenerateHB={generateHB} onGenerateAI={generateAI} planId={planId} />
       ) : (
         <DayPanel
           day={activeDay}
@@ -333,22 +355,40 @@ function SummaryCard({
 
 // ── Estado vacío del plan ────────────────────────────────────────────────
 
-function EmptyPlan({ onGenerate, planId }: { onGenerate: () => void; planId: string }) {
+function EmptyPlan({
+  onGenerateHB,
+  onGenerateAI,
+  planId,
+}: {
+  onGenerateHB: () => void;
+  onGenerateAI: () => void;
+  planId: string;
+}) {
   return (
     <div className="rounded-2xl border border-dashed border-border bg-surface/50 p-12 text-center">
       <FileText size={28} className="mx-auto text-muted" />
       <p className="mt-3 font-medium">Este plan está vacío</p>
       <p className="mt-1 text-sm text-muted">
-        Pulsa <strong>Generar con Harris-Benedict</strong> para crear un día tipo con 5 comidas
-        × 3 opciones, calculando los macros objetivo desde el formulario del cliente.
+        Genera la estructura para empezar. <strong>HB</strong> crea 5 comidas × 3 opciones
+        vacías con los macros objetivo. <strong>IA</strong> hace lo mismo y además rellena
+        cada opción con alimentos y cantidades en gramos.
       </p>
-      <button
-        type="button"
-        onClick={onGenerate}
-        className="mt-4 inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-      >
-        <Sparkles size={14} /> Generar con Harris-Benedict
-      </button>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={onGenerateHB}
+          className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-4 py-2 text-sm font-semibold text-text hover:border-primary hover:text-primary"
+        >
+          <Sparkles size={14} /> Generar con HB
+        </button>
+        <button
+          type="button"
+          onClick={onGenerateAI}
+          className="inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+        >
+          <Sparkles size={14} /> Generar con IA
+        </button>
+      </div>
     </div>
   );
 }

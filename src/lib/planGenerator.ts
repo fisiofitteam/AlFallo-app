@@ -4,20 +4,45 @@ import { kcalFromMacros } from "@/lib/nutrition";
 /**
  * Generador de plan nutricional inicial con IA.
  *
- * Toma el perfil del cliente + objetivos de macros y pide a Claude Sonnet
- * que diseñe 2 días (entreno + descanso) con 4-5 comidas y 1-2 items por
- * comida, ajustando los totales a los objetivos.
+ * A diferencia de Harris-Benedict (que solo calcula los objetivos y crea
+ * placeholders), aquí la IA escribe el contenido real de cada opción
+ * con alimentos concretos y cantidades en gramos.
  *
- * Si no hay ANTHROPIC_API_KEY o falla, devuelve un plan plantilla genérico
- * para que el nutricionista no se quede sin nada.
+ * Estructura devuelta: 1 día tipo (entreno) con 5 comidas fijas
+ * (desayuno, media_manana, comida, merienda, cena) y 3 OPCIONES por
+ * comida. Cada opción es un menú completo, sus macros suman lo previsto
+ * para esa comida, y las 3 opciones de una misma comida tienen macros
+ * equivalentes entre sí (para que el atleta elija una).
+ *
+ * El prompt incluye el brief de /biblioteca/brief-ia (filosofía,
+ * alimentos preferidos, equivalencias, ejemplos…). Los PDFs adjuntos
+ * del brief van como content blocks document; Excel/CSV se inyectan
+ * como texto en el system prompt. Eso lo orquesta el caller
+ * (generateWithClaude).
+ *
+ * Si no hay ANTHROPIC_API_KEY o Claude falla, devolvemos un fallback
+ * razonable con 3 opciones por comida para que el nutri no se quede
+ * sin nada.
  */
 
-const MEAL_TYPES = ["desayuno", "media_manana", "pre_wod", "post_wod", "comida", "merienda", "cena", "snack", "otro"] as const;
+const MEAL_NAMES = ["desayuno", "media_manana", "comida", "merienda", "cena"] as const;
+type MealName = (typeof MEAL_NAMES)[number];
+
 const DAY_TYPES = ["entreno", "descanso", "mixto"] as const;
 
-export type GeneratedItem = { text: string; protein: number; carbs: number; fat: number; kcal: number };
-export type GeneratedMeal = { name: (typeof MEAL_TYPES)[number]; items: GeneratedItem[] };
-export type GeneratedDay = { name: string; dayType: (typeof DAY_TYPES)[number]; meals: GeneratedMeal[] };
+export type GeneratedOption = {
+  text: string;
+  protein: number;
+  carbs: number;
+  fat: number;
+  kcal: number;
+};
+export type GeneratedMeal = { name: MealName; options: GeneratedOption[] };
+export type GeneratedDay = {
+  name: string;
+  dayType: (typeof DAY_TYPES)[number];
+  meals: GeneratedMeal[];
+};
 export type GeneratedPlan = { days: GeneratedDay[]; source: "ai" | "fallback"; notes?: string };
 
 export type PlanContext = {
@@ -50,14 +75,13 @@ export type PlanContext = {
 function ageFromBirthDate(d: Date | null): number | null {
   if (!d) return null;
   const diff = Date.now() - d.getTime();
-  const years = diff / (365.25 * 24 * 60 * 60 * 1000);
-  return Math.floor(years);
+  return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
 }
 
 function buildUserPrompt(ctx: PlanContext): string {
   const age = ageFromBirthDate(ctx.birthDate);
   const list = (xs: string[]) => (xs.length ? xs.join(", ") : "—");
-  return `Diseña un plan nutricional INICIAL (2 días: entreno y descanso) para este atleta.
+  return `Diseña UN DÍA TIPO de plan nutricional para este atleta.
 
 CLIENTE
 Nombre: ${ctx.clientName}
@@ -79,30 +103,31 @@ RESTRICCIONES (RESPÉTALAS ESTRICTAMENTE)
 - Condiciones médicas: ${ctx.medicalConditions ?? "—"}
 - Medicación: ${ctx.medication ?? "—"}
 
-OBJETIVOS DIARIOS DE MACROS
-- Día de entreno: ${ctx.kcalTraining ?? "?"} kcal · ${ctx.proteinTraining ?? "?"} g P · ${ctx.carbsTraining ?? "?"} g C · ${ctx.fatTraining ?? "?"} g G
-- Día de descanso: ${ctx.kcalRest ?? ctx.kcalTraining ?? "?"} kcal · ${ctx.proteinRest ?? ctx.proteinTraining ?? "?"} g P · ${ctx.carbsRest ?? ctx.carbsTraining ?? "?"} g C · ${ctx.fatRest ?? ctx.fatTraining ?? "?"} g G
+OBJETIVOS DIARIOS DE MACROS (día de entreno)
+${ctx.kcalTraining ?? "?"} kcal · ${ctx.proteinTraining ?? "?"} g P · ${ctx.carbsTraining ?? "?"} g C · ${ctx.fatTraining ?? "?"} g G
 
 INSTRUCCIONES
-- Crea 2 días: "Día de entreno" (dayType="entreno") y "Día de descanso" (dayType="descanso").
-- Cada día con 4-5 comidas razonables. En el día de entreno incluye un "pre_wod" y un "post_wod".
-- Cada comida con 1-2 items realistas. Los items son descripciones con cantidades en gramos y los macros correspondientes.
-- La SUMA de macros del día debe acercarse a los objetivos (±10%).
-- Adapta la cultura gastronómica a España.
-- VALORES VÁLIDOS para meal.name: ${MEAL_TYPES.join(" | ")}.
-- VALORES VÁLIDOS para day.dayType: ${DAY_TYPES.join(" | ")}.
+- Devuelve EXACTAMENTE 1 día (name "Día tipo", dayType "entreno").
+- 5 comidas en este orden: desayuno, media_manana, comida, merienda, cena.
+- Por cada comida, 3 OPCIONES diferentes pero intercambiables: las 3 deben tener macros SIMILARES entre sí (±10%) para que el atleta elija una.
+- Cada opción es UN MENÚ COMPLETO: alimentos concretos con cantidades en gramos (ej. "120 g pechuga de pollo + 80 g arroz integral + 100 g brócoli + 5 g AOVE").
+- Aplica las equivalencias y porciones del brief para que las cantidades sean coherentes con cómo medimos en el equipo.
+- La suma de la opción 1 de cada comida debe acercarse al objetivo diario (±7%). Lo mismo para opción 2 y opción 3.
+- Adapta a la cultura gastronómica española.
 
-Devuelve SOLO el JSON con esta forma exacta, sin texto adicional ni markdown:
+Devuelve SOLO el JSON con esta forma exacta, sin markdown, sin texto fuera del JSON:
 {
   "days": [
     {
-      "name": "Día de entreno",
+      "name": "Día tipo",
       "dayType": "entreno",
       "meals": [
         {
           "name": "desayuno",
-          "items": [
-            { "text": "200g avena con leche, plátano y nueces", "protein": 25, "carbs": 80, "fat": 15, "kcal": 555 }
+          "options": [
+            { "text": "120 g pechuga de pollo + 80 g arroz integral + 100 g brócoli + 5 g AOVE", "kcal": 480, "protein": 35, "carbs": 50, "fat": 14 },
+            { "text": "...", "kcal": 470, "protein": 32, "carbs": 52, "fat": 14 },
+            { "text": "...", "kcal": 475, "protein": 36, "carbs": 48, "fat": 15 }
           ]
         }
       ]
@@ -112,8 +137,10 @@ Devuelve SOLO el JSON con esta forma exacta, sin texto adicional ni markdown:
 }
 
 const SYSTEM_PROMPT =
-  "Eres una nutricionista deportiva con 10+ años trabajando con atletas de CrossFit y Hyrox. " +
-  "Diseñas planes realistas, adaptados al perfil del atleta y a su cultura gastronómica. " +
+  "Eres nutricionista deportiva del equipo de Al Fallo, trabajando con atletas de CrossFit y Hyrox. " +
+  "Diseñas planes realistas, adaptados al perfil del atleta y a la cultura gastronómica española. " +
+  "Sigues estrictamente el brief del equipo (filosofía, alimentos preferidos/a evitar, equivalencias) " +
+  "que se te facilita en el system prompt junto a las instrucciones base. " +
   "Respondes SIEMPRE en JSON válido con la estructura exacta especificada. " +
   "Sin markdown, sin comentarios, sin texto fuera del JSON.";
 
@@ -125,7 +152,7 @@ function clampPlan(raw: unknown): GeneratedDay[] {
   for (const d of obj.days) {
     if (!d || typeof d !== "object") continue;
     const day = d as Record<string, unknown>;
-    const name = typeof day.name === "string" ? day.name : "Día";
+    const name = typeof day.name === "string" ? day.name : "Día tipo";
     const dayType = (DAY_TYPES as readonly string[]).includes(String(day.dayType))
       ? (day.dayType as (typeof DAY_TYPES)[number])
       : "entreno";
@@ -134,24 +161,31 @@ function clampPlan(raw: unknown): GeneratedDay[] {
       for (const m of day.meals) {
         if (!m || typeof m !== "object") continue;
         const meal = m as Record<string, unknown>;
-        const mname = (MEAL_TYPES as readonly string[]).includes(String(meal.name))
-          ? (meal.name as (typeof MEAL_TYPES)[number])
-          : "otro";
-        const items: GeneratedItem[] = [];
-        if (Array.isArray(meal.items)) {
-          for (const it of meal.items) {
-            if (!it || typeof it !== "object") continue;
-            const item = it as Record<string, unknown>;
-            const text = String(item.text ?? "").slice(0, 200);
-            if (!text.trim()) continue;
-            const protein = Math.max(0, Number(item.protein) || 0);
-            const carbs = Math.max(0, Number(item.carbs) || 0);
-            const fat = Math.max(0, Number(item.fat) || 0);
-            const kcal = Number(item.kcal) > 0 ? Number(item.kcal) : Math.round(kcalFromMacros(protein, carbs, fat));
-            items.push({ text, protein, carbs, fat, kcal: Math.round(kcal) });
-          }
+        const mname = (MEAL_NAMES as readonly string[]).includes(String(meal.name))
+          ? (meal.name as MealName)
+          : null;
+        if (!mname) continue;
+        // Aceptamos "options" (nuevo) o "items" (legacy) por compat.
+        const arr = Array.isArray(meal.options)
+          ? meal.options
+          : Array.isArray(meal.items)
+            ? meal.items
+            : [];
+        const options: GeneratedOption[] = [];
+        for (const opt of arr) {
+          if (!opt || typeof opt !== "object") continue;
+          const o = opt as Record<string, unknown>;
+          const text = String(o.text ?? "").slice(0, 400);
+          if (!text.trim()) continue;
+          const protein = Math.max(0, Number(o.protein) || 0);
+          const carbs = Math.max(0, Number(o.carbs) || 0);
+          const fat = Math.max(0, Number(o.fat) || 0);
+          const kcal =
+            Number(o.kcal) > 0 ? Number(o.kcal) : Math.round(kcalFromMacros(protein, carbs, fat));
+          options.push({ text, protein, carbs, fat, kcal: Math.round(kcal) });
+          if (options.length >= 3) break; // máx 3 por comida
         }
-        if (items.length > 0) meals.push({ name: mname, items });
+        if (options.length > 0) meals.push({ name: mname, options });
       }
     }
     if (meals.length > 0) result.push({ name, dayType, meals });
@@ -159,54 +193,52 @@ function clampPlan(raw: unknown): GeneratedDay[] {
   return result;
 }
 
-/** Plantilla genérica que se usa si no hay API key o falla la IA. */
+/** Plan fallback (sin IA): 1 día con 5 comidas × 3 opciones razonables. */
 function fallbackPlan(): GeneratedDay[] {
   return [
     {
-      name: "Día de entreno",
+      name: "Día tipo",
       dayType: "entreno",
       meals: [
         {
           name: "desayuno",
-          items: [{ text: "80g avena con 250ml leche, 1 plátano y 30g nueces", protein: 22, carbs: 75, fat: 22, kcal: 596 }],
+          options: [
+            { text: "80 g avena + 250 ml leche semi + 1 plátano + 30 g nueces", protein: 22, carbs: 75, fat: 22, kcal: 596 },
+            { text: "3 huevos revueltos + 80 g pan integral + 1/2 aguacate + 20 g lomo embuchado", protein: 30, carbs: 45, fat: 25, kcal: 595 },
+            { text: "150 g yogur natural + 50 g claras + 30 g whey + 50 g copos de avena + 80 g frutos rojos", protein: 45, carbs: 60, fat: 8, kcal: 492 },
+          ],
         },
         {
-          name: "pre_wod",
-          items: [{ text: "1 plátano + 1 puñado de almendras", protein: 4, carbs: 30, fat: 12, kcal: 244 }],
-        },
-        {
-          name: "post_wod",
-          items: [{ text: "Batido: 30g whey + 1 plátano + 250ml leche", protein: 32, carbs: 50, fat: 5, kcal: 373 }],
-        },
-        {
-          name: "comida",
-          items: [{ text: "200g pechuga de pollo + 150g arroz integral + ensalada con AOVE", protein: 50, carbs: 100, fat: 18, kcal: 762 }],
-        },
-        {
-          name: "cena",
-          items: [{ text: "200g salmón al horno + 200g boniato + verduras al vapor", protein: 42, carbs: 50, fat: 25, kcal: 593 }],
-        },
-      ],
-    },
-    {
-      name: "Día de descanso",
-      dayType: "descanso",
-      meals: [
-        {
-          name: "desayuno",
-          items: [{ text: "3 huevos revueltos + 1 tostada integral + aguacate", protein: 22, carbs: 25, fat: 25, kcal: 413 }],
+          name: "media_manana",
+          options: [
+            { text: "1 plátano + 25 g almendras", protein: 6, carbs: 30, fat: 12, kcal: 248 },
+            { text: "150 g queso fresco batido + 15 g miel + 30 g nueces", protein: 18, carbs: 25, fat: 18, kcal: 334 },
+            { text: "2 tortitas de arroz + 20 g crema de cacahuete + 1 manzana", protein: 6, carbs: 40, fat: 12, kcal: 292 },
+          ],
         },
         {
           name: "comida",
-          items: [{ text: "200g pescado blanco + 150g quinoa + verduras salteadas", protein: 42, carbs: 80, fat: 12, kcal: 596 }],
+          options: [
+            { text: "150 g pechuga de pollo + 100 g arroz blanco + 200 g brócoli + 10 g AOVE", protein: 42, carbs: 90, fat: 16, kcal: 720 },
+            { text: "180 g salmón + 200 g patata cocida + ensalada verde + 10 g AOVE", protein: 42, carbs: 80, fat: 22, kcal: 710 },
+            { text: "200 g ternera magra + 100 g pasta integral + verduras al horno + 8 g AOVE", protein: 50, carbs: 80, fat: 18, kcal: 712 },
+          ],
         },
         {
           name: "merienda",
-          items: [{ text: "Yogur griego natural + frutos rojos + 20g almendras", protein: 20, carbs: 25, fat: 14, kcal: 306 }],
+          options: [
+            { text: "200 g yogur griego + 80 g arándanos + 20 g almendras", protein: 18, carbs: 25, fat: 14, kcal: 290 },
+            { text: "1 tortita de avena (50 g) + 20 g crema de cacahuete", protein: 12, carbs: 35, fat: 12, kcal: 280 },
+            { text: "Tostada 60 g pan integral + 80 g pavo + tomate + AOVE", protein: 22, carbs: 35, fat: 10, kcal: 320 },
+          ],
         },
         {
           name: "cena",
-          items: [{ text: "200g pavo a la plancha + ensalada completa + 1 rebanada de pan", protein: 48, carbs: 35, fat: 12, kcal: 440 }],
+          options: [
+            { text: "180 g pescado blanco + 100 g quinoa + verduras salteadas + 8 g AOVE", protein: 40, carbs: 70, fat: 14, kcal: 600 },
+            { text: "150 g pavo + crema de calabaza + 1 huevo cocido + 5 g AOVE", protein: 38, carbs: 35, fat: 18, kcal: 480 },
+            { text: "Tortilla francesa 3 huevos + ensalada + 50 g pan integral + AOVE", protein: 28, carbs: 30, fat: 22, kcal: 460 },
+          ],
         },
       ],
     },
@@ -224,9 +256,6 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
   const { global, goal } = await getBriefForGoal(ctx.goal);
   const briefText = assembleAIBrief(global, goal);
 
-  // Resolvemos los adjuntos en paralelo. Excel/CSV se inyectan como texto
-  // adicional; PDFs van como content blocks de tipo "document" en el
-  // mensaje del usuario (Claude los lee nativamente).
   const attachments = listBriefAttachments(global, goal);
   const resolved = await Promise.all(
     attachments.map(async (a) => ({ doc: a, content: await fetchAttachmentContent(a) })),
@@ -257,14 +286,9 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
     ? `${SYSTEM_PROMPT}\n\n${briefText}${textBlocks.join("")}`
     : `${SYSTEM_PROMPT}${textBlocks.join("")}`;
 
-  // Si hay PDFs, mandamos un message con bloque texto + bloques document;
-  // si no, basta con un string en content.
   const userContent: unknown =
     documentBlocks.length > 0
-      ? [
-          ...documentBlocks,
-          { type: "text", text: buildUserPrompt(ctx) },
-        ]
+      ? [...documentBlocks, { type: "text", text: buildUserPrompt(ctx) }]
       : buildUserPrompt(ctx);
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -276,7 +300,7 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 3000,
+      max_tokens: 4500,
       system: fullSystem,
       messages: [{ role: "user", content: userContent }],
     }),
