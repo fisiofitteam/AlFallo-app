@@ -30,14 +30,24 @@ export function DocAttachment({
   async function handleFile(file: File) {
     setBusy(true);
     setError(null);
+    // Timeout duro de 90s para que el spinner no se quede colgado para siempre
+    // si algo falla silenciosamente en el SDK de Vercel Blob.
+    const timeoutP = new Promise<never>((_, rej) =>
+      setTimeout(() => rej(new Error("Tardó demasiado (90s). Revisa la conexión o los logs de Vercel.")), 90_000),
+    );
     try {
-      const blob = await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: "/api/biblioteca/upload-doc",
-      });
+      const blob = await Promise.race([
+        upload(file.name, file, {
+          access: "public",
+          handleUploadUrl: "/api/biblioteca/upload-doc",
+        }),
+        timeoutP,
+      ]);
       onChange({ url: blob.url, name: file.name });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "No se pudo subir";
+      // eslint-disable-next-line no-console
+      console.error("[DocAttachment] upload failed:", e);
       setError(msg);
     } finally {
       setBusy(false);
