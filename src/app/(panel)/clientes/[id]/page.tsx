@@ -138,14 +138,12 @@ export default async function ClientDetailPage({
       </Link>
 
       <header className="mb-8 flex flex-wrap items-start gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-soft text-xl font-semibold text-primary">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-lg font-bold text-primary">
           {client.fullName.slice(0, 1).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-bold leading-tight tracking-tight md:text-4xl">
-              {client.fullName}
-            </h1>
+            <h1 className="text-2xl font-bold leading-tight md:text-3xl">{client.fullName}</h1>
             <span
               className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider ${statusBadgeClass(
                 client.status,
@@ -161,9 +159,11 @@ export default async function ClientDetailPage({
         </div>
       </header>
 
-      {/* Layout 2 columnas: sidebar de secciones + contenido del tab activo */}
+      {/* Layout 2 columnas: sidebar de secciones + contenido del tab activo.
+          Mismo lenguaje visual que el sidebar global del panel: item activo en
+          'bg-primary-soft text-primary', inactivo en 'text-text/70' con hover. */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[260px_1fr]">
-        <aside className="space-y-1">
+        <aside className="space-y-0.5">
           {SECTIONS.map((s) => {
             const isActive = s.key === active;
             const Icon = s.icon;
@@ -171,20 +171,22 @@ export default async function ClientDetailPage({
               <Link
                 key={s.key}
                 href={`/clientes/${client.id}?tab=${s.key}`}
-                className={`flex items-start gap-3 rounded-xl px-3 py-3 transition ${
+                className={`flex items-start gap-3 rounded-xl px-3 py-2.5 transition ${
                   isActive
-                    ? "bg-text text-bg shadow-sm"
-                    : "text-text hover:bg-bg/50"
+                    ? "bg-primary-soft text-primary"
+                    : "text-text/80 hover:bg-surface-2"
                 }`}
               >
                 <Icon
-                  size={22}
+                  size={20}
                   strokeWidth={1.7}
-                  className={`mt-0.5 flex-shrink-0 ${isActive ? "" : "text-text"}`}
+                  className={`mt-0.5 flex-shrink-0 ${isActive ? "text-primary" : "text-muted"}`}
                 />
                 <div className="min-w-0">
-                  <p className="text-[15px] font-semibold leading-tight">{s.label}</p>
-                  <p className={`mt-0.5 text-xs leading-snug ${isActive ? "text-bg/70" : "text-muted"}`}>
+                  <p className={`text-sm font-semibold leading-tight ${isActive ? "text-primary" : ""}`}>
+                    {s.label}
+                  </p>
+                  <p className={`mt-0.5 text-xs leading-snug ${isActive ? "text-primary/70" : "text-muted"}`}>
                     {s.description}
                   </p>
                 </div>
