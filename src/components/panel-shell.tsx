@@ -35,7 +35,9 @@ export function PanelShell({ professional, children }: Props) {
     !["nuevo", "llamadas-seguimiento"].includes(segs[1]);
 
   if (isClientFocus) {
-    return <div className="min-h-screen bg-bg text-text">{children}</div>;
+    // Aplicamos la clase .shell para que las variables de tema (--c-bg,
+    // --c-border, --c-primary, etc.) estén disponibles para los hijos.
+    return <div className="shell min-h-screen bg-bg text-text">{children}</div>;
   }
 
   return (
