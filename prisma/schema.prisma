@@ -1106,6 +1106,9 @@ model AIPlanBrief {
   avoidFoods      String   @default("")
   equivalences    String   @default("")
   additionalRules String   @default("")
+  // Menús/dietas de ejemplo que la IA usa como plantilla de estilo y
+  // estructura. Texto libre, puede ser un día completo o una semana.
+  examplePlans    String   @default("")
   updatedAt       DateTime @updatedAt
 }
 

@@ -20,6 +20,7 @@ function emptyBrief(scope: BriefScope): BriefShape {
     avoidFoods: "",
     equivalences: "",
     additionalRules: "",
+    examplePlans: "",
   };
 }
 
@@ -36,6 +37,7 @@ export async function getAllBriefs(): Promise<BriefShape[]> {
       avoidFoods: row.avoidFoods,
       equivalences: row.equivalences,
       additionalRules: row.additionalRules,
+      examplePlans: row.examplePlans,
     };
   });
 }
@@ -60,6 +62,7 @@ export async function getBriefForGoal(
           avoidFoods: globalRow.avoidFoods,
           equivalences: globalRow.equivalences,
           additionalRules: globalRow.additionalRules,
+          examplePlans: globalRow.examplePlans,
         }
       : emptyBrief("global"),
     goal: goalRow
@@ -70,6 +73,7 @@ export async function getBriefForGoal(
           avoidFoods: goalRow.avoidFoods,
           equivalences: goalRow.equivalences,
           additionalRules: goalRow.additionalRules,
+          examplePlans: goalRow.examplePlans,
         }
       : null,
   };
@@ -85,6 +89,7 @@ export async function saveBrief(brief: BriefShape): Promise<void> {
       avoidFoods: brief.avoidFoods,
       equivalences: brief.equivalences,
       additionalRules: brief.additionalRules,
+      examplePlans: brief.examplePlans,
     },
     update: {
       philosophy: brief.philosophy,
@@ -92,6 +97,7 @@ export async function saveBrief(brief: BriefShape): Promise<void> {
       avoidFoods: brief.avoidFoods,
       equivalences: brief.equivalences,
       additionalRules: brief.additionalRules,
+      examplePlans: brief.examplePlans,
     },
   });
 }
@@ -106,6 +112,7 @@ export function assembleAIBrief(global: BriefShape, goalSpecific: BriefShape | n
       { tag: "ALIMENTOS A EVITAR", body: brief.avoidFoods },
       { tag: "EQUIVALENCIAS Y PORCIONES", body: brief.equivalences },
       { tag: "REGLAS ADICIONALES", body: brief.additionalRules },
+      { tag: "DIETAS DE EJEMPLO (sirven de plantilla de estilo y estructura, no copies literal)", body: brief.examplePlans },
     ];
     const nonEmpty = blocks.filter((b) => b.body.trim());
     if (nonEmpty.length === 0) return;

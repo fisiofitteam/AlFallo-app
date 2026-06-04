@@ -29,4 +29,5 @@ export type BriefShape = {
   avoidFoods: string;
   equivalences: string;
   additionalRules: string;
+  examplePlans: string;
 };

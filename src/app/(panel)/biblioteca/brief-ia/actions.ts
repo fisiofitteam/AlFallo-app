@@ -29,6 +29,7 @@ export async function saveBriefAction(formData: FormData) {
     avoidFoods: parseStr(formData.get("avoidFoods")) ?? "",
     equivalences: parseStr(formData.get("equivalences")) ?? "",
     additionalRules: parseStr(formData.get("additionalRules")) ?? "",
+    examplePlans: parseStr(formData.get("examplePlans")) ?? "",
   });
   revalidatePath("/biblioteca/brief-ia");
 }

@@ -35,6 +35,7 @@ export function AIBriefEditor({ initial }: { initial: BriefShape[] }) {
     fd.set("avoidFoods", brief.avoidFoods);
     fd.set("equivalences", brief.equivalences);
     fd.set("additionalRules", brief.additionalRules);
+    fd.set("examplePlans", brief.examplePlans);
     startSaving(async () => {
       await saveBriefAction(fd);
       setSavedAt((s) => ({ ...s, [scope]: Date.now() }));
@@ -130,6 +131,13 @@ export function AIBriefEditor({ initial }: { initial: BriefShape[] }) {
             value={current.additionalRules}
             onChange={(v) => patch(active, { additionalRules: v })}
           />
+          <BriefField
+            label="Dietas de ejemplo"
+            hint="Pega aquí menús reales que sirvan de plantilla de estilo y estructura. Puedes pegar un día tipo, una semana entera o varios ejemplos separados por '---'. La IA los usará de referencia, no los copiará literal."
+            value={current.examplePlans}
+            onChange={(v) => patch(active, { examplePlans: v })}
+            rows={14}
+          />
         </div>
       </section>
     </div>
@@ -142,7 +150,8 @@ function isAnyFieldFilled(b: BriefShape): boolean {
       b.preferredFoods.trim() ||
       b.avoidFoods.trim() ||
       b.equivalences.trim() ||
-      b.additionalRules.trim(),
+      b.additionalRules.trim() ||
+      b.examplePlans.trim(),
   );
 }
 
@@ -151,18 +160,20 @@ function BriefField({
   hint,
   value,
   onChange,
+  rows = 5,
 }: {
   label: string;
   hint: string;
   value: string;
   onChange: (v: string) => void;
+  rows?: number;
 }) {
   return (
     <label className="block">
       <span className="block text-sm font-semibold">{label}</span>
       <span className="block text-xs text-muted">{hint}</span>
       <textarea
-        rows={5}
+        rows={rows}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="mt-2 w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
