@@ -30,4 +30,8 @@ export type BriefShape = {
   equivalences: string;
   additionalRules: string;
   examplePlans: string;
+  equivalencesFileUrl: string | null;
+  equivalencesFileName: string | null;
+  examplePlansFileUrl: string | null;
+  examplePlansFileName: string | null;
 };

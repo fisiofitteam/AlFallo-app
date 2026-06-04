@@ -220,11 +220,52 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
   // Inyectamos el brief global + el brief específico del objetivo del cliente
   // (los configura el manager desde /biblioteca/brief-ia).
   const { getBriefForGoal, assembleAIBrief } = await import("@/lib/aiBrief");
+  const { listBriefAttachments, fetchAttachmentContent } = await import("@/lib/briefAttachments");
   const { global, goal } = await getBriefForGoal(ctx.goal);
   const briefText = assembleAIBrief(global, goal);
+
+  // Resolvemos los adjuntos en paralelo. Excel/CSV se inyectan como texto
+  // adicional; PDFs van como content blocks de tipo "document" en el
+  // mensaje del usuario (Claude los lee nativamente).
+  const attachments = listBriefAttachments(global, goal);
+  const resolved = await Promise.all(
+    attachments.map(async (a) => ({ doc: a, content: await fetchAttachmentContent(a) })),
+  );
+
+  const textBlocks: string[] = [];
+  type DocumentBlock = {
+    type: "document";
+    source: { type: "base64"; media_type: "application/pdf"; data: string };
+    title?: string;
+  };
+  const documentBlocks: DocumentBlock[] = [];
+
+  for (const r of resolved) {
+    if (!r.content) continue;
+    if (r.content.kind === "pdf") {
+      documentBlocks.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: r.content.base64 },
+        title: `${r.doc.label} · ${r.doc.name}`,
+      });
+    } else {
+      textBlocks.push(`\n\n[ADJUNTO · ${r.doc.label} · ${r.doc.name}]\n${r.content.text}`);
+    }
+  }
+
   const fullSystem = briefText
-    ? `${SYSTEM_PROMPT}\n\n${briefText}`
-    : SYSTEM_PROMPT;
+    ? `${SYSTEM_PROMPT}\n\n${briefText}${textBlocks.join("")}`
+    : `${SYSTEM_PROMPT}${textBlocks.join("")}`;
+
+  // Si hay PDFs, mandamos un message con bloque texto + bloques document;
+  // si no, basta con un string en content.
+  const userContent: unknown =
+    documentBlocks.length > 0
+      ? [
+          ...documentBlocks,
+          { type: "text", text: buildUserPrompt(ctx) },
+        ]
+      : buildUserPrompt(ctx);
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -237,7 +278,7 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
       model: "claude-sonnet-4-6",
       max_tokens: 3000,
       system: fullSystem,
-      messages: [{ role: "user", content: buildUserPrompt(ctx) }],
+      messages: [{ role: "user", content: userContent }],
     }),
   });
   if (!res.ok) {

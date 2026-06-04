@@ -21,6 +21,10 @@ function emptyBrief(scope: BriefScope): BriefShape {
     equivalences: "",
     additionalRules: "",
     examplePlans: "",
+    equivalencesFileUrl: null,
+    equivalencesFileName: null,
+    examplePlansFileUrl: null,
+    examplePlansFileName: null,
   };
 }
 
@@ -38,6 +42,10 @@ export async function getAllBriefs(): Promise<BriefShape[]> {
       equivalences: row.equivalences,
       additionalRules: row.additionalRules,
       examplePlans: row.examplePlans,
+      equivalencesFileUrl: row.equivalencesFileUrl,
+      equivalencesFileName: row.equivalencesFileName,
+      examplePlansFileUrl: row.examplePlansFileUrl,
+      examplePlansFileName: row.examplePlansFileName,
     };
   });
 }
@@ -63,6 +71,10 @@ export async function getBriefForGoal(
           equivalences: globalRow.equivalences,
           additionalRules: globalRow.additionalRules,
           examplePlans: globalRow.examplePlans,
+          equivalencesFileUrl: globalRow.equivalencesFileUrl,
+          equivalencesFileName: globalRow.equivalencesFileName,
+          examplePlansFileUrl: globalRow.examplePlansFileUrl,
+          examplePlansFileName: globalRow.examplePlansFileName,
         }
       : emptyBrief("global"),
     goal: goalRow
@@ -74,6 +86,10 @@ export async function getBriefForGoal(
           equivalences: goalRow.equivalences,
           additionalRules: goalRow.additionalRules,
           examplePlans: goalRow.examplePlans,
+          equivalencesFileUrl: goalRow.equivalencesFileUrl,
+          equivalencesFileName: goalRow.equivalencesFileName,
+          examplePlansFileUrl: goalRow.examplePlansFileUrl,
+          examplePlansFileName: goalRow.examplePlansFileName,
         }
       : null,
   };
@@ -90,6 +106,10 @@ export async function saveBrief(brief: BriefShape): Promise<void> {
       equivalences: brief.equivalences,
       additionalRules: brief.additionalRules,
       examplePlans: brief.examplePlans,
+      equivalencesFileUrl: brief.equivalencesFileUrl,
+      equivalencesFileName: brief.equivalencesFileName,
+      examplePlansFileUrl: brief.examplePlansFileUrl,
+      examplePlansFileName: brief.examplePlansFileName,
     },
     update: {
       philosophy: brief.philosophy,
@@ -98,6 +118,10 @@ export async function saveBrief(brief: BriefShape): Promise<void> {
       equivalences: brief.equivalences,
       additionalRules: brief.additionalRules,
       examplePlans: brief.examplePlans,
+      equivalencesFileUrl: brief.equivalencesFileUrl,
+      equivalencesFileName: brief.equivalencesFileName,
+      examplePlansFileUrl: brief.examplePlansFileUrl,
+      examplePlansFileName: brief.examplePlansFileName,
     },
   });
 }

@@ -9,6 +9,7 @@ import {
   type BriefShape,
 } from "@/lib/ai-brief-types";
 import { saveBriefAction } from "@/app/(panel)/biblioteca/brief-ia/actions";
+import { DocAttachment } from "@/components/DocAttachment";
 
 type LocalState = Record<BriefScope, BriefShape>;
 
@@ -36,6 +37,10 @@ export function AIBriefEditor({ initial }: { initial: BriefShape[] }) {
     fd.set("equivalences", brief.equivalences);
     fd.set("additionalRules", brief.additionalRules);
     fd.set("examplePlans", brief.examplePlans);
+    if (brief.equivalencesFileUrl) fd.set("equivalencesFileUrl", brief.equivalencesFileUrl);
+    if (brief.equivalencesFileName) fd.set("equivalencesFileName", brief.equivalencesFileName);
+    if (brief.examplePlansFileUrl) fd.set("examplePlansFileUrl", brief.examplePlansFileUrl);
+    if (brief.examplePlansFileName) fd.set("examplePlansFileName", brief.examplePlansFileName);
     startSaving(async () => {
       await saveBriefAction(fd);
       setSavedAt((s) => ({ ...s, [scope]: Date.now() }));
@@ -125,6 +130,18 @@ export function AIBriefEditor({ initial }: { initial: BriefShape[] }) {
             value={current.equivalences}
             onChange={(v) => patch(active, { equivalences: v })}
           />
+          <DocAttachment
+            label="Tabla de equivalencias (PDF, Excel o CSV)"
+            hint="Adjunta tu tabla maestra. La IA la leerá al generar planes para ajustar porciones con precisión."
+            accept=".pdf,.xlsx,.xls,.csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+            value={{ url: current.equivalencesFileUrl, name: current.equivalencesFileName }}
+            onChange={(next) =>
+              patch(active, {
+                equivalencesFileUrl: next.url,
+                equivalencesFileName: next.name,
+              })
+            }
+          />
           <BriefField
             label="Reglas adicionales"
             hint="Todo lo demás: variedad, horarios, suplementación, presupuesto, contexto cultural, idioma…"
@@ -137,6 +154,18 @@ export function AIBriefEditor({ initial }: { initial: BriefShape[] }) {
             value={current.examplePlans}
             onChange={(v) => patch(active, { examplePlans: v })}
             rows={14}
+          />
+          <DocAttachment
+            label="Dietas de ejemplo en PDF"
+            hint="Adjunta planes en PDF de casos reales o referencia. La IA los leerá nativamente."
+            accept=".pdf,application/pdf"
+            value={{ url: current.examplePlansFileUrl, name: current.examplePlansFileName }}
+            onChange={(next) =>
+              patch(active, {
+                examplePlansFileUrl: next.url,
+                examplePlansFileName: next.name,
+              })
+            }
           />
         </div>
       </section>

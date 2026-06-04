@@ -1109,6 +1109,15 @@ model AIPlanBrief {
   // Menús/dietas de ejemplo que la IA usa como plantilla de estilo y
   // estructura. Texto libre, puede ser un día completo o una semana.
   examplePlans    String   @default("")
+
+  // Adjuntos en Vercel Blob (PDF/Excel/CSV) que la IA leerá al generar.
+  // Equivalencias: tabla maestra de porciones/equivalencias.
+  // Ejemplos: dietas reales en PDF que sirven de plantilla.
+  equivalencesFileUrl  String?
+  equivalencesFileName String?
+  examplePlansFileUrl  String?
+  examplePlansFileName String?
+
   updatedAt       DateTime @updatedAt
 }
 

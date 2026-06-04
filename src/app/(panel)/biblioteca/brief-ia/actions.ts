@@ -30,6 +30,10 @@ export async function saveBriefAction(formData: FormData) {
     equivalences: parseStr(formData.get("equivalences")) ?? "",
     additionalRules: parseStr(formData.get("additionalRules")) ?? "",
     examplePlans: parseStr(formData.get("examplePlans")) ?? "",
+    equivalencesFileUrl: parseStr(formData.get("equivalencesFileUrl")),
+    equivalencesFileName: parseStr(formData.get("equivalencesFileName")),
+    examplePlansFileUrl: parseStr(formData.get("examplePlansFileUrl")),
+    examplePlansFileName: parseStr(formData.get("examplePlansFileName")),
   });
   revalidatePath("/biblioteca/brief-ia");
 }
