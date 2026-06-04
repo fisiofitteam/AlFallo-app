@@ -60,6 +60,7 @@ export default async function PlanPage({ params }: { params: { planId: string } 
           carbs: Math.round(it.carbsPer100 * factor * 10) / 10,
           fat: Math.round(it.fatPer100 * factor * 10) / 10,
           selected: it.selected,
+          subType: it.subType ?? null,
         };
       }),
     })),

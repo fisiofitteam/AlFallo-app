@@ -36,7 +36,12 @@ export type GeneratedOption = {
   carbs: number;
   fat: number;
   kcal: number;
+  // Solo presente en comida/cena: subgrupo combinable
+  // (intro|grasas|carbos|proteina|postre). Para otras comidas es null.
+  subType?: string | null;
 };
+
+const COMPOSED_SUBTYPES = ["intro", "grasas", "carbos", "proteina", "postre"] as const;
 export type GeneratedMeal = { name: MealName; options: GeneratedOption[] };
 export type GeneratedDay = {
   name: string;
@@ -109,10 +114,15 @@ ${ctx.kcalTraining ?? "?"} kcal · ${ctx.proteinTraining ?? "?"} g P · ${ctx.ca
 INSTRUCCIONES
 - Devuelve EXACTAMENTE 1 día (name "Día tipo", dayType "entreno").
 - 5 comidas en este orden: desayuno, media_manana, comida, merienda, cena.
-- Por cada comida, 3 OPCIONES diferentes pero intercambiables: las 3 deben tener macros SIMILARES entre sí (±10%) para que el atleta elija una.
-- Cada opción es UN MENÚ COMPLETO: alimentos concretos con cantidades en gramos (ej. "120 g pechuga de pollo + 80 g arroz integral + 100 g brócoli + 5 g AOVE").
+- Para "desayuno", "media_manana" y "merienda": 3 OPCIONES intercambiables; cada opción es UN MENÚ COMPLETO con alimentos y cantidades en gramos. Las 3 opciones con macros similares entre sí (±10%). No uses "subType" en estas.
+- Para "comida" y "cena": en lugar de opciones planas, devuelve opciones agrupadas por "subType" (campo obligatorio) con la siguiente distribución:
+    * intro    → 1 opción  (verduras / ensalada / gazpacho / entrante ligero)
+    * grasas   → 3-4 opciones (cada una un ALIMENTO graso suelto a elegir: hummus, aguacate, queso, frutos secos, AOVE en cantidad…)
+    * carbos   → 4-5 opciones (cada una un ALIMENTO con la ración: 120 g arroz integral cocido, 120 g pasta, 120 g quinoa, 150 g legumbres, 180 g patata…)
+    * proteina → 4-5 opciones (cada una una proteína con la ración: 155 g pollo, 170 g ternera, 200 g pescado azul, 210 g pescado blanco, tofu…)
+    * postre   → 1 opción (fruta de temporada normalmente)
+  El atleta combinará 1 opción de cada subgrupo. Por eso los macros de cada opción dentro de un subgrupo deben ser SIMILARES entre sí (intercambiables), y la SUMA "intro + grasa elegida + carbo elegido + proteína elegida + postre" debe acercarse a las kcal/macros que tocan en esa comida (la comida y la cena suman juntas ~50-55 % del total diario).
 - Aplica las equivalencias y porciones del brief para que las cantidades sean coherentes con cómo medimos en el equipo.
-- La suma de la opción 1 de cada comida debe acercarse al objetivo diario (±7%). Lo mismo para opción 2 y opción 3.
 - Adapta a la cultura gastronómica española.
 
 Devuelve SOLO el JSON con esta forma exacta, sin markdown, sin texto fuera del JSON:
@@ -125,9 +135,22 @@ Devuelve SOLO el JSON con esta forma exacta, sin markdown, sin texto fuera del J
         {
           "name": "desayuno",
           "options": [
-            { "text": "120 g pechuga de pollo + 80 g arroz integral + 100 g brócoli + 5 g AOVE", "kcal": 480, "protein": 35, "carbs": 50, "fat": 14 },
-            { "text": "...", "kcal": 470, "protein": 32, "carbs": 52, "fat": 14 },
-            { "text": "...", "kcal": 475, "protein": 36, "carbs": 48, "fat": 15 }
+            { "text": "120 g avena + 250 ml leche + 30 g whey + 1 plátano", "kcal": 480, "protein": 35, "carbs": 65, "fat": 9 },
+            { "text": "...", "kcal": 470, "protein": 32, "carbs": 60, "fat": 12 },
+            { "text": "...", "kcal": 475, "protein": 36, "carbs": 55, "fat": 11 }
+          ]
+        },
+        {
+          "name": "comida",
+          "options": [
+            { "subType": "intro", "text": "Ensalada variada + 200 ml gazpacho", "kcal": 80, "protein": 3, "carbs": 12, "fat": 2 },
+            { "subType": "grasas", "text": "50 g hummus", "kcal": 89, "protein": 4, "carbs": 7, "fat": 5 },
+            { "subType": "grasas", "text": "100 g aguacate", "kcal": 179, "protein": 2, "carbs": 9, "fat": 15 },
+            { "subType": "carbos", "text": "120 g arroz integral cocido", "kcal": 430, "protein": 8, "carbs": 92, "fat": 3 },
+            { "subType": "carbos", "text": "120 g quinoa cocida", "kcal": 439, "protein": 17, "carbs": 77, "fat": 7 },
+            { "subType": "proteina", "text": "155 g pechuga de pollo", "kcal": 163, "protein": 36, "carbs": 0, "fat": 2 },
+            { "subType": "proteina", "text": "200 g salmón a la plancha", "kcal": 394, "protein": 40, "carbs": 0, "fat": 26 },
+            { "subType": "postre", "text": "1 melocotón (200 g)", "kcal": 80, "protein": 1, "carbs": 19, "fat": 0 }
           ]
         }
       ]
@@ -172,18 +195,27 @@ function clampPlan(raw: unknown): GeneratedDay[] {
             ? meal.items
             : [];
         const options: GeneratedOption[] = [];
+        const isComposed = mname === "comida" || mname === "cena";
+        // Para comida/cena no aplicamos el cap de 3: cada subgrupo aporta varias.
+        // Cap global generoso (24) para evitar respuestas absurdas.
+        const cap = isComposed ? 24 : 3;
         for (const opt of arr) {
           if (!opt || typeof opt !== "object") continue;
           const o = opt as Record<string, unknown>;
           const text = String(o.text ?? "").slice(0, 400);
           if (!text.trim()) continue;
+          const rawSubType = typeof o.subType === "string" ? o.subType : null;
+          const subType =
+            rawSubType && (COMPOSED_SUBTYPES as readonly string[]).includes(rawSubType)
+              ? rawSubType
+              : null;
           const protein = Math.max(0, Number(o.protein) || 0);
           const carbs = Math.max(0, Number(o.carbs) || 0);
           const fat = Math.max(0, Number(o.fat) || 0);
           const kcal =
             Number(o.kcal) > 0 ? Number(o.kcal) : Math.round(kcalFromMacros(protein, carbs, fat));
-          options.push({ text, protein, carbs, fat, kcal: Math.round(kcal) });
-          if (options.length >= 3) break; // máx 3 por comida
+          options.push({ text, protein, carbs, fat, kcal: Math.round(kcal), subType });
+          if (options.length >= cap) break;
         }
         if (options.length > 0) meals.push({ name: mname, options });
       }
@@ -219,9 +251,19 @@ function fallbackPlan(): GeneratedDay[] {
         {
           name: "comida",
           options: [
-            { text: "150 g pechuga de pollo + 100 g arroz blanco + 200 g brócoli + 10 g AOVE", protein: 42, carbs: 90, fat: 16, kcal: 720 },
-            { text: "180 g salmón + 200 g patata cocida + ensalada verde + 10 g AOVE", protein: 42, carbs: 80, fat: 22, kcal: 710 },
-            { text: "200 g ternera magra + 100 g pasta integral + verduras al horno + 8 g AOVE", protein: 50, carbs: 80, fat: 18, kcal: 712 },
+            { subType: "intro", text: "Verduras a la plancha o ensalada variada + 200 ml gazpacho", protein: 3, carbs: 14, fat: 3, kcal: 100 },
+            { subType: "grasas", text: "50 g hummus", protein: 4, carbs: 7, fat: 5, kcal: 89 },
+            { subType: "grasas", text: "100 g aguacate", protein: 2, carbs: 9, fat: 15, kcal: 179 },
+            { subType: "grasas", text: "30 g queso curado", protein: 7, carbs: 0, fat: 10, kcal: 117 },
+            { subType: "carbos", text: "120 g arroz integral cocido", protein: 8, carbs: 92, fat: 3, kcal: 430 },
+            { subType: "carbos", text: "120 g pasta integral cocida", protein: 16, carbs: 78, fat: 3, kcal: 401 },
+            { subType: "carbos", text: "120 g quinoa cocida", protein: 17, carbs: 77, fat: 7, kcal: 439 },
+            { subType: "carbos", text: "150 g legumbres cocidas", protein: 12, carbs: 35, fat: 2, kcal: 220 },
+            { subType: "proteina", text: "155 g pechuga de pollo", protein: 36, carbs: 0, fat: 2, kcal: 164 },
+            { subType: "proteina", text: "170 g ternera magra", protein: 36, carbs: 0, fat: 5, kcal: 189 },
+            { subType: "proteina", text: "210 g pescado blanco", protein: 36, carbs: 0, fat: 2, kcal: 162 },
+            { subType: "proteina", text: "200 g salmón a la plancha", protein: 40, carbs: 0, fat: 26, kcal: 394 },
+            { subType: "postre", text: "1 manzana mediana (200 g)", protein: 1, carbs: 22, fat: 0, kcal: 96 },
           ],
         },
         {
@@ -235,9 +277,18 @@ function fallbackPlan(): GeneratedDay[] {
         {
           name: "cena",
           options: [
-            { text: "180 g pescado blanco + 100 g quinoa + verduras salteadas + 8 g AOVE", protein: 40, carbs: 70, fat: 14, kcal: 600 },
-            { text: "150 g pavo + crema de calabaza + 1 huevo cocido + 5 g AOVE", protein: 38, carbs: 35, fat: 18, kcal: 480 },
-            { text: "Tortilla francesa 3 huevos + ensalada + 50 g pan integral + AOVE", protein: 28, carbs: 30, fat: 22, kcal: 460 },
+            { subType: "intro", text: "Crema de calabacín o verduras al vapor", protein: 4, carbs: 12, fat: 2, kcal: 80 },
+            { subType: "grasas", text: "10 g AOVE en la ensalada", protein: 0, carbs: 0, fat: 10, kcal: 90 },
+            { subType: "grasas", text: "1/2 aguacate (75 g)", protein: 2, carbs: 7, fat: 11, kcal: 134 },
+            { subType: "grasas", text: "20 g frutos secos", protein: 4, carbs: 4, fat: 11, kcal: 124 },
+            { subType: "carbos", text: "80 g pan integral", protein: 7, carbs: 40, fat: 2, kcal: 200 },
+            { subType: "carbos", text: "150 g patata cocida", protein: 3, carbs: 30, fat: 0, kcal: 130 },
+            { subType: "carbos", text: "100 g arroz basmati cocido", protein: 3, carbs: 28, fat: 1, kcal: 130 },
+            { subType: "proteina", text: "180 g pescado blanco", protein: 32, carbs: 0, fat: 2, kcal: 140 },
+            { subType: "proteina", text: "150 g pavo", protein: 32, carbs: 0, fat: 3, kcal: 155 },
+            { subType: "proteina", text: "3 huevos (170 g) en tortilla", protein: 22, carbs: 1, fat: 16, kcal: 240 },
+            { subType: "proteina", text: "150 g tofu firme", protein: 15, carbs: 3, fat: 9, kcal: 145 },
+            { subType: "postre", text: "1 yogur natural sin azúcar (125 g)", protein: 5, carbs: 6, fat: 3, kcal: 65 },
           ],
         },
       ],

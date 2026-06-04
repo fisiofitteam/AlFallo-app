@@ -12,6 +12,7 @@ import {
   generatePlanFromHB,
   generatePlanFromAI,
   toggleItemSelected,
+  selectExclusiveOption,
   updateOptionMacros,
   updateOptionText,
   addDay,
@@ -30,7 +31,21 @@ export type PlanBuilderOption = {
   carbs: number;
   fat: number;
   selected: boolean;
+  /** Solo en comida/cena: intro|grasas|carbos|proteina|postre. */
+  subType: string | null;
 };
+
+const SUB_GROUPS: { value: string; label: string }[] = [
+  { value: "intro", label: "INTRO" },
+  { value: "grasas", label: "GRASAS" },
+  { value: "carbos", label: "CARBOS" },
+  { value: "proteina", label: "PROTEÍNA" },
+  { value: "postre", label: "POSTRE" },
+];
+
+function isComposedMeal(name: string): boolean {
+  return name === "comida" || name === "cena";
+}
 
 export type PlanBuilderMeal = {
   id: string;
@@ -499,16 +514,25 @@ function MealCard({
     { kcal: 0, protein: 0, carbs: 0, fat: 0 },
   );
 
-  function addOption() {
+  function addOption(subType?: string) {
     const fd = new FormData();
     fd.set("planId", planId);
     fd.set("mealId", meal.id);
+    if (subType) fd.set("subType", subType);
     startAdding(async () => {
       await addOptionToMeal(fd);
       // Recargamos para hidratar la nueva opción con su id real.
       window.location.reload();
     });
   }
+
+  const composed = isComposedMeal(meal.name);
+  // Para comida/cena el contador top muestra la suma "comida completa": 1
+  // opción seleccionada por subgrupo. Para simples, también la suma de
+  // selected (que normalmente será una sola en las comidas planas).
+  const headerLabel = `${Math.round(selectedMacros.kcal)} kcal · P ${Math.round(
+    selectedMacros.protein,
+  )} · G ${Math.round(selectedMacros.fat)} · C ${Math.round(selectedMacros.carbs)}`;
 
   return (
     <article className="overflow-hidden rounded-2xl border border-border bg-surface">
@@ -518,24 +542,23 @@ function MealCard({
             <ChevronDown size={16} className="text-muted transition group-open:rotate-180" />
             <span className="text-lg">{mealEmoji(meal.name)}</span>
             <span className="font-semibold">{mealLabel(meal.name)}</span>
-            <span className="text-xs text-muted">
-              {Math.round(selectedMacros.kcal)} kcal · P {Math.round(selectedMacros.protein)} ·
-              {" "}G {Math.round(selectedMacros.fat)} · C {Math.round(selectedMacros.carbs)}
-            </span>
+            <span className="text-xs text-muted">{headerLabel}</span>
           </div>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                addOption();
-              }}
-              disabled={addingPending}
-              className="rounded-md p-1 text-muted hover:bg-bg hover:text-primary disabled:opacity-50"
-              title="Añadir opción"
-            >
-              {addingPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-            </button>
+            {!composed ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  addOption();
+                }}
+                disabled={addingPending}
+                className="rounded-md p-1 text-muted hover:bg-bg hover:text-primary disabled:opacity-50"
+                title="Añadir opción"
+              >
+                {addingPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              </button>
+            ) : null}
             <form action={deleteMeal}>
               <input type="hidden" name="planId" value={planId} />
               <input type="hidden" name="mealId" value={meal.id} />
@@ -554,23 +577,137 @@ function MealCard({
           </div>
         </summary>
 
-        <div className="divide-y divide-border">
-          {meal.options.map((opt, i) => (
-            <OptionRow
-              key={opt.id}
-              option={opt}
-              index={i}
-              planId={planId}
-              onPatch={(patch) => onPatch(opt.id, patch)}
-              onDelete={() => onRemoveOption(opt.id)}
-            />
-          ))}
-          {meal.options.length === 0 ? (
-            <p className="px-5 py-4 text-sm italic text-muted">Sin opciones. Pulsa "+" arriba.</p>
-          ) : null}
-        </div>
+        {composed ? (
+          <ComposedBody
+            meal={meal}
+            planId={planId}
+            adding={addingPending}
+            onPatch={onPatch}
+            onRemoveOption={onRemoveOption}
+            onAdd={(sub) => addOption(sub)}
+          />
+        ) : (
+          <SimpleBody
+            meal={meal}
+            planId={planId}
+            onPatch={onPatch}
+            onRemoveOption={onRemoveOption}
+          />
+        )}
       </details>
     </article>
+  );
+}
+
+function SimpleBody({
+  meal,
+  planId,
+  onPatch,
+  onRemoveOption,
+}: {
+  meal: PlanBuilderMeal;
+  planId: string;
+  onPatch: (optionId: string, patch: Partial<PlanBuilderOption>) => void;
+  onRemoveOption: (optionId: string) => void;
+}) {
+  return (
+    <div className="divide-y divide-border">
+      {meal.options.map((opt, i) => (
+        <OptionRow
+          key={opt.id}
+          option={opt}
+          index={i}
+          planId={planId}
+          exclusiveInGroup={false}
+          onPatch={(patch) => onPatch(opt.id, patch)}
+          onDelete={() => onRemoveOption(opt.id)}
+          onSelectExclusive={() => undefined}
+        />
+      ))}
+      {meal.options.length === 0 ? (
+        <p className="px-5 py-4 text-sm italic text-muted">Sin opciones. Pulsa "+" arriba.</p>
+      ) : null}
+    </div>
+  );
+}
+
+function ComposedBody({
+  meal,
+  planId,
+  adding,
+  onPatch,
+  onRemoveOption,
+  onAdd,
+}: {
+  meal: PlanBuilderMeal;
+  planId: string;
+  adding: boolean;
+  onPatch: (optionId: string, patch: Partial<PlanBuilderOption>) => void;
+  onRemoveOption: (optionId: string) => void;
+  onAdd: (subType: string) => void;
+}) {
+  // Selección exclusiva por subgrupo: marca esta y deselecciona hermanas.
+  function handleExclusive(optionId: string, subType: string) {
+    const opt = meal.options.find((o) => o.id === optionId);
+    if (!opt) return;
+    if (opt.selected) {
+      // ya estaba seleccionada → toggle a false
+      onPatch(optionId, { selected: false });
+    } else {
+      for (const sib of meal.options) {
+        if (sib.subType === subType && sib.id !== optionId && sib.selected) {
+          onPatch(sib.id, { selected: false });
+        }
+      }
+      onPatch(optionId, { selected: true });
+    }
+  }
+
+  return (
+    <div className="space-y-5 px-5 py-4">
+      {SUB_GROUPS.map((g) => {
+        const items = meal.options
+          .filter((o) => o.subType === g.value)
+          .sort((a, b) => a.kcal - b.kcal);
+        return (
+          <div key={g.value}>
+            <header className="mb-2 flex items-center justify-between">
+              <p className="border-l-2 border-primary pl-2 text-xs font-bold uppercase tracking-wider text-primary">
+                {g.label}
+              </p>
+              <button
+                type="button"
+                onClick={() => onAdd(g.value)}
+                disabled={adding}
+                title="Añadir opción"
+                className="rounded-md p-1 text-muted hover:bg-bg hover:text-primary disabled:opacity-50"
+              >
+                {adding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+              </button>
+            </header>
+            {items.length === 0 ? (
+              <p className="text-xs italic text-muted/70">Sin opciones aún.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {items.map((opt, i) => (
+                  <OptionRow
+                    key={opt.id}
+                    option={opt}
+                    index={i}
+                    planId={planId}
+                    exclusiveInGroup
+                    compact
+                    onPatch={(patch) => onPatch(opt.id, patch)}
+                    onDelete={() => onRemoveOption(opt.id)}
+                    onSelectExclusive={() => handleExclusive(opt.id, g.value)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -580,14 +717,20 @@ function OptionRow({
   option,
   index,
   planId,
+  exclusiveInGroup,
+  compact = false,
   onPatch,
   onDelete,
+  onSelectExclusive,
 }: {
   option: PlanBuilderOption;
   index: number;
   planId: string;
+  exclusiveInGroup: boolean;
+  compact?: boolean;
   onPatch: (patch: Partial<PlanBuilderOption>) => void;
   onDelete: () => void;
+  onSelectExclusive: () => void;
 }) {
   const [savingPending, startSaving] = useTransition();
   const textTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -625,13 +768,24 @@ function OptionRow({
   }
 
   function toggleSelected() {
-    onPatch({ selected: !option.selected });
-    const fd = new FormData();
-    fd.set("planId", planId);
-    fd.set("itemId", option.id);
-    startSaving(async () => {
-      await toggleItemSelected(fd);
-    });
+    if (exclusiveInGroup) {
+      // Optimismo local lo hace el padre vía onSelectExclusive (afecta a hermanas).
+      onSelectExclusive();
+      const fd = new FormData();
+      fd.set("planId", planId);
+      fd.set("itemId", option.id);
+      startSaving(async () => {
+        await selectExclusiveOption(fd);
+      });
+    } else {
+      onPatch({ selected: !option.selected });
+      const fd = new FormData();
+      fd.set("planId", planId);
+      fd.set("itemId", option.id);
+      startSaving(async () => {
+        await toggleItemSelected(fd);
+      });
+    }
   }
 
   function remove() {
@@ -643,6 +797,50 @@ function OptionRow({
     startSaving(async () => {
       await deleteItem(fd);
     });
+  }
+
+  if (compact) {
+    return (
+      <div
+        className={`rounded-lg border p-2 transition ${
+          option.selected ? "border-primary bg-primary-soft/40" : "border-border bg-bg/40"
+        }`}
+      >
+        <div className="mb-1 flex items-center gap-1.5">
+          <label className="flex shrink-0 cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={option.selected}
+              onChange={toggleSelected}
+              className="h-3.5 w-3.5 cursor-pointer rounded border-border text-primary focus:ring-primary"
+            />
+            <span className="text-xs font-semibold text-primary">Opción {index + 1}</span>
+          </label>
+          <button
+            type="button"
+            onClick={remove}
+            title="Borrar opción"
+            className="ml-auto rounded-md p-1 text-muted hover:bg-surface hover:text-red-600"
+          >
+            <Trash2 size={11} />
+          </button>
+          {savingPending ? <Loader2 size={10} className="animate-spin text-muted" /> : null}
+        </div>
+        <div className="mb-1.5 grid grid-cols-4 gap-1 text-[10px]">
+          <CompactMacro label="Kcal" value={option.kcal} onChange={(v) => saveMacrosDebounced({ kcal: v })} />
+          <CompactMacro label="Prot" value={option.protein} onChange={(v) => saveMacrosDebounced({ protein: v })} />
+          <CompactMacro label="Gra" value={option.fat} onChange={(v) => saveMacrosDebounced({ fat: v })} />
+          <CompactMacro label="Carb" value={option.carbs} onChange={(v) => saveMacrosDebounced({ carbs: v })} />
+        </div>
+        <textarea
+          rows={2}
+          value={option.text}
+          onChange={(e) => saveTextDebounced(e.target.value)}
+          placeholder="Alimento + cantidad (ej. 150 g pollo)"
+          className="w-full resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-xs outline-none focus:border-primary"
+        />
+      </div>
+    );
   }
 
   return (
@@ -698,6 +896,30 @@ function OptionRow({
         className="w-full resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
       />
     </div>
+  );
+}
+
+function CompactMacro({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <label className="flex flex-col">
+      <span className="text-[9px] text-muted">{label}</span>
+      <input
+        type="number"
+        value={Math.round(value * 10) / 10}
+        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        step="0.5"
+        min="0"
+        className="w-full rounded border border-border bg-bg px-1 py-0.5 text-right text-xs text-text outline-none focus:border-primary"
+      />
+    </label>
   );
 }
 

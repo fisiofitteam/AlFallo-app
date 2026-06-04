@@ -227,8 +227,19 @@ export async function generatePlanFromAI(formData: FormData) {
       const newMeal = await prisma.meal.create({
         data: { planDayId: newDay.id, name: m.name, order: mi },
       });
+      // Para comida/cena hay subgrupos (intro/grasas/carbos/proteina/postre):
+      // marcamos como "selected" la primera opción DE CADA subgrupo. Para
+      // otras comidas, solo la primera opción.
+      const seenSubTypes = new Set<string>();
       for (let oi = 0; oi < m.options.length; oi++) {
         const o = m.options[oi];
+        const sub = o.subType ?? null;
+        const key = sub ?? "__nosub__";
+        const isFirstOfGroup = !seenSubTypes.has(key);
+        seenSubTypes.add(key);
+        const selected = sub
+          ? isFirstOfGroup
+          : oi === 0;
         await prisma.mealItem.create({
           data: {
             mealId: newMeal.id,
@@ -239,7 +250,8 @@ export async function generatePlanFromAI(formData: FormData) {
             proteinPer100: o.protein,
             carbsPer100: o.carbs,
             fatPer100: o.fat,
-            selected: oi === 0,
+            subType: sub,
+            selected,
             order: oi,
           },
         });
@@ -367,15 +379,19 @@ export async function deleteItem(formData: FormData) {
 
 // ── Builder nuevo (3 opciones por comida) ───────────────────────────────
 
-// Añade una opción vacía (freestyle, sin alimento) a una comida.
-// La convención: foodId=null, quantityG=100 y los kcalPer100/...Per100
-// contienen los totales reales de la opción. selected=false.
+// Añade una opción vacía (freestyle, sin alimento) a una comida. Si la comida
+// usa subgrupos (comida/cena → intro/grasas/carbos/proteina/postre), `subType`
+// puede venir en formData para colocarla en el subgrupo correcto.
+// Convención: foodId=null, quantityG=100, *Per100 = totales.
 export async function addOptionToMeal(formData: FormData) {
   const prof = await requireAccess();
   const planId = String(formData.get("planId"));
   await loadPlanForEdit(planId, prof);
   const mealId = String(formData.get("mealId"));
-  const count = await prisma.mealItem.count({ where: { mealId } });
+  const subType = parseStr(formData.get("subType"));
+  const count = await prisma.mealItem.count({
+    where: { mealId, subType: subType ?? null },
+  });
   await prisma.mealItem.create({
     data: {
       mealId,
@@ -387,9 +403,39 @@ export async function addOptionToMeal(formData: FormData) {
       carbsPer100: 0,
       fatPer100: 0,
       selected: false,
+      subType: subType ?? null,
       order: count,
     },
   });
+  revalidatePath(`/planes/${planId}`);
+}
+
+// Selección exclusiva dentro del subgrupo: marca esta opción como elegida y
+// deselecciona el resto de opciones del mismo subType en la misma comida.
+// Si ya estaba seleccionada, la desactiva (toggle limpio para volver al "nada
+// elegido en este subgrupo").
+export async function selectExclusiveOption(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  const itemId = String(formData.get("itemId"));
+  const item = await prisma.mealItem.findUnique({
+    where: { id: itemId },
+    select: { mealId: true, subType: true, selected: true },
+  });
+  if (!item) return;
+
+  if (item.selected) {
+    await prisma.mealItem.update({ where: { id: itemId }, data: { selected: false } });
+  } else {
+    await prisma.$transaction([
+      prisma.mealItem.updateMany({
+        where: { mealId: item.mealId, subType: item.subType, NOT: { id: itemId } },
+        data: { selected: false },
+      }),
+      prisma.mealItem.update({ where: { id: itemId }, data: { selected: true } }),
+    ]);
+  }
   revalidatePath(`/planes/${planId}`);
 }
 
@@ -507,31 +553,66 @@ export async function generatePlanFromHB(formData: FormData) {
     { name: "cena", order: 4 },
   ];
 
+  // Subgrupos por defecto para comida/cena (orden y nº de opciones placeholder).
+  const COMPOSED_GROUPS: { subType: string; count: number }[] = [
+    { subType: "intro", count: 1 },
+    { subType: "grasas", count: 3 },
+    { subType: "carbos", count: 3 },
+    { subType: "proteina", count: 3 },
+    { subType: "postre", count: 1 },
+  ];
+
   for (const m of MEAL_TEMPLATES) {
     const meal = await prisma.meal.create({
       data: { planDayId: day.id, name: m.name, order: m.order },
     });
-    // 3 opciones vacías; sugerimos kcal/macros distribuidos por comida si
-    // hay targets, para que el nutri tenga una pista visual.
-    const splitKcal = targets ? Math.round(targets.kcal / 5) : 0;
-    const splitProt = targets ? Math.round(targets.protein / 5) : 0;
-    const splitCarb = targets ? Math.round(targets.carbs / 5) : 0;
-    const splitFat = targets ? Math.round(targets.fat / 5) : 0;
-    for (let i = 0; i < 3; i++) {
-      await prisma.mealItem.create({
-        data: {
-          mealId: meal.id,
-          foodId: null,
-          nameSnapshot: "",
-          quantityG: 100,
-          kcalPer100: splitKcal,
-          proteinPer100: splitProt,
-          carbsPer100: splitCarb,
-          fatPer100: splitFat,
-          selected: i === 0, // primera opción marcada por defecto
-          order: i,
-        },
-      });
+    const isComposed = m.name === "comida" || m.name === "cena";
+
+    if (isComposed) {
+      // 11 opciones repartidas por subgrupo, sin macros sugeridas (cada
+      // alimento aporta solo su parte; sumarlas equivaldría a la comida).
+      let order = 0;
+      for (const g of COMPOSED_GROUPS) {
+        for (let i = 0; i < g.count; i++) {
+          await prisma.mealItem.create({
+            data: {
+              mealId: meal.id,
+              foodId: null,
+              nameSnapshot: "",
+              quantityG: 100,
+              kcalPer100: 0,
+              proteinPer100: 0,
+              carbsPer100: 0,
+              fatPer100: 0,
+              subType: g.subType,
+              selected: i === 0, // primera de cada subgrupo
+              order: order++,
+            },
+          });
+        }
+      }
+    } else {
+      // 3 opciones planas como hasta ahora, con pista de macros (1/5 del total).
+      const splitKcal = targets ? Math.round(targets.kcal / 5) : 0;
+      const splitProt = targets ? Math.round(targets.protein / 5) : 0;
+      const splitCarb = targets ? Math.round(targets.carbs / 5) : 0;
+      const splitFat = targets ? Math.round(targets.fat / 5) : 0;
+      for (let i = 0; i < 3; i++) {
+        await prisma.mealItem.create({
+          data: {
+            mealId: meal.id,
+            foodId: null,
+            nameSnapshot: "",
+            quantityG: 100,
+            kcalPer100: splitKcal,
+            proteinPer100: splitProt,
+            carbsPer100: splitCarb,
+            fatPer100: splitFat,
+            selected: i === 0,
+            order: i,
+          },
+        });
+      }
     }
   }
 
