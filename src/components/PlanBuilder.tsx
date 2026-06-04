@@ -195,8 +195,8 @@ export function PlanBuilder({
 
   return (
     <div className={embedded ? "" : "mx-auto max-w-6xl"}>
-      {/* Cabecera (la ocultamos cuando estamos embebidos: la ficha del cliente
-          ya muestra back link + nombre, y el plan picker rendea el título). */}
+      {/* Cabecera standalone (en /planes/[id]). Embebido en la ficha del
+          cliente la cabecera ya la pone la ficha + PlanPicker. */}
       {!embedded ? (
         <>
           <Link
@@ -219,17 +219,7 @@ export function PlanBuilder({
             />
           </header>
         </>
-      ) : (
-        // Embebido: solo los botones de generación, alineados a la derecha.
-        <div className="mb-4 flex justify-end">
-          <PlanGenerationButtons
-            onHB={generateHB}
-            onAI={generateAI}
-            busyHB={generating}
-            busyAI={generatingAI}
-          />
-        </div>
-      )}
+      ) : null}
 
       {/* Resumen macros del día activo */}
       <SummaryCard targets={initialTargets} actual={actual} />

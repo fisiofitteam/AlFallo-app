@@ -2,16 +2,25 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, Plus, Check, X, Loader2 } from "lucide-react";
-import { createPlan, deletePlan, renamePlan } from "@/app/(panel)/planes/actions";
+import { Pencil, Trash2, Plus, Check, X, Loader2, Sparkles } from "lucide-react";
+import {
+  createPlan,
+  deletePlan,
+  renamePlan,
+  generatePlanFromAI,
+  generatePlanFromHB,
+} from "@/app/(panel)/planes/actions";
 
 export type PlanPickerItem = { id: string; name: string };
 
 /**
- * Selector compacto del plan activo dentro de la pestaña del cliente.
- * Permite cambiar de plan (dropdown), renombrar inline (lápiz), borrar
- * (papelera) y crear uno nuevo (+ Añadir plan). La navegación entre planes
- * se hace por URL (?planId=...).
+ * Barra superior de la pestaña Plan dentro de la ficha del cliente.
+ * Se compone de:
+ *   - Selector de plan + renombrar + borrar + crear nuevo (fila 1)
+ *   - Botones de generación HB / IA (fila 2)
+ * La generación se hace contra el plan seleccionado actualmente. Tras
+ * completarse, recargamos la página para que el builder embebido vuelva a
+ * hidratarse con la estructura nueva.
  */
 export function PlanPicker({
   clientId,
@@ -26,16 +35,51 @@ export function PlanPicker({
   const [, startNav] = useTransition();
   const [renaming, setRenaming] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [genBusyHB, startGenHB] = useTransition();
+  const [genBusyAI, startGenAI] = useTransition();
+
+  const selected = plans.find((p) => p.id === selectedPlanId) ?? plans[0] ?? null;
 
   function go(planId: string) {
     startNav(() => router.push(`/clientes/${clientId}?tab=plan&planId=${planId}`));
   }
 
-  const selected = plans.find((p) => p.id === selectedPlanId) ?? plans[0] ?? null;
+  function generateHB() {
+    if (!selected) return;
+    if (
+      !confirm(
+        "Esto borra los días/comidas actuales del plan y crea una estructura nueva con Harris-Benedict. ¿Seguro?",
+      )
+    )
+      return;
+    const fd = new FormData();
+    fd.set("planId", selected.id);
+    startGenHB(async () => {
+      await generatePlanFromHB(fd);
+      window.location.reload();
+    });
+  }
+
+  function generateAI() {
+    if (!selected) return;
+    if (
+      !confirm(
+        "Esto borra el plan actual y pide a la IA que escriba 5 comidas × 3 opciones con alimentos y gramos. Puede tardar 10-20 s. ¿Seguro?",
+      )
+    )
+      return;
+    const fd = new FormData();
+    fd.set("planId", selected.id);
+    startGenAI(async () => {
+      await generatePlanFromAI(fd);
+      window.location.reload();
+    });
+  }
 
   return (
-    <div className="mb-5 rounded-2xl border border-border bg-surface p-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <section className="mb-6 overflow-hidden rounded-2xl border border-border bg-surface">
+      {/* Fila 1: selector + acciones del plan */}
+      <div className="flex flex-wrap items-center gap-2 px-5 py-4">
         <span className="text-sm font-medium text-muted">Plan:</span>
 
         {renaming && selected ? (
@@ -100,13 +144,7 @@ export function PlanPicker({
 
         <div className="ml-auto">
           {adding ? (
-            <NewPlanInline
-              clientId={clientId}
-              onDone={(newId) => {
-                setAdding(false);
-                if (newId) go(newId);
-              }}
-            />
+            <NewPlanInline clientId={clientId} onDone={() => setAdding(false)} />
           ) : (
             <button
               type="button"
@@ -118,7 +156,39 @@ export function PlanPicker({
           )}
         </div>
       </div>
-    </div>
+
+      {/* Fila 2: generación HB / IA */}
+      {selected ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-bg/40 px-5 py-3">
+          <p className="text-xs text-muted">
+            <span className="font-medium text-text">HB</span> recalcula objetivos y crea un esqueleto vacío ·{" "}
+            <span className="font-medium text-text">IA</span> hace lo mismo y además rellena cada opción con alimentos y gramos.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={generateHB}
+              disabled={genBusyHB || genBusyAI}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-semibold text-text shadow-sm transition hover:border-primary hover:text-primary disabled:opacity-60"
+            >
+              {genBusyHB ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              Generar con HB
+            </button>
+            <button
+              type="button"
+              onClick={generateAI}
+              disabled={genBusyHB || genBusyAI}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
+              style={{ backgroundColor: "var(--c-primary)" }}
+              title="HB para objetivos + Claude para escribir cada opción con alimentos y gramos"
+            >
+              {genBusyAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              Generar con IA
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -159,7 +229,8 @@ function RenameInline({
         type="submit"
         disabled={pending}
         title="Guardar"
-        className="rounded-md bg-primary p-1.5 text-white hover:opacity-90 disabled:opacity-50"
+        className="rounded-md p-1.5 text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+        style={{ backgroundColor: "var(--c-primary)" }}
       >
         {pending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
       </button>
@@ -180,7 +251,7 @@ function NewPlanInline({
   onDone,
 }: {
   clientId: string;
-  onDone: (newId?: string) => void;
+  onDone: () => void;
 }) {
   const [pending, start] = useTransition();
   return (
@@ -192,11 +263,7 @@ function NewPlanInline({
           return;
         }
         start(async () => {
-          // createPlan redirige a /planes/<id>; usamos navegación manual
-          // tras invocar para volver a la ficha del cliente con el nuevo plan.
-          // Como ambos casos son aceptables, dejamos que el redirect haga su
-          // trabajo y la página se recarga; al volver, se elegirá el nuevo
-          // plan por defecto (es el más reciente).
+          // createPlan redirige a /clientes/<id>?tab=plan&planId=<new>
           await createPlan(fd);
         });
       }}
@@ -214,13 +281,14 @@ function NewPlanInline({
         type="submit"
         disabled={pending}
         title="Crear"
-        className="rounded-md bg-primary p-1.5 text-white hover:opacity-90 disabled:opacity-50"
+        className="rounded-md p-1.5 text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+        style={{ backgroundColor: "var(--c-primary)" }}
       >
         {pending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
       </button>
       <button
         type="button"
-        onClick={() => onDone()}
+        onClick={onDone}
         title="Cancelar"
         className="rounded-md p-1.5 text-muted hover:bg-bg"
       >
