@@ -92,6 +92,7 @@ export function PlanBuilder({
   planName,
   initialDays,
   initialTargets,
+  embedded = false,
 }: {
   planId: string;
   clientName: string;
@@ -99,6 +100,9 @@ export function PlanBuilder({
   planName: string;
   initialDays: PlanBuilderDay[];
   initialTargets: PlanBuilderTargets;
+  /** Si está embebido dentro de la ficha del cliente, ocultamos back-link y
+   *  subtitulo (redundantes con la cabecera del cliente que ya los muestra). */
+  embedded?: boolean;
 }) {
   const [days, setDays] = useState<PlanBuilderDay[]>(initialDays);
   const [activeDayId, setActiveDayId] = useState<string | null>(
@@ -190,42 +194,42 @@ export function PlanBuilder({
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
-      {/* Cabecera */}
-      <Link
-        href={`/clientes/${clientId}?tab=plan`}
-        className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-text"
-      >
-        <ArrowLeft size={14} /> Volver a la ficha de {clientName.split(" ")[0]}
-      </Link>
+    <div className={embedded ? "" : "mx-auto max-w-6xl"}>
+      {/* Cabecera (la ocultamos cuando estamos embebidos: la ficha del cliente
+          ya muestra back link + nombre, y el plan picker rendea el título). */}
+      {!embedded ? (
+        <>
+          <Link
+            href={`/clientes/${clientId}?tab=plan`}
+            className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-text"
+          >
+            <ArrowLeft size={14} /> Volver a la ficha de {clientName.split(" ")[0]}
+          </Link>
 
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold md:text-3xl">{planName}</h1>
-          <p className="text-sm text-muted">Plan nutricional · {clientName}</p>
+          <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold md:text-3xl">{planName}</h1>
+              <p className="text-sm text-muted">Plan nutricional · {clientName}</p>
+            </div>
+            <PlanGenerationButtons
+              onHB={generateHB}
+              onAI={generateAI}
+              busyHB={generating}
+              busyAI={generatingAI}
+            />
+          </header>
+        </>
+      ) : (
+        // Embebido: solo los botones de generación, alineados a la derecha.
+        <div className="mb-4 flex justify-end">
+          <PlanGenerationButtons
+            onHB={generateHB}
+            onAI={generateAI}
+            busyHB={generating}
+            busyAI={generatingAI}
+          />
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={generateHB}
-            disabled={generating || generatingAI}
-            className="flex items-center gap-1.5 rounded-lg border border-border bg-bg px-4 py-2 text-sm font-semibold text-text shadow-sm hover:border-primary hover:text-primary disabled:opacity-60"
-          >
-            {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            Generar con HB
-          </button>
-          <button
-            type="button"
-            onClick={generateAI}
-            disabled={generating || generatingAI}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
-            title="HB para objetivos + Claude para escribir cada opción con alimentos y gramos"
-          >
-            {generatingAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            Generar con IA
-          </button>
-        </div>
-      </header>
+      )}
 
       {/* Resumen macros del día activo */}
       <SummaryCard targets={initialTargets} actual={actual} />
@@ -287,6 +291,44 @@ export function PlanBuilder({
           </form>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+// ── Botones de generación (HB + IA) ──────────────────────────────────────
+
+function PlanGenerationButtons({
+  onHB,
+  onAI,
+  busyHB,
+  busyAI,
+}: {
+  onHB: () => void;
+  onAI: () => void;
+  busyHB: boolean;
+  busyAI: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={onHB}
+        disabled={busyHB || busyAI}
+        className="flex items-center gap-1.5 rounded-lg border border-border bg-bg px-4 py-2 text-sm font-semibold text-text shadow-sm hover:border-primary hover:text-primary disabled:opacity-60"
+      >
+        {busyHB ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+        Generar con HB
+      </button>
+      <button
+        type="button"
+        onClick={onAI}
+        disabled={busyHB || busyAI}
+        className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
+        title="HB para objetivos + Claude para escribir cada opción con alimentos y gramos"
+      >
+        {busyAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+        Generar con IA
+      </button>
     </div>
   );
 }

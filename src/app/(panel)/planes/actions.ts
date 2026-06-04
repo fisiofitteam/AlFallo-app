@@ -42,7 +42,9 @@ export async function createPlan(formData: FormData) {
     },
   });
 
-  redirect(`/planes/${plan.id}`);
+  // El builder se ve embebido dentro de la ficha del cliente; tras crear,
+  // aterrizamos en la pestaña Plan con el nuevo plan seleccionado.
+  redirect(`/clientes/${clientId}?tab=plan&planId=${plan.id}`);
 }
 
 export async function deletePlan(formData: FormData) {

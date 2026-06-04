@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  ArrowLeft, ChevronRight, Plus,
+  ArrowLeft, Plus,
   UtensilsCrossed, ClipboardList, Target,
   TrendingUp, NotebookPen, KeyRound, Settings,
   type LucideIcon,
@@ -23,6 +23,9 @@ import { CheckInsTab } from "./checkins-tab";
 import { EvolucionTab } from "./evolucion-tab";
 import { reassignNutritionist, setClientPassword, updateClientStatus } from "../actions";
 import { createPlan } from "../../planes/actions";
+import { PlanBuilder } from "@/components/PlanBuilder";
+import { PlanPicker } from "@/components/PlanPicker";
+import { loadPlanForBuilder } from "@/lib/loadPlanData";
 
 function shortDate(d: Date): string {
   return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
@@ -51,7 +54,7 @@ export default async function ClientDetailPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { tab?: string };
+  searchParams: { tab?: string; planId?: string };
 }) {
   const prof = await requireProfessional();
   if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/");
@@ -77,6 +80,18 @@ export default async function ClientDetailPage({
 
   const manager = isManagerRole(prof.role);
   const active = parseSection(searchParams.tab);
+
+  // Si estamos en la pestaña Plan, resolvemos el plan a mostrar:
+  // ?planId=X (si pertenece al cliente) o el más reciente. Cargamos su
+  // estructura completa con el helper compartido.
+  let activePlanData: Awaited<ReturnType<typeof loadPlanForBuilder>> = null;
+  if (active === "plan" && client.plans.length > 0) {
+    const requested = searchParams.planId
+      ? client.plans.find((p) => p.id === searchParams.planId)
+      : null;
+    const chosen = requested ?? client.plans[0]; // plans vienen ordenados desc por createdAt
+    activePlanData = await loadPlanForBuilder(chosen.id);
+  }
 
   const nutritionists = manager
     ? await prisma.professional.findMany({
@@ -160,15 +175,30 @@ export default async function ClientDetailPage({
 
         <section>
           {active === "plan" ? (
-            <PlanSection
-              clientId={client.id}
-              plans={client.plans.map((p) => ({
-                id: p.id,
-                name: p.name,
-                goal: p.goal,
-                daysCount: p._count.days,
-              }))}
-            />
+            client.plans.length === 0 ? (
+              <PlanEmptyState clientId={client.id} />
+            ) : activePlanData ? (
+              <>
+                <PlanPicker
+                  clientId={client.id}
+                  plans={client.plans.map((p) => ({ id: p.id, name: p.name }))}
+                  selectedPlanId={activePlanData.plan.id}
+                />
+                <PlanBuilder
+                  embedded
+                  planId={activePlanData.plan.id}
+                  clientId={activePlanData.plan.clientId}
+                  clientName={activePlanData.plan.client.fullName}
+                  planName={activePlanData.plan.name}
+                  initialDays={activePlanData.days}
+                  initialTargets={activePlanData.targets}
+                />
+              </>
+            ) : (
+              <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
+                No se pudo cargar el plan seleccionado.
+              </p>
+            )
           ) : active === "ficha" ? (
             <FichaForm clientId={client.id} profile={client.profile} />
           ) : active === "macros" ? (
@@ -201,35 +231,9 @@ export default async function ClientDetailPage({
 
 // ── Sub-componentes inline para mantener el archivo manejable ───────────
 
-function PlanSection({
-  clientId,
-  plans,
-}: {
-  clientId: string;
-  plans: { id: string; name: string; goal: string | null; daysCount: number }[];
-}) {
+function PlanEmptyState({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-4">
-      {plans.length > 0 && (
-        <ul className="space-y-2">
-          {plans.map((plan) => (
-            <li key={plan.id}>
-              <Link
-                href={`/planes/${plan.id}`}
-                className="flex items-center justify-between rounded-2xl border border-border bg-surface p-4 transition hover:border-primary"
-              >
-                <span>
-                  <span className="font-semibold">{plan.name}</span>
-                  {plan.goal && <span className="block text-sm text-muted">{plan.goal}</span>}
-                  <span className="text-xs text-muted">{plan.daysCount} día(s)</span>
-                </span>
-                <ChevronRight size={18} className="text-muted" />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-
       <form
         action={createPlan}
         className="flex flex-wrap items-end gap-2 rounded-2xl border border-dashed border-border p-4"
@@ -239,14 +243,12 @@ function PlanSection({
           <TextInput name="name" placeholder="Nombre del plan (ej. Definición 12 semanas)" required />
         </div>
         <button className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition hover:opacity-90">
-          <Plus size={16} /> Crear plan
+          <Plus size={16} /> Crear primer plan
         </button>
       </form>
-      {plans.length === 0 && (
-        <p className="text-center text-sm text-muted">
-          Aún no hay planes. Crea el primero arriba; dentro tendrás "Generar con HB" y "Generar con IA".
-        </p>
-      )}
+      <p className="text-center text-sm text-muted">
+        Cuando crees el plan podrás generarlo con Harris-Benedict o con IA directamente desde aquí.
+      </p>
     </div>
   );
 }
