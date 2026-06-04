@@ -25,6 +25,19 @@ export function PanelShell({ professional, children }: Props) {
   const items = navForRole(professional.role);
   const roleLabel = ROLE_LABELS[professional.role as Role] ?? professional.role;
 
+  // Modo "focus" para la ficha de un cliente: ocultamos el sidebar global
+  // para que la pantalla quede dedicada al cliente. La nav se sustituye por
+  // la sidebar interna de la ficha; el back-link permite volver al listado.
+  const segs = (pathname ?? "").split("/").filter(Boolean);
+  const isClientFocus =
+    segs.length === 2 &&
+    segs[0] === "clientes" &&
+    !["nuevo", "llamadas-seguimiento"].includes(segs[1]);
+
+  if (isClientFocus) {
+    return <div className="min-h-screen bg-bg text-text">{children}</div>;
+  }
+
   return (
     <div className="shell min-h-screen bg-bg text-text">
       {/* Cabecera móvil */}
