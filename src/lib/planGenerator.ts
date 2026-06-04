@@ -217,6 +217,15 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("No ANTHROPIC_API_KEY");
 
+  // Inyectamos el brief global + el brief específico del objetivo del cliente
+  // (los configura el manager desde /biblioteca/brief-ia).
+  const { getBriefForGoal, assembleAIBrief } = await import("@/lib/aiBrief");
+  const { global, goal } = await getBriefForGoal(ctx.goal);
+  const briefText = assembleAIBrief(global, goal);
+  const fullSystem = briefText
+    ? `${SYSTEM_PROMPT}\n\n${briefText}`
+    : SYSTEM_PROMPT;
+
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -227,7 +236,7 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
       max_tokens: 3000,
-      system: SYSTEM_PROMPT,
+      system: fullSystem,
       messages: [{ role: "user", content: buildUserPrompt(ctx) }],
     }),
   });

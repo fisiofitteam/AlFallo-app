@@ -1095,6 +1095,20 @@ model Recipe {
   @@index([mealType])
 }
 
+// Brief para el generador de planes con IA. Hay una "global" (siempre se
+// inyecta) más una por cada goal del cliente (perdida_grasa, recomposicion,
+// ganancia_masa, rendimiento, definicion). Al generar un plan, se concatenan
+// la global + la del objetivo del cliente en el system prompt.
+model AIPlanBrief {
+  scope           String   @id // "global" | goal id
+  philosophy      String   @default("")
+  preferredFoods  String   @default("")
+  avoidFoods      String   @default("")
+  equivalences    String   @default("")
+  additionalRules String   @default("")
+  updatedAt       DateTime @updatedAt
+}
+
 // Plantilla configurable del formulario de onboarding del atleta. Singleton.
 // Las secciones y campos viven como JSON para poder añadir preguntas custom
 // y reordenar sin migraciones. Editable desde /biblioteca/onboarding.
