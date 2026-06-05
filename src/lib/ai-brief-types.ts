@@ -22,6 +22,8 @@ export const BRIEF_SCOPE_LABELS: Record<BriefScope, string> = {
   definicion: "Definición pre-competición",
 };
 
+export type BriefAttachment = { url: string; name: string };
+
 export type BriefShape = {
   scope: BriefScope;
   philosophy: string;
@@ -30,8 +32,8 @@ export type BriefShape = {
   equivalences: string;
   additionalRules: string;
   examplePlans: string;
-  equivalencesFileUrl: string | null;
-  equivalencesFileName: string | null;
-  examplePlansFileUrl: string | null;
-  examplePlansFileName: string | null;
+  /** Lista de adjuntos PDF/Excel/CSV con la tabla de equivalencias. */
+  equivalencesAttachments: BriefAttachment[];
+  /** Lista de adjuntos PDF/Excel/CSV con dietas de ejemplo. */
+  examplePlansAttachments: BriefAttachment[];
 };

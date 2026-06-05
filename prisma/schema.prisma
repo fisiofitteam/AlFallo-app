@@ -1113,10 +1113,18 @@ model AIPlanBrief {
   // Adjuntos en Vercel Blob (PDF/Excel/CSV) que la IA leerá al generar.
   // Equivalencias: tabla maestra de porciones/equivalencias.
   // Ejemplos: dietas reales en PDF que sirven de plantilla.
+  //
+  // Los campos *FileUrl/*FileName son LEGACY (1 archivo). Se mantienen
+  // para no perder los adjuntos previos; al leer la config se mergean
+  // automáticamente al inicio del array nuevo *Attachments.
   equivalencesFileUrl  String?
   equivalencesFileName String?
   examplePlansFileUrl  String?
   examplePlansFileName String?
+
+  // Nuevos: arrays con N adjuntos cada uno: [{ url, name }].
+  equivalencesAttachments Json?
+  examplePlansAttachments Json?
 
   updatedAt       DateTime @updatedAt
 }

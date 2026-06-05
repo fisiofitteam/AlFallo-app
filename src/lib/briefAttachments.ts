@@ -77,21 +77,29 @@ export async function fetchAttachmentContent(
   return null;
 }
 
-/** Construye la lista de adjuntos efectivos a partir de los briefs cargados. */
+type BriefAttachmentsHolder = {
+  equivalencesAttachments: { url: string; name: string }[];
+  examplePlansAttachments: { url: string; name: string }[];
+};
+
+/** Construye la lista de adjuntos efectivos a partir de los briefs cargados.
+ *  Cada brief (global + el del objetivo) aporta N adjuntos en cada sección. */
 export function listBriefAttachments(
-  global: { equivalencesFileUrl: string | null; equivalencesFileName: string | null; examplePlansFileUrl: string | null; examplePlansFileName: string | null },
-  goalSpecific: { equivalencesFileUrl: string | null; equivalencesFileName: string | null; examplePlansFileUrl: string | null; examplePlansFileName: string | null } | null,
+  global: BriefAttachmentsHolder,
+  goalSpecific: BriefAttachmentsHolder | null,
 ): AttachedDoc[] {
   const out: AttachedDoc[] = [];
-  function maybeAdd(label: string, url: string | null, name: string | null) {
-    if (!url || !name) return;
-    out.push({ label, name, url, kind: attachmentKind(name) });
+  function add(prefix: string, list: { url: string; name: string }[]) {
+    for (const f of list) {
+      if (!f?.url || !f?.name) continue;
+      out.push({ label: prefix, name: f.name, url: f.url, kind: attachmentKind(f.name) });
+    }
   }
-  maybeAdd("Equivalencias (global)", global.equivalencesFileUrl, global.equivalencesFileName);
-  maybeAdd("Dietas de ejemplo (global)", global.examplePlansFileUrl, global.examplePlansFileName);
+  add("Equivalencias (global)", global.equivalencesAttachments ?? []);
+  add("Dietas de ejemplo (global)", global.examplePlansAttachments ?? []);
   if (goalSpecific) {
-    maybeAdd("Equivalencias (objetivo)", goalSpecific.equivalencesFileUrl, goalSpecific.equivalencesFileName);
-    maybeAdd("Dietas de ejemplo (objetivo)", goalSpecific.examplePlansFileUrl, goalSpecific.examplePlansFileName);
+    add("Equivalencias (objetivo)", goalSpecific.equivalencesAttachments ?? []);
+    add("Dietas de ejemplo (objetivo)", goalSpecific.examplePlansAttachments ?? []);
   }
   return out;
 }

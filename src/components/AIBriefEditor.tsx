@@ -9,7 +9,7 @@ import {
   type BriefShape,
 } from "@/lib/ai-brief-types";
 import { saveBriefAction } from "@/app/(panel)/biblioteca/brief-ia/actions";
-import { DocAttachment } from "@/components/DocAttachment";
+import { DocAttachmentList } from "@/components/DocAttachmentList";
 
 type LocalState = Record<BriefScope, BriefShape>;
 
@@ -37,10 +37,9 @@ export function AIBriefEditor({ initial }: { initial: BriefShape[] }) {
     fd.set("equivalences", brief.equivalences);
     fd.set("additionalRules", brief.additionalRules);
     fd.set("examplePlans", brief.examplePlans);
-    if (brief.equivalencesFileUrl) fd.set("equivalencesFileUrl", brief.equivalencesFileUrl);
-    if (brief.equivalencesFileName) fd.set("equivalencesFileName", brief.equivalencesFileName);
-    if (brief.examplePlansFileUrl) fd.set("examplePlansFileUrl", brief.examplePlansFileUrl);
-    if (brief.examplePlansFileName) fd.set("examplePlansFileName", brief.examplePlansFileName);
+    // Las listas viajan como JSON serializado en un solo campo cada una.
+    fd.set("equivalencesAttachments", JSON.stringify(brief.equivalencesAttachments));
+    fd.set("examplePlansAttachments", JSON.stringify(brief.examplePlansAttachments));
     startSaving(async () => {
       await saveBriefAction(fd);
       setSavedAt((s) => ({ ...s, [scope]: Date.now() }));
@@ -130,17 +129,12 @@ export function AIBriefEditor({ initial }: { initial: BriefShape[] }) {
             value={current.equivalences}
             onChange={(v) => patch(active, { equivalences: v })}
           />
-          <DocAttachment
+          <DocAttachmentList
             label="Tabla de equivalencias (PDF, Excel o CSV)"
-            hint="Adjunta tu tabla maestra. La IA la leerá al generar planes para ajustar porciones con precisión."
+            hint="Adjunta tu tabla(s) maestra(s). Puedes subir varios archivos. La IA los leerá al generar planes."
             accept=".pdf,.xlsx,.xls,.csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-            value={{ url: current.equivalencesFileUrl, name: current.equivalencesFileName }}
-            onChange={(next) =>
-              patch(active, {
-                equivalencesFileUrl: next.url,
-                equivalencesFileName: next.name,
-              })
-            }
+            value={current.equivalencesAttachments}
+            onChange={(next) => patch(active, { equivalencesAttachments: next })}
           />
           <BriefField
             label="Reglas adicionales"
@@ -155,17 +149,12 @@ export function AIBriefEditor({ initial }: { initial: BriefShape[] }) {
             onChange={(v) => patch(active, { examplePlans: v })}
             rows={14}
           />
-          <DocAttachment
+          <DocAttachmentList
             label="Dietas de ejemplo en PDF"
-            hint="Adjunta planes en PDF de casos reales o referencia. La IA los leerá nativamente."
+            hint="Adjunta planes en PDF de casos reales o referencia. Puedes subir varios. Claude los leerá nativamente."
             accept=".pdf,application/pdf"
-            value={{ url: current.examplePlansFileUrl, name: current.examplePlansFileName }}
-            onChange={(next) =>
-              patch(active, {
-                examplePlansFileUrl: next.url,
-                examplePlansFileName: next.name,
-              })
-            }
+            value={current.examplePlansAttachments}
+            onChange={(next) => patch(active, { examplePlansAttachments: next })}
           />
         </div>
       </section>
@@ -180,7 +169,9 @@ function isAnyFieldFilled(b: BriefShape): boolean {
       b.avoidFoods.trim() ||
       b.equivalences.trim() ||
       b.additionalRules.trim() ||
-      b.examplePlans.trim(),
+      b.examplePlans.trim() ||
+      b.equivalencesAttachments.length > 0 ||
+      b.examplePlansAttachments.length > 0,
   );
 }
 
