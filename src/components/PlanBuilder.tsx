@@ -9,12 +9,12 @@ import {
 import {
   addOptionToMeal,
   deleteItem,
-  generatePlanFromHB,
   generatePlanFromAI,
   toggleItemSelected,
   selectExclusiveOption,
   updateOptionMacros,
   updateOptionText,
+  updateOptionTextAndEstimate,
   addDay,
   deleteDay,
   setDayType,
@@ -108,7 +108,6 @@ export function PlanBuilder({
   const [activeDayId, setActiveDayId] = useState<string | null>(
     initialDays[0]?.id ?? null,
   );
-  const [generating, startGenerating] = useTransition();
   const [generatingAI, startGeneratingAI] = useTransition();
 
   const activeDay = days.find((d) => d.id === activeDayId) ?? days[0] ?? null;
@@ -172,19 +171,13 @@ export function PlanBuilder({
     );
   }
 
-  function generateHB() {
-    if (!confirm("Esto borra los días/comidas actuales del plan y crea una estructura nueva con Harris-Benedict. ¿Seguro?")) return;
-    const fd = new FormData();
-    fd.set("planId", planId);
-    startGenerating(async () => {
-      await generatePlanFromHB(fd);
-      // Tras generar, recargamos la página para hidratar con los nuevos datos.
-      window.location.reload();
-    });
-  }
-
   function generateAI() {
-    if (!confirm("Esto borra el plan actual y pide a la IA que escriba 5 comidas × 3 opciones con alimentos y gramos. Puede tardar 10-20 s. ¿Seguro?")) return;
+    if (
+      !confirm(
+        "Esto borra el plan actual y genera uno nuevo: Harris-Benedict recalcula los macros objetivo del cliente y la IA escribe cada opción con alimentos y gramos. Puede tardar 10-20 s. ¿Seguro?",
+      )
+    )
+      return;
     const fd = new FormData();
     fd.set("planId", planId);
     startGeneratingAI(async () => {
@@ -211,12 +204,7 @@ export function PlanBuilder({
               <h1 className="text-2xl font-bold md:text-3xl">{planName}</h1>
               <p className="text-sm text-muted">Plan nutricional · {clientName}</p>
             </div>
-            <PlanGenerationButtons
-              onHB={generateHB}
-              onAI={generateAI}
-              busyHB={generating}
-              busyAI={generatingAI}
-            />
+            <PlanGenerationButtons onAI={generateAI} busyAI={generatingAI} />
           </header>
         </>
       ) : null}
@@ -243,7 +231,7 @@ export function PlanBuilder({
       ) : null}
 
       {!activeDay ? (
-        <EmptyPlan onGenerateHB={generateHB} onGenerateAI={generateAI} planId={planId} />
+        <EmptyPlan onGenerate={generateAI} planId={planId} />
       ) : (
         <DayPanel
           day={activeDay}
@@ -288,38 +276,26 @@ export function PlanBuilder({
 // ── Botones de generación (HB + IA) ──────────────────────────────────────
 
 function PlanGenerationButtons({
-  onHB,
   onAI,
-  busyHB,
   busyAI,
 }: {
-  onHB: () => void;
   onAI: () => void;
-  busyHB: boolean;
   busyAI: boolean;
 }) {
+  // Boton unico: por dentro hace HB (recalcula objetivos) + IA (rellena
+  // opciones con alimentos y gramos).
   return (
-    <div className="flex flex-wrap gap-2">
-      <button
-        type="button"
-        onClick={onHB}
-        disabled={busyHB || busyAI}
-        className="flex items-center gap-1.5 rounded-lg border border-border bg-bg px-4 py-2 text-sm font-semibold text-text shadow-sm hover:border-primary hover:text-primary disabled:opacity-60"
-      >
-        {busyHB ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-        Generar con HB
-      </button>
-      <button
-        type="button"
-        onClick={onAI}
-        disabled={busyHB || busyAI}
-        className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-60"
-        title="HB para objetivos + Claude para escribir cada opción con alimentos y gramos"
-      >
-        {busyAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-        Generar con IA
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={onAI}
+      disabled={busyAI}
+      className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md hover:opacity-90 disabled:opacity-60"
+      style={{ backgroundColor: "var(--c-primary)" }}
+      title="Harris-Benedict para objetivos + Claude para escribir cada opción con alimentos y gramos"
+    >
+      {busyAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+      Generar plan
+    </button>
   );
 }
 
@@ -403,12 +379,10 @@ function SummaryCard({
 // ── Estado vacío del plan ────────────────────────────────────────────────
 
 function EmptyPlan({
-  onGenerateHB,
-  onGenerateAI,
+  onGenerate,
   planId,
 }: {
-  onGenerateHB: () => void;
-  onGenerateAI: () => void;
+  onGenerate: () => void;
   planId: string;
 }) {
   return (
@@ -416,24 +390,18 @@ function EmptyPlan({
       <FileText size={28} className="mx-auto text-muted" />
       <p className="mt-3 font-medium">Este plan está vacío</p>
       <p className="mt-1 text-sm text-muted">
-        Genera la estructura para empezar. <strong>HB</strong> crea 5 comidas × 3 opciones
-        vacías con los macros objetivo. <strong>IA</strong> hace lo mismo y además rellena
-        cada opción con alimentos y cantidades en gramos.
+        Pulsa <strong>Generar plan</strong> para crear un día con 5 comidas × 3 opciones rellenas
+        con alimentos y gramos. Internamente: Harris-Benedict calcula los macros objetivo del
+        cliente y la IA escribe cada opción siguiendo el brief.
       </p>
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+      <div className="mt-4 flex justify-center">
         <button
           type="button"
-          onClick={onGenerateHB}
-          className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-4 py-2 text-sm font-semibold text-text hover:border-primary hover:text-primary"
+          onClick={onGenerate}
+          className="inline-flex items-center gap-1 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md hover:opacity-90"
+          style={{ backgroundColor: "var(--c-primary)" }}
         >
-          <Sparkles size={14} /> Generar con HB
-        </button>
-        <button
-          type="button"
-          onClick={onGenerateAI}
-          className="inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-        >
-          <Sparkles size={14} /> Generar con IA
+          <Sparkles size={14} /> Generar plan
         </button>
       </div>
     </div>
@@ -771,15 +739,42 @@ function OptionRow({
   function saveTextDebounced(value: string) {
     onPatch({ text: value });
     if (textTimer.current) clearTimeout(textTimer.current);
+    // Debounce 1.5 s: si el texto pinta algo serio (>= 3 chars), reestimamos
+    // macros con IA y los pintamos. Si el campo está prácticamente vacío,
+    // guardamos solo el texto sin recalcular (para no llamar a la IA con
+    // textos sin sentido).
     textTimer.current = setTimeout(() => {
-      const fd = new FormData();
-      fd.set("planId", planId);
-      fd.set("itemId", option.id);
-      fd.set("text", value);
+      const trimmed = value.trim();
+      if (trimmed.length < 3) {
+        const fd = new FormData();
+        fd.set("planId", planId);
+        fd.set("itemId", option.id);
+        fd.set("text", value);
+        startSaving(async () => {
+          await updateOptionText(fd);
+        });
+        return;
+      }
       startSaving(async () => {
-        await updateOptionText(fd);
+        try {
+          const next = await updateOptionTextAndEstimate(planId, option.id, value);
+          // Aplicamos los macros estimados al estado local del builder.
+          onPatch({
+            kcal: next.kcal,
+            protein: next.protein,
+            carbs: next.carbs,
+            fat: next.fat,
+          });
+        } catch {
+          // Si fallara, persistimos al menos el texto.
+          const fd = new FormData();
+          fd.set("planId", planId);
+          fd.set("itemId", option.id);
+          fd.set("text", value);
+          await updateOptionText(fd);
+        }
       });
-    }, 600);
+    }, 1500);
   }
 
   function saveMacrosDebounced(patch: Partial<PlanBuilderOption>) {

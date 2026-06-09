@@ -457,6 +457,41 @@ export async function updateOptionText(formData: FormData) {
   // ya tiene el estado local correcto.
 }
 
+// Edita el texto Y re-estima sus macros con IA en una sola operación. Se
+// llama desde la UI cuando el nutri modifica el texto de una opción:
+// el cliente debounce ~1.5 s y luego dispara esta acción. Devuelve los
+// macros estimados para que la UI actualice los inputs sin recargar.
+export async function updateOptionTextAndEstimate(
+  planId: string,
+  itemId: string,
+  text: string,
+): Promise<{ kcal: number; protein: number; carbs: number; fat: number; source: "ai" | "fallback" }> {
+  const prof = await requireAccess();
+  await loadPlanForEdit(planId, prof);
+  const trimmed = text.slice(0, 1000);
+  const { estimateMacros } = await import("@/lib/macroEstimator");
+  const macros = await estimateMacros(trimmed);
+  await prisma.mealItem.update({
+    where: { id: itemId },
+    data: {
+      nameSnapshot: trimmed,
+      // Convención freestyle: quantityG=100, *Per100 = totales.
+      quantityG: 100,
+      kcalPer100: macros.kcal,
+      proteinPer100: macros.protein,
+      carbsPer100: macros.carbs,
+      fatPer100: macros.fat,
+    },
+  });
+  return {
+    kcal: macros.kcal,
+    protein: macros.protein,
+    carbs: macros.carbs,
+    fat: macros.fat,
+    source: macros.source,
+  };
+}
+
 // Edita los 4 macros (totales) de una opción. Autosave desde la UI.
 export async function updateOptionMacros(formData: FormData) {
   const prof = await requireAccess();

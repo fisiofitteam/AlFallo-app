@@ -8,7 +8,6 @@ import {
   deletePlan,
   renamePlan,
   generatePlanFromAI,
-  generatePlanFromHB,
 } from "@/app/(panel)/planes/actions";
 
 export type PlanPickerItem = { id: string; name: string };
@@ -35,8 +34,7 @@ export function PlanPicker({
   const [, startNav] = useTransition();
   const [renaming, setRenaming] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [genBusyHB, startGenHB] = useTransition();
-  const [genBusyAI, startGenAI] = useTransition();
+  const [genBusy, startGen] = useTransition();
 
   const selected = plans.find((p) => p.id === selectedPlanId) ?? plans[0] ?? null;
 
@@ -44,33 +42,20 @@ export function PlanPicker({
     startNav(() => router.push(`/clientes/${clientId}?tab=plan&planId=${planId}`));
   }
 
-  function generateHB() {
+  // Generación unificada: por dentro recalcula objetivos con Harris-Benedict
+  // y después pide a la IA que rellene 5 comidas × 3 opciones con alimentos
+  // y gramos. El nutri solo decide UN momento: lo genero o no.
+  function generatePlan() {
     if (!selected) return;
     if (
       !confirm(
-        "Esto borra los días/comidas actuales del plan y crea una estructura nueva con Harris-Benedict. ¿Seguro?",
+        "Esto borra el plan actual y genera uno nuevo: Harris-Benedict recalcula los macros objetivo del cliente y la IA escribe 5 comidas × 3 opciones con alimentos y gramos. Puede tardar 10-20 s. ¿Seguro?",
       )
     )
       return;
     const fd = new FormData();
     fd.set("planId", selected.id);
-    startGenHB(async () => {
-      await generatePlanFromHB(fd);
-      window.location.reload();
-    });
-  }
-
-  function generateAI() {
-    if (!selected) return;
-    if (
-      !confirm(
-        "Esto borra el plan actual y pide a la IA que escriba 5 comidas × 3 opciones con alimentos y gramos. Puede tardar 10-20 s. ¿Seguro?",
-      )
-    )
-      return;
-    const fd = new FormData();
-    fd.set("planId", selected.id);
-    startGenAI(async () => {
+    startGen(async () => {
       await generatePlanFromAI(fd);
       window.location.reload();
     });
@@ -157,35 +142,25 @@ export function PlanPicker({
         </div>
       </div>
 
-      {/* Fila 2: generación HB / IA */}
+      {/* Fila 2: generación combinada (HB + IA en un solo clic) */}
       {selected ? (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-bg/40 px-5 py-3">
           <p className="text-xs text-muted">
-            <span className="font-medium text-text">HB</span> recalcula objetivos y crea un esqueleto vacío ·{" "}
-            <span className="font-medium text-text">IA</span> hace lo mismo y además rellena cada opción con alimentos y gramos.
+            <span className="font-medium text-text">Harris-Benedict</span> recalcula los macros objetivo del
+            cliente y la <span className="font-medium text-text">IA</span> escribe cada opción con alimentos
+            y gramos.
           </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={generateHB}
-              disabled={genBusyHB || genBusyAI}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-semibold text-text shadow-sm transition hover:border-primary hover:text-primary disabled:opacity-60"
-            >
-              {genBusyHB ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-              Generar con HB
-            </button>
-            <button
-              type="button"
-              onClick={generateAI}
-              disabled={genBusyHB || genBusyAI}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
-              style={{ backgroundColor: "var(--c-primary)" }}
-              title="HB para objetivos + Claude para escribir cada opción con alimentos y gramos"
-            >
-              {genBusyAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-              Generar con IA
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={generatePlan}
+            disabled={genBusy}
+            className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
+            style={{ backgroundColor: "var(--c-primary)" }}
+            title="Harris-Benedict para objetivos + Claude para escribir cada opción con alimentos y gramos"
+          >
+            {genBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            Generar plan
+          </button>
         </div>
       ) : null}
     </section>
