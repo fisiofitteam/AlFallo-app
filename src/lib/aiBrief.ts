@@ -159,16 +159,23 @@ export async function saveBrief(brief: BriefShape): Promise<void> {
 export function assembleAIBrief(global: BriefShape, goalSpecific: BriefShape | null): string {
   const parts: string[] = [];
 
-  function appendBlock(brief: BriefShape, label: string) {
-    const blocks: { tag: string; body: string }[] = [
+  function appendBlock(brief: BriefShape, label: string, kind: "global" | "goal") {
+    // Por decisión producto:
+    //  - El brief GLOBAL no lleva "Dietas de ejemplo" (las dietas viven en
+    //    cada objetivo específico).
+    //  - Los briefs de OBJETIVO no llevan "Equivalencias" (las equivalencias
+    //    viven en el global y son comunes).
+    const allBlocks: { tag: string; body: string; only?: "global" | "goal" }[] = [
       { tag: "FILOSOFÍA NUTRICIONAL", body: brief.philosophy },
       { tag: "ALIMENTOS PREFERIDOS", body: brief.preferredFoods },
       { tag: "ALIMENTOS A EVITAR", body: brief.avoidFoods },
-      { tag: "EQUIVALENCIAS Y PORCIONES", body: brief.equivalences },
+      { tag: "EQUIVALENCIAS Y PORCIONES", body: brief.equivalences, only: "global" },
       { tag: "REGLAS ADICIONALES", body: brief.additionalRules },
-      { tag: "DIETAS DE EJEMPLO (sirven de plantilla de estilo y estructura, no copies literal)", body: brief.examplePlans },
+      { tag: "DIETAS DE EJEMPLO (sirven de plantilla de estilo y estructura, no copies literal)", body: brief.examplePlans, only: "goal" },
     ];
-    const nonEmpty = blocks.filter((b) => b.body.trim());
+    const nonEmpty = allBlocks.filter(
+      (b) => b.body.trim() && (!b.only || b.only === kind),
+    );
     if (nonEmpty.length === 0) return;
     parts.push(`=== ${label} ===`);
     for (const b of nonEmpty) {
@@ -176,9 +183,9 @@ export function assembleAIBrief(global: BriefShape, goalSpecific: BriefShape | n
     }
   }
 
-  appendBlock(global, "BRIEF GLOBAL");
+  appendBlock(global, "BRIEF GLOBAL", "global");
   if (goalSpecific) {
-    appendBlock(goalSpecific, `BRIEF ESPECÍFICO · ${goalSpecific.scope}`);
+    appendBlock(goalSpecific, `BRIEF ESPECÍFICO · ${goalSpecific.scope}`, "goal");
   }
 
   return parts.join("\n\n");

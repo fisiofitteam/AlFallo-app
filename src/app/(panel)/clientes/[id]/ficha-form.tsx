@@ -6,6 +6,8 @@ import {
   SEX_OPTIONS,
 } from "@/lib/clients";
 import { Field, SectionTitle, Select, TextArea, TextInput } from "@/components/form-ui";
+import { SpecialConsiderationsSelector } from "@/components/SpecialConsiderationsSelector";
+import type { SpecialConsiderationDTO } from "@/lib/specialConsiderations";
 import { updateNutritionProfile } from "../actions";
 
 function dateValue(d: Date | null): string {
@@ -15,9 +17,13 @@ function dateValue(d: Date | null): string {
 export function FichaForm({
   clientId,
   profile,
+  specialConsiderations,
+  selectedConsiderationIds,
 }: {
   clientId: string;
   profile: NutritionProfile | null;
+  specialConsiderations: SpecialConsiderationDTO[];
+  selectedConsiderationIds: string[];
 }) {
   const p = profile;
   return (
@@ -121,6 +127,16 @@ export function FichaForm({
             <TextInput id="timeframe" name="timeframe" defaultValue={p?.timeframe ?? ""} />
           </Field>
         </div>
+      </section>
+
+      {/* Consideraciones especiales: la gestionan los managers en la
+          Biblioteca → Brief IA; aquí solo se marcan las que apliquen. */}
+      <section>
+        <SectionTitle>Consideraciones especiales</SectionTitle>
+        <SpecialConsiderationsSelector
+          available={specialConsiderations}
+          initialSelectedIds={selectedConsiderationIds}
+        />
       </section>
 
       <div className="flex justify-end">

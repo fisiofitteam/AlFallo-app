@@ -75,6 +75,8 @@ export type PlanContext = {
   proteinRest: number | null;
   carbsRest: number | null;
   fatRest: number | null;
+  /** IDs de las SpecialConsideration marcadas en la ficha del cliente. */
+  specialConsiderationIds?: string[];
 };
 
 function ageFromBirthDate(d: Date | null): number | null {
@@ -303,7 +305,10 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
   // Inyectamos el brief global + el brief específico del objetivo del cliente
   // (los configura el manager desde /biblioteca/brief-ia).
   const { getBriefForGoal, assembleAIBrief } = await import("@/lib/aiBrief");
-  const { listBriefAttachments, fetchAttachmentContent } = await import("@/lib/briefAttachments");
+  const { listBriefAttachments, fetchAttachmentContent, attachmentKind } = await import(
+    "@/lib/briefAttachments"
+  );
+  const { getSpecialConsiderationsByIds } = await import("@/lib/specialConsiderations");
   const { global, goal } = await getBriefForGoal(ctx.goal);
   const briefText = assembleAIBrief(global, goal);
 
@@ -331,6 +336,36 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
     } else {
       textBlocks.push(`\n\n[ADJUNTO · ${r.doc.label} · ${r.doc.name}]\n${r.content.text}`);
     }
+  }
+
+  // Consideraciones especiales: descripción + dieta de ejemplo (si la hay).
+  const specials = await getSpecialConsiderationsByIds(ctx.specialConsiderationIds ?? []);
+  if (specials.length > 0) {
+    const lines: string[] = ["\n\n=== CONSIDERACIONES ESPECIALES DEL CLIENTE ==="];
+    for (const c of specials) {
+      lines.push(`\n[${c.title.toUpperCase()}]`);
+      if (c.description.trim()) lines.push(c.description.trim());
+      // Si tiene adjunto, lo añadimos como bloque document (PDF) o como texto.
+      if (c.examplePlanUrl && c.examplePlanName) {
+        const kind = attachmentKind(c.examplePlanName);
+        const content = await fetchAttachmentContent({
+          label: `Consideración · ${c.title}`,
+          name: c.examplePlanName,
+          url: c.examplePlanUrl,
+          kind,
+        });
+        if (content?.kind === "pdf") {
+          documentBlocks.push({
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: content.base64 },
+            title: `Consideración · ${c.title} · ${c.examplePlanName}`,
+          });
+        } else if (content && (content.kind === "spreadsheet" || content.kind === "csv" || content.kind === "text")) {
+          lines.push(`\n[DIETA DE EJEMPLO · ${c.examplePlanName}]\n${content.text}`);
+        }
+      }
+    }
+    textBlocks.push(lines.join("\n"));
   }
 
   const fullSystem = briefText

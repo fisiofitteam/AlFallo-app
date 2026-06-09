@@ -83,7 +83,9 @@ type BriefAttachmentsHolder = {
 };
 
 /** Construye la lista de adjuntos efectivos a partir de los briefs cargados.
- *  Cada brief (global + el del objetivo) aporta N adjuntos en cada sección. */
+ *  Por decisión producto, las equivalencias solo viven en el brief GLOBAL y
+ *  las dietas de ejemplo solo en los briefs de OBJETIVO. Los adjuntos siguen
+ *  esa misma separación. */
 export function listBriefAttachments(
   global: BriefAttachmentsHolder,
   goalSpecific: BriefAttachmentsHolder | null,
@@ -96,9 +98,7 @@ export function listBriefAttachments(
     }
   }
   add("Equivalencias (global)", global.equivalencesAttachments ?? []);
-  add("Dietas de ejemplo (global)", global.examplePlansAttachments ?? []);
   if (goalSpecific) {
-    add("Equivalencias (objetivo)", goalSpecific.equivalencesAttachments ?? []);
     add("Dietas de ejemplo (objetivo)", goalSpecific.examplePlansAttachments ?? []);
   }
   return out;

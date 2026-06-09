@@ -211,6 +211,7 @@ export async function generatePlanFromAI(formData: FormData) {
     proteinRest: client.macroTargets?.proteinRest ?? null,
     carbsRest: client.macroTargets?.carbsRest ?? null,
     fatRest: client.macroTargets?.fatRest ?? null,
+    specialConsiderationIds: client.profile?.specialConsiderationIds ?? [],
   });
 
   // 3) Reset de la estructura del plan (igual que HB).

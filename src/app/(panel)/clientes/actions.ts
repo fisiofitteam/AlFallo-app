@@ -179,6 +179,12 @@ export async function updateNutritionProfile(formData: FormData) {
     goal: parseStr(formData.get("goal")),
     targetWeightKg: parseNumber(formData.get("targetWeightKg")),
     timeframe: parseStr(formData.get("timeframe")),
+    // Consideraciones especiales: vienen como N inputs hidden con name
+    // 'specialConsiderationIds'. Las recogemos con getAll() y filtramos.
+    specialConsiderationIds: formData
+      .getAll("specialConsiderationIds")
+      .map((v) => (typeof v === "string" ? v : ""))
+      .filter(Boolean),
   };
 
   await prisma.nutritionProfile.upsert({

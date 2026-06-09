@@ -28,6 +28,7 @@ import { PlanPicker } from "@/components/PlanPicker";
 import { loadPlanForBuilder } from "@/lib/loadPlanData";
 import { buildWeeklyMenu } from "@/lib/weeklyMenu";
 import { WeeklyMenuView } from "@/components/WeeklyMenuView";
+import { getAllSpecialConsiderations } from "@/lib/specialConsiderations";
 
 function shortDate(d: Date): string {
   return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
@@ -91,6 +92,11 @@ export default async function ClientDetailPage({
 
   const manager = isManagerRole(prof.role);
   const active = parseSection(searchParams.tab);
+
+  // Consideraciones especiales: las cargamos una sola vez para alimentar el
+  // selector de la pestaña "Ficha nutricional".
+  const specialConsiderations = await getAllSpecialConsiderations();
+  const selectedConsiderationIds = client.profile?.specialConsiderationIds ?? [];
 
   // Si estamos en la pestaña Plan o Semanal, resolvemos el plan a mostrar:
   // ?planId=X (si pertenece al cliente) o el más reciente. Cargamos su
@@ -239,7 +245,12 @@ export default async function ClientDetailPage({
               </p>
             )
           ) : active === "ficha" ? (
-            <FichaForm clientId={client.id} profile={client.profile} />
+            <FichaForm
+              clientId={client.id}
+              profile={client.profile}
+              specialConsiderations={specialConsiderations}
+              selectedConsiderationIds={selectedConsiderationIds}
+            />
           ) : active === "macros" ? (
             <MacroTargetsForm clientId={client.id} targets={client.macroTargets} />
           ) : active === "evolucion" ? (

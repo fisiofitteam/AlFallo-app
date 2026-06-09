@@ -561,6 +561,12 @@ model NutritionProfile {
   // Mapeo { "extra:slug" -> valor (string | string[] | number | boolean) }.
   extraAnswers Json?
 
+  // IDs de las SpecialConsideration que aplican a este cliente. Se gestionan
+  // como array para soportar varias a la vez (ej. embarazo + colon irritable).
+  // Los detalles (descripción + dieta de ejemplo) se inyectan al brief de la
+  // IA cuando se genera plan para este cliente.
+  specialConsiderationIds String[] @default([])
+
   // Objetivo
   goal          String? // perdida_grasa | recomposicion | ganancia_masa | rendimiento | definicion
   targetWeightKg Float?
@@ -1099,6 +1105,25 @@ model Recipe {
 // inyecta) más una por cada goal del cliente (perdida_grasa, recomposicion,
 // ganancia_masa, rendimiento, definicion). Al generar un plan, se concatenan
 // la global + la del objetivo del cliente en el system prompt.
+// Consideraciones especiales que el equipo crea en la biblioteca (ej.
+// "Embarazo", "Lactancia", "Colon irritable", "Diabetes tipo 2"…). El nutri
+// las marca en la ficha del cliente y se inyectan en el brief de la IA al
+// generar plan. Cada una lleva su descripción + una dieta de ejemplo opcional.
+model SpecialConsideration {
+  id              String   @id @default(cuid())
+  title           String
+  description     String   @default("")
+  // Adjunto opcional con una dieta de ejemplo de referencia (PDF/Excel/CSV).
+  examplePlanUrl  String?
+  examplePlanName String?
+  order           Int      @default(0)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([active, order])
+}
+
 model AIPlanBrief {
   scope           String   @id // "global" | goal id
   philosophy      String   @default("")

@@ -8,7 +8,6 @@ export const BRIEF_SCOPES = [
   "recomposicion",
   "ganancia_masa",
   "rendimiento",
-  "definicion",
 ] as const;
 
 export type BriefScope = (typeof BRIEF_SCOPES)[number];
@@ -19,7 +18,6 @@ export const BRIEF_SCOPE_LABELS: Record<BriefScope, string> = {
   recomposicion: "Recomposición",
   ganancia_masa: "Ganancia de masa",
   rendimiento: "Rendimiento",
-  definicion: "Definición pre-competición",
 };
 
 export type BriefAttachment = { url: string; name: string };

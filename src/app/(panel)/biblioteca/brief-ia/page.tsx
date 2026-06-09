@@ -1,6 +1,7 @@
 import { requireProfessional } from "@/lib/session";
 import { isManager } from "@/lib/roles";
 import { getAllBriefs } from "@/lib/aiBrief";
+import { getAllSpecialConsiderations } from "@/lib/specialConsiderations";
 import { AIBriefEditor } from "@/components/AIBriefEditor";
 
 export const metadata = { title: "Brief IA · Biblioteca" };
@@ -15,6 +16,9 @@ export default async function BriefIATab() {
       </p>
     );
   }
-  const briefs = await getAllBriefs();
-  return <AIBriefEditor initial={briefs} />;
+  const [briefs, specials] = await Promise.all([
+    getAllBriefs(),
+    getAllSpecialConsiderations(),
+  ]);
+  return <AIBriefEditor initial={briefs} initialSpecial={specials} />;
 }
