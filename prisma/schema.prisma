@@ -622,6 +622,14 @@ model FoodLibrary {
 }
 
 // Plan nutricional asignado a un cliente. Estructura: Plan -> Día -> Comida -> Item.
+// Tipo del plan. La "pauta nutricional" es el plan habitual de mantenimiento;
+// el "plan de competición" se genera con el brief de Rendimiento + el contexto
+// de la prueba (WODs, horarios, fecha del evento) que pega el nutri.
+// Lo dejamos como String libre para no forzar enums migrables.
+//
+//   kind = "regular"      → pauta nutricional (default)
+//   kind = "competition"  → plan de competición
+//
 model NutritionPlan {
   id          String   @id @default(cuid())
   name        String
@@ -631,6 +639,14 @@ model NutritionPlan {
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // Tipo: "regular" (pauta nutricional, default) | "competition".
+  kind                String  @default("regular")
+  // Solo competición: nombre del evento (ej. "Hyrox Madrid 14 jul").
+  competitionName     String?
+  // Solo competición: texto libre con WODs, horarios, info que el nutri
+  // pega para que la IA construya el plan en torno a la prueba.
+  competitionContext  String?
 
   client    Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   createdBy Professional? @relation(fields: [createdById], references: [id], onDelete: SetNull)

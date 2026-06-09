@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, Plus, Check, X, Loader2, Sparkles } from "lucide-react";
+import { Pencil, Trash2, Plus, Check, X, Loader2, Sparkles, UtensilsCrossed, Trophy } from "lucide-react";
 import {
   createPlan,
   deletePlan,
@@ -35,6 +35,8 @@ export function PlanPicker({
   const [renaming, setRenaming] = useState(false);
   const [adding, setAdding] = useState(false);
   const [genBusy, startGen] = useTransition();
+  // Modal: 'idle' (cerrado), 'choose' (eligiendo tipo), 'competition' (form competición).
+  const [genMode, setGenMode] = useState<"idle" | "choose" | "competition">("idle");
 
   const selected = plans.find((p) => p.id === selectedPlanId) ?? plans[0] ?? null;
 
@@ -42,23 +44,36 @@ export function PlanPicker({
     startNav(() => router.push(`/clientes/${clientId}?tab=plan&planId=${planId}`));
   }
 
-  // Generación unificada: por dentro recalcula objetivos con Harris-Benedict
-  // y después pide a la IA que rellene 5 comidas × 3 opciones con alimentos
-  // y gramos. El nutri solo decide UN momento: lo genero o no.
-  function generatePlan() {
+  function runGenerate(extra?: { competitionName?: string; competitionContext?: string }) {
     if (!selected) return;
-    if (
-      !confirm(
-        "Esto borra el plan actual y genera uno nuevo: Harris-Benedict recalcula los macros objetivo del cliente y la IA escribe 5 comidas × 3 opciones con alimentos y gramos. Puede tardar 10-20 s. ¿Seguro?",
-      )
-    )
-      return;
     const fd = new FormData();
     fd.set("planId", selected.id);
+    if (extra?.competitionContext?.trim()) {
+      fd.set("kind", "competition");
+      fd.set("competitionContext", extra.competitionContext.trim());
+      if (extra.competitionName?.trim()) {
+        fd.set("competitionName", extra.competitionName.trim());
+      }
+    }
     startGen(async () => {
       await generatePlanFromAI(fd);
       window.location.reload();
     });
+  }
+
+  function chooseRegular() {
+    setGenMode("idle");
+    if (
+      !confirm(
+        "Esto borra el plan actual y genera una PAUTA NUTRICIONAL: Harris-Benedict recalcula los macros del cliente y la IA escribe 5 comidas × 3 opciones con alimentos y gramos. Puede tardar 10-20 s. ¿Seguro?",
+      )
+    )
+      return;
+    runGenerate();
+  }
+
+  function chooseCompetition() {
+    setGenMode("competition");
   }
 
   return (
@@ -152,18 +167,166 @@ export function PlanPicker({
           </p>
           <button
             type="button"
-            onClick={generatePlan}
+            onClick={() => setGenMode("choose")}
             disabled={genBusy}
             className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
             style={{ backgroundColor: "var(--c-primary)" }}
-            title="Harris-Benedict para objetivos + Claude para escribir cada opción con alimentos y gramos"
+            title="Pauta nutricional o plan de competición"
           >
             {genBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
             Generar plan
           </button>
         </div>
       ) : null}
+
+      {genMode !== "idle" ? (
+        <GenerateModal
+          mode={genMode}
+          busy={genBusy}
+          onClose={() => setGenMode("idle")}
+          onChooseRegular={chooseRegular}
+          onChooseCompetition={chooseCompetition}
+          onSubmitCompetition={(name, ctx) => runGenerate({ competitionName: name, competitionContext: ctx })}
+        />
+      ) : null}
     </section>
+  );
+}
+
+function GenerateModal({
+  mode,
+  busy,
+  onClose,
+  onChooseRegular,
+  onChooseCompetition,
+  onSubmitCompetition,
+}: {
+  mode: "choose" | "competition";
+  busy: boolean;
+  onClose: () => void;
+  onChooseRegular: () => void;
+  onChooseCompetition: () => void;
+  onSubmitCompetition: (name: string, ctx: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [ctx, setCtx] = useState("");
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-xl rounded-2xl border border-border bg-surface shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="flex items-center justify-between border-b border-border px-5 py-3">
+          <p className="font-semibold">
+            {mode === "choose" ? "¿Qué quieres generar?" : "Plan de competición"}
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1.5 text-muted hover:bg-bg hover:text-text"
+            title="Cerrar"
+          >
+            <X size={14} />
+          </button>
+        </header>
+
+        {mode === "choose" ? (
+          <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={onChooseRegular}
+              disabled={busy}
+              className="flex flex-col items-start gap-2 rounded-xl border border-border bg-bg p-4 text-left hover:border-primary disabled:opacity-50"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary">
+                <UtensilsCrossed size={18} />
+              </span>
+              <span className="font-semibold">Pauta nutricional</span>
+              <span className="text-xs text-muted">
+                Plan habitual del cliente. HB recalcula sus macros base y la IA escribe 5 comidas
+                × 3 opciones según su objetivo.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={onChooseCompetition}
+              disabled={busy}
+              className="flex flex-col items-start gap-2 rounded-xl border border-border bg-bg p-4 text-left hover:border-primary disabled:opacity-50"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary">
+                <Trophy size={18} />
+              </span>
+              <span className="font-semibold">Plan de competición</span>
+              <span className="text-xs text-muted">
+                Plan puntual para una prueba. Aplica el brief de Rendimiento y pega los WODs,
+                horarios y fecha del evento para que la IA construya el plan en torno a eso.
+              </span>
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4 p-5">
+            <label className="block">
+              <span className="block text-sm font-semibold">Nombre del evento</span>
+              <span className="block text-xs text-muted">
+                Solo para identificarlo en el plan (ej. "Hyrox Madrid 14 jul"). Opcional.
+              </span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Hyrox Madrid 14 jul"
+                className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-sm font-semibold">WODs, horarios y contexto</span>
+              <span className="block text-xs text-muted">
+                Pega aquí los WODs (warm-up, formato, duración estimada), el horario del día, la
+                fecha del evento, cualquier nota relevante (logística, comidas con el equipo, etc.).
+                La IA lo usará para diseñar el plan.
+              </span>
+              <textarea
+                rows={10}
+                value={ctx}
+                onChange={(e) => setCtx(e.target.value)}
+                placeholder={`Ej:\n\n14 jul 2026 — Hyrox Madrid\nLlegada al recinto 08:00. WOD 11:30:\n  Run 1km · Ski 1km · Run 1km · Sled push 50m · ...\nNecesidad de carga 36-24h previa. Postwod: cervecera 19:00.`}
+                className="mt-2 w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+              />
+            </label>
+            <p className="text-xs text-muted">
+              El brief de <strong>Plan de competición</strong> que tengas guardado en{" "}
+              <strong>Biblioteca → Brief IA → Plan de competición</strong> se aplicará automáticamente
+              junto a este contexto.
+            </p>
+          </div>
+        )}
+
+        <footer className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-sm text-muted hover:bg-bg hover:text-text"
+          >
+            Cancelar
+          </button>
+          {mode === "competition" ? (
+            <button
+              type="button"
+              onClick={() => onSubmitCompetition(name, ctx)}
+              disabled={busy || !ctx.trim()}
+              className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md hover:opacity-90 disabled:opacity-50"
+              style={{ backgroundColor: "var(--c-primary)" }}
+            >
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              Generar plan de competición
+            </button>
+          ) : null}
+        </footer>
+      </div>
+    </div>
   );
 }
 

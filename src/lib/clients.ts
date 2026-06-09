@@ -42,11 +42,13 @@ export const LEVEL_OPTIONS: Option[] = [
   { value: "competicion", label: "Competición" },
 ];
 
+// "Rendimiento" YA NO es un objetivo seleccionable por el cliente: va
+// implícito en todos. El scope 'rendimiento' del brief IA se reutiliza
+// para los PLANES DE COMPETICIÓN puntuales (ver NutritionPlan.kind).
 export const GOAL_OPTIONS: Option[] = [
   { value: "perdida_grasa", label: "Pérdida de grasa" },
   { value: "recomposicion", label: "Recomposición" },
   { value: "ganancia_masa", label: "Ganancia de masa" },
-  { value: "rendimiento", label: "Rendimiento" },
   { value: "definicion", label: "Definición pre-competición" },
 ];
 

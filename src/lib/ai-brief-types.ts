@@ -17,7 +17,10 @@ export const BRIEF_SCOPE_LABELS: Record<BriefScope, string> = {
   perdida_grasa: "Pérdida de grasa",
   recomposicion: "Recomposición",
   ganancia_masa: "Ganancia de masa",
-  rendimiento: "Rendimiento",
+  // El scope 'rendimiento' YA NO es un objetivo del cliente: se reutiliza
+  // como brief para los planes de competición puntuales (carga de hidratos,
+  // race-day, etc.). El nutri lo aplica al generar plan tipo competición.
+  rendimiento: "Plan de competición",
 };
 
 export type BriefAttachment = { url: string; name: string };

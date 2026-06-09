@@ -77,6 +77,12 @@ export type PlanContext = {
   fatRest: number | null;
   /** IDs de las SpecialConsideration marcadas en la ficha del cliente. */
   specialConsiderationIds?: string[];
+
+  /** Si el plan es de competición, el contexto pegado por el nutri
+   * (WODs, horarios, fecha del evento). En este modo se fuerza el brief
+   * de 'rendimiento' como goal-specific, ignorando el objetivo del cliente. */
+  competitionContext?: string | null;
+  competitionName?: string | null;
 };
 
 function ageFromBirthDate(d: Date | null): number | null {
@@ -309,7 +315,11 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
     "@/lib/briefAttachments"
   );
   const { getSpecialConsiderationsByIds } = await import("@/lib/specialConsiderations");
-  const { global, goal } = await getBriefForGoal(ctx.goal);
+  // En modo competición forzamos el brief 'rendimiento' aunque el goal del
+  // cliente sea otro. En modo regular, usamos el brief del goal del cliente.
+  const isCompetition = !!(ctx.competitionContext && ctx.competitionContext.trim());
+  const briefGoal = isCompetition ? "rendimiento" : ctx.goal;
+  const { global, goal } = await getBriefForGoal(briefGoal);
   const briefText = assembleAIBrief(global, goal);
 
   const attachments = listBriefAttachments(global, goal);
@@ -366,6 +376,16 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
       }
     }
     textBlocks.push(lines.join("\n"));
+  }
+
+  // Contexto de la competición (solo cuando ctx.competitionContext está set).
+  if (isCompetition) {
+    const tag = ctx.competitionName?.trim()
+      ? `CONTEXTO DE COMPETICIÓN · ${ctx.competitionName.trim()}`
+      : "CONTEXTO DE COMPETICIÓN";
+    textBlocks.push(
+      `\n\n=== ${tag} ===\nEl plan debe estructurarse en torno a la prueba descrita. Tienes en cuenta WODs, horarios, fecha del evento y necesidades específicas de carga de hidratos / día-evento.\n\n${ctx.competitionContext!.trim()}`,
+    );
   }
 
   const fullSystem = briefText

@@ -172,14 +172,23 @@ export async function generatePlanFromAI(formData: FormData) {
   const planId = String(formData.get("planId"));
   const plan = await loadPlanForEdit(planId, prof);
 
+  // Tipo del plan + contexto opcional de competición.
+  const kindRaw = parseStr(formData.get("kind"));
+  const kind = kindRaw === "competition" ? "competition" : "regular";
+  const competitionName = parseStr(formData.get("competitionName"));
+  const competitionContext = parseStr(formData.get("competitionContext"));
+  const isCompetition = kind === "competition" && !!competitionContext;
+
   const client = await prisma.client.findUnique({
     where: { id: plan.clientId },
     include: { profile: true, macroTargets: true },
   });
   if (!client) return;
 
-  // 1) Calculamos/actualizamos los objetivos con HB para que la IA tenga
-  //    cifras concretas a las que apuntar (y queden guardadas para el cliente).
+  // 1) Calculamos los objetivos con HB. Para PAUTA NUTRICIONAL: usamos el
+  //    goal del cliente y persistimos en MacroTargets (cliente lo ve como
+  //    sus macros base). Para PLAN DE COMPETICIÓN: NO persistimos (los
+  //    macros del cliente no cambian), solo los usamos transitoriamente.
   const { getMacroConfig } = await import("@/lib/macroConfig");
   const { computeTargets } = await import("@/lib/harrisBenedict");
   const config = await getMacroConfig();
@@ -190,11 +199,11 @@ export async function generatePlanFromAI(formData: FormData) {
       heightCm: client.profile?.heightCm ?? null,
       weightKg: client.profile?.weightKg ?? null,
       weeklyFrequency: client.profile?.weeklyFrequency ?? null,
-      goal: client.profile?.goal ?? null,
+      goal: isCompetition ? "rendimiento" : (client.profile?.goal ?? null),
     },
     config,
   );
-  if (targets) {
+  if (targets && !isCompetition) {
     await prisma.macroTargets.upsert({
       where: { clientId: client.id },
       create: {
@@ -220,6 +229,16 @@ export async function generatePlanFromAI(formData: FormData) {
       },
     });
   }
+
+  // Persistimos kind + contexto en el plan para tener trazabilidad.
+  await prisma.nutritionPlan.update({
+    where: { id: planId },
+    data: {
+      kind,
+      competitionName: isCompetition ? competitionName : null,
+      competitionContext: isCompetition ? competitionContext : null,
+    },
+  });
 
   // 2) Llamamos al generador. Usa el brief de /biblioteca/brief-ia (textos +
   //    adjuntos PDF/Excel/CSV) y los targets recién recalculados.
@@ -250,6 +269,8 @@ export async function generatePlanFromAI(formData: FormData) {
     carbsRest: client.macroTargets?.carbsRest ?? null,
     fatRest: client.macroTargets?.fatRest ?? null,
     specialConsiderationIds: client.profile?.specialConsiderationIds ?? [],
+    competitionContext: isCompetition ? competitionContext : null,
+    competitionName: isCompetition ? competitionName : null,
   });
 
   // 3) Reset de la estructura del plan (igual que HB).
