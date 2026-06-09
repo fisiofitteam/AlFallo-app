@@ -115,6 +115,44 @@ export async function addMeal(formData: FormData) {
   revalidatePath(`/planes/${planId}`);
 }
 
+// Renombra una comida (texto libre). Autosave desde la UI.
+export async function renameMeal(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  const mealId = String(formData.get("mealId"));
+  const name = parseStr(formData.get("name")) ?? "";
+  if (!name.trim()) return;
+  await prisma.meal.update({
+    where: { id: mealId },
+    data: { name: name.trim().slice(0, 100) },
+  });
+}
+
+// Mueve una comida arriba/abajo dentro de su día (intercambia order con el
+// vecino). Devuelve sin error si ya está en el extremo correspondiente.
+export async function moveMeal(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  const mealId = String(formData.get("mealId"));
+  const direction = String(formData.get("direction")); // "up" | "down"
+  const meal = await prisma.meal.findUnique({ where: { id: mealId } });
+  if (!meal) return;
+  const neighbor = await prisma.meal.findFirst({
+    where: {
+      planDayId: meal.planDayId,
+      order: direction === "up" ? { lt: meal.order } : { gt: meal.order },
+    },
+    orderBy: { order: direction === "up" ? "desc" : "asc" },
+  });
+  if (!neighbor) return;
+  await prisma.$transaction([
+    prisma.meal.update({ where: { id: meal.id }, data: { order: neighbor.order } }),
+    prisma.meal.update({ where: { id: neighbor.id }, data: { order: meal.order } }),
+  ]);
+}
+
 export async function deleteMeal(formData: FormData) {
   const prof = await requireAccess();
   const planId = String(formData.get("planId"));

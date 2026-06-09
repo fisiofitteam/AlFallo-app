@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
-  Sparkles, Plus, Trash2, Loader2, FileText, ArrowLeft, ChevronDown,
+  Sparkles, Plus, Trash2, Loader2, FileText, ArrowLeft, ChevronDown, ChevronUp,
   RotateCcw, AlertTriangle,
 } from "lucide-react";
 import {
@@ -20,6 +20,8 @@ import {
   setDayType,
   addMeal,
   deleteMeal,
+  renameMeal,
+  moveMeal,
 } from "@/app/(panel)/planes/actions";
 import { MEAL_TYPE_OPTIONS, DAY_TYPES } from "@/lib/nutrition";
 
@@ -43,8 +45,12 @@ const SUB_GROUPS: { value: string; label: string }[] = [
   { value: "postre", label: "POSTRE" },
 ];
 
-function isComposedMeal(name: string): boolean {
-  return name === "comida" || name === "cena";
+// Una comida se considera "compuesta" (con subgrupos intro/grasas/carbos/
+// proteina/postre) cuando alguno de sus items lleva subType. Antes lo
+// inferíamos por el nombre ("comida"/"cena"), pero como el nutri puede
+// renombrar libremente, ahora va por los datos.
+function isComposedMeal(meal: { options: { subType: string | null }[] }): boolean {
+  return meal.options.some((o) => o.subType !== null);
 }
 
 export type PlanBuilderMeal = {
@@ -156,6 +162,31 @@ export function PlanBuilder({
     );
   }
 
+  function renameMealLocal(dayId: string, mealId: string, name: string) {
+    setDays((prev) =>
+      prev.map((d) =>
+        d.id !== dayId
+          ? d
+          : { ...d, meals: d.meals.map((m) => (m.id === mealId ? { ...m, name } : m)) },
+      ),
+    );
+  }
+
+  function moveMealLocal(dayId: string, mealId: string, dir: "up" | "down") {
+    setDays((prev) =>
+      prev.map((d) => {
+        if (d.id !== dayId) return d;
+        const idx = d.meals.findIndex((m) => m.id === mealId);
+        if (idx < 0) return d;
+        const j = idx + (dir === "up" ? -1 : 1);
+        if (j < 0 || j >= d.meals.length) return d;
+        const next = [...d.meals];
+        [next[idx], next[j]] = [next[j], next[idx]];
+        return { ...d, meals: next };
+      }),
+    );
+  }
+
   function removeOptionLocal(dayId: string, mealId: string, optionId: string) {
     setDays((prev) =>
       prev.map((d) =>
@@ -238,6 +269,8 @@ export function PlanBuilder({
           planId={planId}
           onPatch={(mealId, optionId, patch) => patchOption(activeDay.id, mealId, optionId, patch)}
           onRemoveOption={(mealId, optionId) => removeOptionLocal(activeDay.id, mealId, optionId)}
+          onRenameMeal={(mealId, name) => renameMealLocal(activeDay.id, mealId, name)}
+          onMoveMeal={(mealId, dir) => moveMealLocal(activeDay.id, mealId, dir)}
         />
       )}
 
@@ -415,11 +448,15 @@ function DayPanel({
   planId,
   onPatch,
   onRemoveOption,
+  onRenameMeal,
+  onMoveMeal,
 }: {
   day: PlanBuilderDay;
   planId: string;
   onPatch: (mealId: string, optionId: string, patch: Partial<PlanBuilderOption>) => void;
   onRemoveOption: (mealId: string, optionId: string) => void;
+  onRenameMeal: (mealId: string, name: string) => void;
+  onMoveMeal: (mealId: string, dir: "up" | "down") => void;
 }) {
   return (
     <div className="space-y-4">
@@ -450,13 +487,17 @@ function DayPanel({
           Este día no tiene comidas todavía.
         </p>
       ) : (
-        day.meals.map((meal) => (
+        day.meals.map((meal, idx) => (
           <MealCard
             key={meal.id}
             meal={meal}
             planId={planId}
+            position={idx}
+            totalMeals={day.meals.length}
             onPatch={(optionId, patch) => onPatch(meal.id, optionId, patch)}
             onRemoveOption={(optionId) => onRemoveOption(meal.id, optionId)}
+            onRename={(name) => onRenameMeal(meal.id, name)}
+            onMove={(dir) => onMoveMeal(meal.id, dir)}
           />
         ))
       )}
@@ -492,15 +533,58 @@ function DayPanel({
 function MealCard({
   meal,
   planId,
+  position,
+  totalMeals,
   onPatch,
   onRemoveOption,
+  onRename,
+  onMove,
 }: {
   meal: PlanBuilderMeal;
   planId: string;
+  position: number;
+  totalMeals: number;
   onPatch: (optionId: string, patch: Partial<PlanBuilderOption>) => void;
   onRemoveOption: (optionId: string) => void;
+  onRename: (name: string) => void;
+  onMove: (dir: "up" | "down") => void;
 }) {
   const [addingPending, startAdding] = useTransition();
+  const [, startRename] = useTransition();
+  const [, startMove] = useTransition();
+  const renameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Texto mostrado en el input: en la primera renderización mostramos el
+  // label prettificado (ej. "Desayuno" en lugar del slug "desayuno"). Cuando
+  // el nutri edita, el valor pasa a ser literalmente lo que escriba.
+  const initialName = mealLabel(meal.name);
+  const [nameDraft, setNameDraft] = useState(initialName);
+
+  function pushRename(value: string) {
+    setNameDraft(value);
+    onRename(value);
+    if (renameTimer.current) clearTimeout(renameTimer.current);
+    renameTimer.current = setTimeout(() => {
+      const fd = new FormData();
+      fd.set("planId", planId);
+      fd.set("mealId", meal.id);
+      fd.set("name", value.trim());
+      if (!value.trim()) return;
+      startRename(async () => {
+        await renameMeal(fd);
+      });
+    }, 600);
+  }
+
+  function move(dir: "up" | "down") {
+    onMove(dir);
+    const fd = new FormData();
+    fd.set("planId", planId);
+    fd.set("mealId", meal.id);
+    fd.set("direction", dir);
+    startMove(async () => {
+      await moveMeal(fd);
+    });
+  }
 
   // Macros de la opción marcada (la primera selected). Si hay varias selected
   // sumamos todas (la UI permite que el nutri marque varias si quiere combinar).
@@ -526,7 +610,7 @@ function MealCard({
     });
   }
 
-  const composed = isComposedMeal(meal.name);
+  const composed = isComposedMeal(meal);
   // Para comida/cena el contador top muestra la suma "comida completa": 1
   // opción seleccionada por subgrupo. Para simples, también la suma de
   // selected (que normalmente será una sola en las comidas planas).
@@ -538,13 +622,50 @@ function MealCard({
     <article className="overflow-hidden rounded-2xl border border-border bg-surface">
       <details open className="group">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 border-b border-border px-5 py-3 transition hover:bg-bg/40">
-          <div className="flex items-center gap-2">
-            <ChevronDown size={16} className="text-muted transition group-open:rotate-180" />
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <ChevronDown size={16} className="flex-shrink-0 text-muted transition group-open:rotate-180" />
             <span className="text-lg">{mealEmoji(meal.name)}</span>
-            <span className="font-semibold">{mealLabel(meal.name)}</span>
-            <span className="text-xs text-muted">{headerLabel}</span>
+            {/* Nombre editable inline: clic-stopPropagation para que el
+                <summary> no toggle el desplegable al pinchar el input. */}
+            <input
+              value={nameDraft}
+              onChange={(e) => pushRename(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              placeholder="Nombre de la comida"
+              className="min-w-0 max-w-[260px] flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 font-semibold outline-none hover:border-border focus:border-primary"
+            />
+            <span className="ml-1 text-xs text-muted">{headerLabel}</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                move("up");
+              }}
+              disabled={position === 0}
+              title="Subir comida"
+              className="rounded-md p-1 text-muted hover:bg-bg hover:text-text disabled:opacity-30"
+            >
+              <ChevronUp size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                move("down");
+              }}
+              disabled={position === totalMeals - 1}
+              title="Bajar comida"
+              className="rounded-md p-1 text-muted hover:bg-bg hover:text-text disabled:opacity-30"
+            >
+              <ChevronDown size={14} />
+            </button>
             {!composed ? (
               <button
                 type="button"
@@ -566,7 +687,7 @@ function MealCard({
                 type="submit"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (!confirm(`¿Borrar la comida "${mealLabel(meal.name)}"?`)) e.preventDefault();
+                  if (!confirm(`¿Borrar la comida "${nameDraft}"?`)) e.preventDefault();
                 }}
                 className="rounded-md p-1 text-muted hover:bg-bg hover:text-red-600"
                 title="Borrar comida"
