@@ -213,6 +213,11 @@ export default async function ClientDetailPage({
                   selectedPlanId={activePlanData.plan.id}
                 />
                 <PlanBuilder
+                  // key={planId}: fuerza un remount cuando el nutri cambia
+                  // de plan en el selector. Sin esto, useState mantiene en
+                  // memoria los días/opciones del plan anterior y los
+                  // autosaves contaminan el plan equivocado.
+                  key={activePlanData.plan.id}
                   embedded
                   planId={activePlanData.plan.id}
                   clientId={activePlanData.plan.clientId}

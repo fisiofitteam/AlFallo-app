@@ -26,6 +26,7 @@ export default async function PlanPage({ params }: { params: { planId: string } 
 
   return (
     <PlanBuilder
+      key={loaded.plan.id}
       planId={loaded.plan.id}
       clientId={loaded.plan.clientId}
       clientName={loaded.plan.client.fullName}
