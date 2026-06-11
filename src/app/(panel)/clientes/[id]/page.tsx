@@ -24,7 +24,9 @@ import { CheckInsTab } from "./checkins-tab";
 import { EvolucionTab } from "./evolucion-tab";
 import { reassignNutritionist, setClientPassword, updateClientStatus } from "../actions";
 import { PlanBuilder } from "@/components/PlanBuilder";
-import { PlanPicker } from "@/components/PlanPicker";
+import { PlanPicker, AddPlanButton } from "@/components/PlanPicker";
+import { PlanCards } from "@/components/PlanCards";
+import { getPlanCardsForClient } from "@/lib/planSummary";
 import { loadPlanForBuilder } from "@/lib/loadPlanData";
 import { buildWeeklyMenu } from "@/lib/weeklyMenu";
 import { WeeklyMenuView } from "@/components/WeeklyMenuView";
@@ -98,16 +100,20 @@ export default async function ClientDetailPage({
   const specialConsiderations = await getAllSpecialConsiderations();
   const selectedConsiderationIds = client.profile?.specialConsiderationIds ?? [];
 
-  // Si estamos en la pestaña Plan o Semanal, resolvemos el plan a mostrar:
-  // ?planId=X (si pertenece al cliente) o el más reciente. Cargamos su
-  // estructura completa con el helper compartido.
+  // Pestañas Plan/Semanal: galería ↔ detalle.
+  // - Sin ?planId  → galería con cards (name + descripción + macros).
+  // - Con ?planId  → cargamos ese plan y pintamos el builder / vista semanal.
+  // Si el ?planId no pertenece al cliente, lo ignoramos y caemos en galería.
   let activePlanData: Awaited<ReturnType<typeof loadPlanForBuilder>> = null;
-  if ((active === "plan" || active === "semanal") && client.plans.length > 0) {
-    const requested = searchParams.planId
-      ? client.plans.find((p) => p.id === searchParams.planId)
-      : null;
-    const chosen = requested ?? client.plans[0];
-    activePlanData = await loadPlanForBuilder(chosen.id);
+  let planCards: Awaited<ReturnType<typeof getPlanCardsForClient>> = [];
+  if (active === "plan" || active === "semanal") {
+    if (searchParams.planId) {
+      const valid = client.plans.find((p) => p.id === searchParams.planId);
+      if (valid) activePlanData = await loadPlanForBuilder(valid.id);
+    }
+    if (!activePlanData) {
+      planCards = await getPlanCardsForClient(client.id);
+    }
   }
 
   const nutritionists = manager
@@ -202,64 +208,77 @@ export default async function ClientDetailPage({
         </aside>
 
         <section>
-          {active === "plan" ? (
-            <>
-              <PlanPicker
-                clientId={client.id}
-                plans={client.plans.map((p) => ({ id: p.id, name: p.name }))}
-                selectedPlanId={activePlanData?.plan.id ?? null}
-                goalOptions={GOAL_OPTIONS}
-                considerations={specialConsiderations.map((c) => ({ id: c.id, title: c.title }))}
-              />
-              {client.plans.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-                  Pulsa "Añadir plan" arriba para crear el primer plan. Podrás darle a la IA tus
-                  instrucciones, elegir un objetivo concreto y una consideración especial.
-                </p>
-              ) : activePlanData ? (
-                <PlanBuilder
-                  // key={planId}: fuerza un remount cuando el nutri cambia
-                  // de plan en el selector. Sin esto, useState mantiene en
-                  // memoria los días/opciones del plan anterior y los
-                  // autosaves contaminan el plan equivocado.
-                  key={activePlanData.plan.id}
-                  embedded
-                  planId={activePlanData.plan.id}
-                  clientId={activePlanData.plan.clientId}
-                  clientName={activePlanData.plan.client.fullName}
-                  planName={activePlanData.plan.name}
-                  initialDays={activePlanData.days}
-                  initialNotes={activePlanData.plan.notes}
-                  initialSupplementation={activePlanData.plan.supplementation}
-                  initialTargets={activePlanData.targets}
+          {active === "plan" || active === "semanal" ? (
+            activePlanData ? (
+              // Vista DETALLE: builder completo o vista semanal del plan
+              // elegido. Mantenemos el PlanPicker (sigue siendo útil para
+              // saltar entre planes sin volver a la galería) + un atajo
+              // "← Volver a planes".
+              <>
+                <Link
+                  href={`/clientes/${client.id}?tab=${active}`}
+                  className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-primary"
+                >
+                  <ArrowLeft size={14} /> Volver a planes
+                </Link>
+                <PlanPicker
+                  clientId={client.id}
+                  plans={client.plans.map((p) => ({ id: p.id, name: p.name }))}
+                  selectedPlanId={activePlanData.plan.id}
+                  goalOptions={GOAL_OPTIONS}
+                  considerations={specialConsiderations.map((c) => ({ id: c.id, title: c.title }))}
                 />
-              ) : (
-                <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-                  No se pudo cargar el plan seleccionado.
-                </p>
-              )}
-            </>
-          ) : active === "semanal" ? (
-            <>
-              <PlanPicker
-                clientId={client.id}
-                plans={client.plans.map((p) => ({ id: p.id, name: p.name }))}
-                selectedPlanId={activePlanData?.plan.id ?? null}
-                goalOptions={GOAL_OPTIONS}
-                considerations={specialConsiderations.map((c) => ({ id: c.id, title: c.title }))}
-              />
-              {client.plans.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-                  Pulsa "Añadir plan" arriba para crear el primer plan.
-                </p>
-              ) : activePlanData ? (
-                <WeeklyMenuView days={buildWeeklyMenu(activePlanData.days)} />
-              ) : (
-                <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-                  No se pudo cargar el plan seleccionado.
-                </p>
-              )}
-            </>
+                {active === "plan" ? (
+                  <PlanBuilder
+                    // key={planId} fuerza un remount cuando el nutri cambia
+                    // de plan. Sin esto, useState mantendría los días/opciones
+                    // del plan anterior y los autosaves contaminarían el
+                    // plan equivocado.
+                    key={activePlanData.plan.id}
+                    embedded
+                    planId={activePlanData.plan.id}
+                    clientId={activePlanData.plan.clientId}
+                    clientName={activePlanData.plan.client.fullName}
+                    planName={activePlanData.plan.name}
+                    initialDays={activePlanData.days}
+                    initialNotes={activePlanData.plan.notes}
+                    initialSupplementation={activePlanData.plan.supplementation}
+                    initialTargets={activePlanData.targets}
+                  />
+                ) : (
+                  <WeeklyMenuView days={buildWeeklyMenu(activePlanData.days)} />
+                )}
+              </>
+            ) : (
+              // Vista GALERÍA: cards de todos los planes + botón Añadir.
+              <>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-lg font-bold">
+                      {active === "plan" ? "Planes nutricionales" : "Vista semanal"}
+                    </h2>
+                    <p className="text-sm text-muted">
+                      {planCards.length === 0
+                        ? "Aún no hay planes para este cliente."
+                        : "Pulsa un plan para abrirlo completo. La descripción la ve el atleta en su app."}
+                    </p>
+                  </div>
+                  <AddPlanButton
+                    clientId={client.id}
+                    goalOptions={GOAL_OPTIONS}
+                    considerations={specialConsiderations.map((c) => ({ id: c.id, title: c.title }))}
+                  />
+                </div>
+                {planCards.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
+                    Aún no hay planes. Pulsa "Añadir plan" arriba para crear el primero. Podrás darle
+                    a la IA tus instrucciones, elegir un objetivo concreto y una consideración especial.
+                  </p>
+                ) : (
+                  <PlanCards mode="panel" clientId={client.id} plans={planCards} />
+                )}
+              </>
+            )
           ) : active === "ficha" ? (
             <FichaForm
               clientId={client.id}

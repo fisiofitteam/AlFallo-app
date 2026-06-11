@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { UtensilsCrossed, LayoutList, CalendarDays } from "lucide-react";
+import { ArrowLeft, UtensilsCrossed, LayoutList, CalendarDays } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
 import { optionLabel } from "@/lib/clients";
@@ -7,6 +7,8 @@ import { MEAL_TYPE_OPTIONS, fmtMacros, itemMacros, sumMacros, type Macros } from
 import { loadPlanForBuilder } from "@/lib/loadPlanData";
 import { buildWeeklyMenu } from "@/lib/weeklyMenu";
 import { WeeklyMenuView } from "@/components/WeeklyMenuView";
+import { PlanCards } from "@/components/PlanCards";
+import { getPlanCardsForClient } from "@/lib/planSummary";
 
 export const metadata = { title: "Mi plan · Al Fallo" };
 export const dynamic = "force-dynamic";
@@ -36,13 +38,40 @@ const SUB_LABEL: Record<string, string> = {
 export default async function ClientPlanPage({
   searchParams,
 }: {
-  searchParams: { view?: string };
+  searchParams: { view?: string; id?: string };
 }) {
   const me = await requireOnboardedClient();
 
+  // Sin ?id → galería con todos los planes del cliente.
+  if (!searchParams.id) {
+    const cards = await getPlanCardsForClient(me.id);
+    if (cards.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center">
+          <UtensilsCrossed className="text-muted" size={32} />
+          <p className="mt-3 font-medium">Aún no tienes un plan</p>
+          <p className="mt-1 text-sm text-muted">Tu nutricionista lo preparará pronto.</p>
+        </div>
+      );
+    }
+    return (
+      <div>
+        <h1 className="text-2xl font-bold">Mi plan</h1>
+        <p className="mt-1 text-muted">
+          {cards.length === 1
+            ? "Tu plan nutricional. Pulsa para abrirlo."
+            : `Tienes ${cards.length} planes. Pulsa el que toque hoy.`}
+        </p>
+        <div className="mt-5">
+          <PlanCards mode="cliente" clientId={me.id} plans={cards} />
+        </div>
+      </div>
+    );
+  }
+
+  // Con ?id → vista detalle de ese plan en concreto.
   const plan = await prisma.nutritionPlan.findFirst({
-    where: { clientId: me.id },
-    orderBy: { createdAt: "desc" },
+    where: { id: searchParams.id, clientId: me.id },
     include: {
       days: {
         orderBy: { order: "asc" },
@@ -57,11 +86,20 @@ export default async function ClientPlanPage({
   });
 
   if (!plan) {
+    // Plan inexistente o de otro cliente — volvemos a la galería.
     return (
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center">
-        <UtensilsCrossed className="text-muted" size={32} />
-        <p className="mt-3 font-medium">Aún no tienes un plan</p>
-        <p className="mt-1 text-sm text-muted">Tu nutricionista lo preparará pronto.</p>
+      <div>
+        <Link
+          href="/cliente/plan"
+          className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-primary"
+        >
+          <ArrowLeft size={14} /> Mis planes
+        </Link>
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border p-12 text-center">
+          <UtensilsCrossed className="text-muted" size={32} />
+          <p className="mt-3 font-medium">Este plan ya no existe</p>
+          <p className="mt-1 text-sm text-muted">Vuelve a tu lista de planes.</p>
+        </div>
       </div>
     );
   }
@@ -98,17 +136,33 @@ export default async function ClientPlanPage({
 
   return (
     <div>
+      <Link
+        href="/cliente/plan"
+        className="mb-2 inline-flex items-center gap-1 text-sm text-muted hover:text-primary"
+      >
+        <ArrowLeft size={14} /> Mis planes
+      </Link>
       <h1 className="text-2xl font-bold">{plan.name}</h1>
-      {plan.goal && <p className="text-muted">{plan.goal}</p>}
+      {plan.description ? (
+        <p className="mt-1 text-sm text-muted">{plan.description}</p>
+      ) : null}
       <div className="mt-2">
         <MacroLine m={planMacros} big />
       </div>
       {/* Tabs Completo / Semanal */}
       <nav className="mt-5 flex gap-1 rounded-xl border border-border bg-surface p-1">
-        <ViewTab href={`/cliente/plan?view=completo`} active={view === "completo"} icon={<LayoutList size={14} />}>
+        <ViewTab
+          href={`/cliente/plan?id=${plan.id}&view=completo`}
+          active={view === "completo"}
+          icon={<LayoutList size={14} />}
+        >
           Plan completo
         </ViewTab>
-        <ViewTab href={`/cliente/plan?view=semanal`} active={view === "semanal"} icon={<CalendarDays size={14} />}>
+        <ViewTab
+          href={`/cliente/plan?id=${plan.id}&view=semanal`}
+          active={view === "semanal"}
+          icon={<CalendarDays size={14} />}
+        >
           Plan semanal
         </ViewTab>
       </nav>

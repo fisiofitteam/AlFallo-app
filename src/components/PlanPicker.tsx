@@ -3,6 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, Plus, Check, X, Loader2, Sparkles, UtensilsCrossed, Trophy } from "lucide-react";
+
+// Exportado en este mismo fichero más abajo como "AddPlanButton" para
+// reutilizarlo en la galería (PlanCards) sin necesidad de pintar todo el
+// selector.
 import {
   createPlan,
   deletePlan,
@@ -395,6 +399,41 @@ function RenameInline({
   );
 }
 
+/** Botón standalone "+ Añadir plan" + modal. Lo usa la galería de planes
+ *  (PlanCards) cuando todavía no se ha entrado a ninguno. */
+export function AddPlanButton({
+  clientId,
+  goalOptions,
+  considerations,
+  variant = "primary",
+}: {
+  clientId: string;
+  goalOptions: GoalOption[];
+  considerations: ConsiderationOption[];
+  variant?: "primary" | "subtle";
+}) {
+  const [open, setOpen] = useState(false);
+  const cls =
+    variant === "primary"
+      ? "flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition hover:opacity-90"
+      : "flex items-center gap-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-xs font-semibold text-text hover:border-primary hover:text-primary";
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={cls}>
+        <Plus size={variant === "primary" ? 16 : 12} /> Añadir plan
+      </button>
+      {open ? (
+        <AddPlanModal
+          clientId={clientId}
+          goalOptions={goalOptions}
+          considerations={considerations}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function AddPlanModal({
   clientId,
   goalOptions,
@@ -407,6 +446,7 @@ function AddPlanModal({
   onClose: () => void;
 }) {
   const [name, setName] = useState("Plan nutricional");
+  const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [goalOverride, setGoalOverride] = useState("");
   const [considerationId, setConsiderationId] = useState("");
@@ -418,6 +458,7 @@ function AddPlanModal({
     const fd = new FormData();
     fd.set("clientId", clientId);
     fd.set("name", name.trim());
+    if (description.trim()) fd.set("description", description.trim());
     if (instructions.trim()) fd.set("instructions", instructions.trim());
     if (goalOverride) fd.set("goalOverride", goalOverride);
     if (considerationId) fd.set("specialConsiderationOverrideId", considerationId);
@@ -458,6 +499,20 @@ function AddPlanModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Plan nutricional"
+              className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </label>
+
+          <label className="block">
+            <span className="block text-sm font-semibold">Descripción (la verá el cliente)</span>
+            <span className="block text-xs text-muted">
+              Frase corta para que el atleta entienda de qué va este plan. Ej. "Semana de mañana",
+              "Días de descarga", "Pre-Hyrox". Opcional — la podrás editar luego en la galería.
+            </span>
+            <input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Ej. Semana de mañana — entrenas antes de comer"
               className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
             />
           </label>

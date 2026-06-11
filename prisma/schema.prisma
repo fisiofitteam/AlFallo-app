@@ -637,6 +637,11 @@ model FoodLibrary {
 model NutritionPlan {
   id          String   @id @default(cuid())
   name        String
+  // Descripción corta visible para el cliente en la galería de planes
+  // (/cliente/plan). La rellena el nutri en su panel; sirve para que el
+  // atleta entienda de qué va cada plan (ej. "Semana de mañana", "Días de
+  // alto volumen", "Bajada de grasa pre-Hyrox").
+  description String?
   goal        String?
   // Observaciones generales del plan. Texto libre que el cliente ve junto
   // a su plan. Editable desde el builder.

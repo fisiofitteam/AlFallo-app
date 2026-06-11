@@ -42,6 +42,7 @@ export async function createPlan(formData: FormData) {
     data: {
       clientId,
       name: parseStr(formData.get("name")) ?? "Plan nutricional",
+      description: parseStr(formData.get("description")),
       goal: parseStr(formData.get("goal")),
       createdById: prof.id,
       instructions: parseStr(formData.get("instructions")),
@@ -86,6 +87,19 @@ export async function renamePlan(formData: FormData) {
     },
   });
   revalidatePath(`/planes/${planId}`);
+}
+
+/** Edita la descripción del plan (texto corto visible al cliente en la
+ *  galería de /cliente/plan). Se llama desde el editor inline de la card. */
+export async function updatePlanDescription(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  const plan = await loadPlanForEdit(planId, prof);
+  await prisma.nutritionPlan.update({
+    where: { id: planId },
+    data: { description: parseStr(formData.get("description")) },
+  });
+  revalidatePath(`/clientes/${plan.clientId}`);
 }
 
 export async function addDay(formData: FormData) {
