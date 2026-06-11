@@ -132,32 +132,10 @@ export async function submitOnboarding(formData: FormData) {
   redirect("/cliente");
 }
 
-export async function saveDailyLog(formData: FormData) {
-  const client = await requireClient();
-
-  // Fecha del registro (por defecto hoy), normalizada a medianoche UTC.
-  const dateStr = parseStr(formData.get("date")) ?? new Date().toISOString().slice(0, 10);
-  const date = new Date(`${dateStr}T00:00:00.000Z`);
-
-  const data = {
-    weightKg: parseNumber(formData.get("weightKg")),
-    energy: parseIntOrNull(formData.get("energy")),
-    hunger: parseIntOrNull(formData.get("hunger")),
-    sleepHours: parseNumber(formData.get("sleepHours")),
-    adherencePct: parseIntOrNull(formData.get("adherencePct")),
-    notes: parseStr(formData.get("notes")),
-  };
-
-  await prisma.dailyLog.upsert({
-    where: { clientId_date: { clientId: client.id, date } },
-    create: { clientId: client.id, date, ...data },
-    update: data,
-  });
-
-  revalidatePath("/cliente/registro");
-  revalidatePath("/cliente/progreso");
-  revalidatePath("/cliente");
-}
+// La página /cliente/registro y su action saveDailyLog se retiraron: el peso
+// y el resto de variables semanales se capturan en el check-in. Los DailyLog
+// históricos siguen en BD y la pestaña Evolución del panel los sigue
+// mostrando si existían, pero ya no se crean nuevos.
 
 export async function submitCheckIn(formData: FormData) {
   const client = await requireOnboardedClient();

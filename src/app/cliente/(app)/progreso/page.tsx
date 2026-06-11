@@ -34,14 +34,27 @@ function WeightChart({ points }: { points: { date: Date; weight: number }[] }) {
 export default async function ProgressPage() {
   const me = await requireOnboardedClient();
 
-  const logs = await prisma.dailyLog.findMany({
-    where: { clientId: me.id, weightKg: { not: null } },
-    orderBy: { date: "asc" },
-    select: { date: true, weightKg: true },
-    take: 60,
-  });
+  // El peso del cliente sale ahora del check-in semanal — ya no hay registro
+  // diario. Si el cliente tiene check-ins históricos con peso, todos cuentan.
+  // Mantenemos también los DailyLog antiguos por si quedan logs previos a la
+  // retirada de /registro (no se generan nuevos, pero los viejos se ven).
+  const [checkIns, legacyLogs] = await Promise.all([
+    prisma.checkIn.findMany({
+      where: { clientId: me.id, weightKg: { not: null } },
+      orderBy: { date: "asc" },
+      select: { date: true, weightKg: true },
+    }),
+    prisma.dailyLog.findMany({
+      where: { clientId: me.id, weightKg: { not: null } },
+      orderBy: { date: "asc" },
+      select: { date: true, weightKg: true },
+    }),
+  ]);
 
-  const points = logs.map((l) => ({ date: l.date, weight: l.weightKg as number }));
+  const points = [
+    ...checkIns.map((c) => ({ date: c.date, weight: c.weightKg as number })),
+    ...legacyLogs.map((l) => ({ date: l.date, weight: l.weightKg as number })),
+  ].sort((a, b) => a.date.getTime() - b.date.getTime());
   const last = points.at(-1);
   const first = points.at(0);
   const diff = last && first ? last.weight - first.weight : 0;
@@ -49,13 +62,13 @@ export default async function ProgressPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold">Mi progreso</h1>
-      <p className="mt-1 text-muted">Evolución de tu peso a partir de tus registros.</p>
+      <p className="mt-1 text-muted">Evolución de tu peso a partir de tus check-ins.</p>
 
       {points.length < 2 ? (
         <div className="mt-5 flex flex-col items-center rounded-2xl border border-dashed border-border p-12 text-center">
           <TrendingUp className="text-muted" size={32} />
-          <p className="mt-3 font-medium">Necesitas al menos 2 registros con peso</p>
-          <p className="mt-1 text-sm text-muted">Apunta tu peso en el registro diario para ver la gráfica.</p>
+          <p className="mt-3 font-medium">Necesitas al menos 2 check-ins con peso</p>
+          <p className="mt-1 text-sm text-muted">Cuando hagas tu check-in semanal verás aquí la gráfica.</p>
         </div>
       ) : (
         <>

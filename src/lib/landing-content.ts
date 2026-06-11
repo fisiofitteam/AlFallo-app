@@ -72,7 +72,7 @@ export const CONTRACT_LANDING_DEFAULTS: ContractLandingCopy = {
       bullets: [
         "Plan nutricional 100% personalizado a tu objetivo y a tus entrenos",
         "Tu nutricionista asignado, en seguimiento semanal",
-        "Acceso a la app de Al Fallo: tu plan, registro y check-ins",
+        "Acceso a la app de Al Fallo: tu plan, check-ins y progreso",
         "Chat directo con tu nutricionista para resolver dudas",
         "Adaptado a tu deporte (CrossFit, Hyrox, running…)",
       ],
