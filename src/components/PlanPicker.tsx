@@ -11,6 +11,8 @@ import {
 } from "@/app/(panel)/planes/actions";
 
 export type PlanPickerItem = { id: string; name: string };
+export type ConsiderationOption = { id: string; title: string };
+export type GoalOption = { value: string; label: string };
 
 /**
  * Barra superior de la pestaña Plan dentro de la ficha del cliente.
@@ -25,10 +27,14 @@ export function PlanPicker({
   clientId,
   plans,
   selectedPlanId,
+  goalOptions,
+  considerations,
 }: {
   clientId: string;
   plans: PlanPickerItem[];
   selectedPlanId: string | null;
+  goalOptions: GoalOption[];
+  considerations: ConsiderationOption[];
 }) {
   const router = useRouter();
   const [, startNav] = useTransition();
@@ -143,17 +149,13 @@ export function PlanPicker({
         )}
 
         <div className="ml-auto">
-          {adding ? (
-            <NewPlanInline clientId={clientId} onDone={() => setAdding(false)} />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              className="flex items-center gap-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-xs font-semibold text-text hover:border-primary hover:text-primary"
-            >
-              <Plus size={12} /> Añadir plan
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="flex items-center gap-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-xs font-semibold text-text hover:border-primary hover:text-primary"
+          >
+            <Plus size={12} /> Añadir plan
+          </button>
         </div>
       </div>
 
@@ -187,6 +189,15 @@ export function PlanPicker({
           onChooseRegular={chooseRegular}
           onChooseCompetition={chooseCompetition}
           onSubmitCompetition={(name, ctx) => runGenerate({ competitionName: name, competitionContext: ctx })}
+        />
+      ) : null}
+
+      {adding ? (
+        <AddPlanModal
+          clientId={clientId}
+          goalOptions={goalOptions}
+          considerations={considerations}
+          onClose={() => setAdding(false)}
         />
       ) : null}
     </section>
@@ -384,54 +395,166 @@ function RenameInline({
   );
 }
 
-function NewPlanInline({
+function AddPlanModal({
   clientId,
-  onDone,
+  goalOptions,
+  considerations,
+  onClose,
 }: {
   clientId: string;
-  onDone: () => void;
+  goalOptions: GoalOption[];
+  considerations: ConsiderationOption[];
+  onClose: () => void;
 }) {
+  const [name, setName] = useState("Plan nutricional");
+  const [instructions, setInstructions] = useState("");
+  const [goalOverride, setGoalOverride] = useState("");
+  const [considerationId, setConsiderationId] = useState("");
+  const [autoGenerate, setAutoGenerate] = useState(true);
   const [pending, start] = useTransition();
+
+  function submit() {
+    if (!name.trim()) return;
+    const fd = new FormData();
+    fd.set("clientId", clientId);
+    fd.set("name", name.trim());
+    if (instructions.trim()) fd.set("instructions", instructions.trim());
+    if (goalOverride) fd.set("goalOverride", goalOverride);
+    if (considerationId) fd.set("specialConsiderationOverrideId", considerationId);
+    if (autoGenerate) fd.set("autoGenerate", "true");
+    start(async () => {
+      // createPlan redirige a /clientes/<id>?tab=plan&planId=<new>. Si
+      // autoGenerate=true, espera dentro del request a que la IA termine
+      // antes de redirigir.
+      await createPlan(fd);
+    });
+  }
+
   return (
-    <form
-      action={async (fd) => {
-        const name = String(fd.get("name") ?? "").trim();
-        if (!name) {
-          onDone();
-          return;
-        }
-        start(async () => {
-          // createPlan redirige a /clientes/<id>?tab=plan&planId=<new>
-          await createPlan(fd);
-        });
-      }}
-      className="flex items-center gap-1"
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
     >
-      <input type="hidden" name="clientId" value={clientId} />
-      <input
-        name="name"
-        autoFocus
-        required
-        placeholder="Nombre del plan"
-        className="rounded-md border border-primary/50 bg-bg px-2 py-1 text-sm outline-none focus:border-primary"
-      />
-      <button
-        type="submit"
-        disabled={pending}
-        title="Crear"
-        className="rounded-md p-1.5 text-white shadow-sm hover:opacity-90 disabled:opacity-50"
-        style={{ backgroundColor: "var(--c-primary)" }}
+      <div
+        className="relative w-full max-w-xl rounded-2xl border border-border bg-surface shadow-xl"
+        onClick={(e) => e.stopPropagation()}
       >
-        {pending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-      </button>
-      <button
-        type="button"
-        onClick={onDone}
-        title="Cancelar"
-        className="rounded-md p-1.5 text-muted hover:bg-bg"
-      >
-        <X size={12} />
-      </button>
-    </form>
+        <header className="flex items-center justify-between border-b border-border px-5 py-3">
+          <p className="font-semibold">Añadir plan</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1.5 text-muted hover:bg-bg hover:text-text"
+            title="Cerrar"
+          >
+            <X size={14} />
+          </button>
+        </header>
+
+        <div className="space-y-4 px-5 py-4">
+          <label className="block">
+            <span className="block text-sm font-semibold">Nombre del plan</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Plan nutricional"
+              className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </label>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="block text-sm font-semibold">Objetivo del plan</span>
+              <span className="block text-xs text-muted">
+                Si lo dejas en automático, se usa el objetivo del cliente.
+              </span>
+              <select
+                value={goalOverride}
+                onChange={(e) => setGoalOverride(e.target.value)}
+                className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+              >
+                <option value="">Usar el del cliente</option>
+                {goalOptions.map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="block text-sm font-semibold">Consideración especial</span>
+              <span className="block text-xs text-muted">
+                Solo para este plan, anula las marcadas en la ficha.
+              </span>
+              <select
+                value={considerationId}
+                onChange={(e) => setConsiderationId(e.target.value)}
+                className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+              >
+                <option value="">Usar las de la ficha</option>
+                {considerations.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="block text-sm font-semibold">Instrucciones para la IA</span>
+            <span className="block text-xs text-muted">
+              Lo que quieras que la IA tenga en cuenta al generar este plan: enfoque, alimentos a
+              forzar / evitar, presentación, etc. Opcional.
+            </span>
+            <textarea
+              rows={6}
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="Ej. Necesita mucha proteína porque viene de bajada en analítica. Prefiere arroz blanco a integral. Cena temprano (sobre 20:30). Sin lácteos de vaca."
+              className="mt-1.5 w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </label>
+
+          <label className="flex items-start gap-2 rounded-lg border border-border bg-bg/40 px-3 py-2 text-sm">
+            <input
+              type="checkbox"
+              checked={autoGenerate}
+              onChange={(e) => setAutoGenerate(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border accent-[color:var(--c-primary)]"
+            />
+            <span>
+              <strong>Generar con IA al crear</strong>
+              <span className="block text-xs text-muted">
+                Si lo desactivas, el plan se crea vacío y lo generas tú con el botón "Generar plan"
+                cuando quieras. (Tardará 10-20 s si lo activas.)
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <footer className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className="rounded-lg px-3 py-2 text-sm text-muted hover:bg-bg hover:text-text disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={pending || !name.trim()}
+            className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: "var(--c-primary)" }}
+          >
+            {pending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            {autoGenerate ? "Crear y generar plan" : "Crear plan"}
+          </button>
+        </footer>
+      </div>
+    </div>
   );
 }

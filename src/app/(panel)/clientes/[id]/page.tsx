@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
-  ArrowLeft, Plus,
+  ArrowLeft,
   UtensilsCrossed, ClipboardList, Target, CalendarDays,
   TrendingUp, NotebookPen, KeyRound, Settings,
   type LucideIcon,
@@ -11,6 +11,7 @@ import { requireProfessional } from "@/lib/session";
 import {
   CLIENT_ACCESS_ROLES,
   CLIENT_STATUSES,
+  GOAL_OPTIONS,
   isManagerRole,
   statusBadgeClass,
   statusLabel,
@@ -22,7 +23,6 @@ import { MacroTargetsForm } from "./macro-targets-form";
 import { CheckInsTab } from "./checkins-tab";
 import { EvolucionTab } from "./evolucion-tab";
 import { reassignNutritionist, setClientPassword, updateClientStatus } from "../actions";
-import { createPlan } from "../../planes/actions";
 import { PlanBuilder } from "@/components/PlanBuilder";
 import { PlanPicker } from "@/components/PlanPicker";
 import { loadPlanForBuilder } from "@/lib/loadPlanData";
@@ -203,15 +203,20 @@ export default async function ClientDetailPage({
 
         <section>
           {active === "plan" ? (
-            client.plans.length === 0 ? (
-              <PlanEmptyState clientId={client.id} />
-            ) : activePlanData ? (
-              <>
-                <PlanPicker
-                  clientId={client.id}
-                  plans={client.plans.map((p) => ({ id: p.id, name: p.name }))}
-                  selectedPlanId={activePlanData.plan.id}
-                />
+            <>
+              <PlanPicker
+                clientId={client.id}
+                plans={client.plans.map((p) => ({ id: p.id, name: p.name }))}
+                selectedPlanId={activePlanData?.plan.id ?? null}
+                goalOptions={GOAL_OPTIONS}
+                considerations={specialConsiderations.map((c) => ({ id: c.id, title: c.title }))}
+              />
+              {client.plans.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
+                  Pulsa "Añadir plan" arriba para crear el primer plan. Podrás darle a la IA tus
+                  instrucciones, elegir un objetivo concreto y una consideración especial.
+                </p>
+              ) : activePlanData ? (
                 <PlanBuilder
                   // key={planId}: fuerza un remount cuando el nutri cambia
                   // de plan en el selector. Sin esto, useState mantiene en
@@ -228,29 +233,33 @@ export default async function ClientDetailPage({
                   initialSupplementation={activePlanData.plan.supplementation}
                   initialTargets={activePlanData.targets}
                 />
-              </>
-            ) : (
-              <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-                No se pudo cargar el plan seleccionado.
-              </p>
-            )
+              ) : (
+                <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
+                  No se pudo cargar el plan seleccionado.
+                </p>
+              )}
+            </>
           ) : active === "semanal" ? (
-            client.plans.length === 0 ? (
-              <PlanEmptyState clientId={client.id} />
-            ) : activePlanData ? (
-              <>
-                <PlanPicker
-                  clientId={client.id}
-                  plans={client.plans.map((p) => ({ id: p.id, name: p.name }))}
-                  selectedPlanId={activePlanData.plan.id}
-                />
+            <>
+              <PlanPicker
+                clientId={client.id}
+                plans={client.plans.map((p) => ({ id: p.id, name: p.name }))}
+                selectedPlanId={activePlanData?.plan.id ?? null}
+                goalOptions={GOAL_OPTIONS}
+                considerations={specialConsiderations.map((c) => ({ id: c.id, title: c.title }))}
+              />
+              {client.plans.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
+                  Pulsa "Añadir plan" arriba para crear el primer plan.
+                </p>
+              ) : activePlanData ? (
                 <WeeklyMenuView days={buildWeeklyMenu(activePlanData.days)} />
-              </>
-            ) : (
-              <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-                No se pudo cargar el plan seleccionado.
-              </p>
-            )
+              ) : (
+                <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
+                  No se pudo cargar el plan seleccionado.
+                </p>
+              )}
+            </>
           ) : active === "ficha" ? (
             <FichaForm
               clientId={client.id}
@@ -287,28 +296,6 @@ export default async function ClientDetailPage({
 }
 
 // ── Sub-componentes inline para mantener el archivo manejable ───────────
-
-function PlanEmptyState({ clientId }: { clientId: string }) {
-  return (
-    <div className="space-y-4">
-      <form
-        action={createPlan}
-        className="flex flex-wrap items-end gap-2 rounded-2xl border border-dashed border-border p-4"
-      >
-        <input type="hidden" name="clientId" value={clientId} />
-        <div className="min-w-[180px] flex-1">
-          <TextInput name="name" placeholder="Nombre del plan (ej. Definición 12 semanas)" required />
-        </div>
-        <button className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition hover:opacity-90">
-          <Plus size={16} /> Crear primer plan
-        </button>
-      </form>
-      <p className="text-center text-sm text-muted">
-        Cuando crees el plan podrás generarlo con Harris-Benedict o con IA directamente desde aquí.
-      </p>
-    </div>
-  );
-}
 
 function AccesoSection({
   clientId,

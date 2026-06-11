@@ -83,6 +83,10 @@ export type PlanContext = {
    * de 'rendimiento' como goal-specific, ignorando el objetivo del cliente. */
   competitionContext?: string | null;
   competitionName?: string | null;
+
+  /** Instrucciones escritas por el nutri al añadir el plan: peticiones
+   *  concretas para la IA (énfasis, alimentos a forzar, presentación, etc.). */
+  userInstructions?: string | null;
 };
 
 function ageFromBirthDate(d: Date | null): number | null {
@@ -376,6 +380,15 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
       }
     }
     textBlocks.push(lines.join("\n"));
+  }
+
+  // Instrucciones del nutri al añadir el plan: van como bloque dedicado al
+  // final del system prompt, antes (sobre) el contexto de competición. Así
+  // tienen prioridad alta sobre los briefs y consideraciones.
+  if (ctx.userInstructions && ctx.userInstructions.trim()) {
+    textBlocks.push(
+      `\n\n=== INSTRUCCIONES DEL NUTRICIONISTA PARA ESTE PLAN ===\n${ctx.userInstructions.trim()}\n\nEstas instrucciones son prioritarias: si entran en conflicto con el brief general, sigue lo que diga el nutri aquí.`,
+    );
   }
 
   // Contexto de la competición (solo cuando ctx.competitionContext está set).

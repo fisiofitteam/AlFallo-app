@@ -33,17 +33,35 @@ export async function createPlan(formData: FormData) {
   const clientId = String(formData.get("clientId"));
   await assertClientAccess(clientId, prof);
 
+  // Override de consideración especial: viene como single-select. Si tiene
+  // valor, se guarda como array de 1 elemento (el schema permite ampliar).
+  const considerationId = parseStr(formData.get("specialConsiderationOverrideId"));
+  const overrideIds = considerationId ? [considerationId] : [];
+
   const plan = await prisma.nutritionPlan.create({
     data: {
       clientId,
       name: parseStr(formData.get("name")) ?? "Plan nutricional",
       goal: parseStr(formData.get("goal")),
       createdById: prof.id,
+      instructions: parseStr(formData.get("instructions")),
+      goalOverride: parseStr(formData.get("goalOverride")),
+      specialConsiderationOverrideIds: overrideIds,
     },
   });
 
-  // El builder se ve embebido dentro de la ficha del cliente; tras crear,
-  // aterrizamos en la pestaña Plan con el nuevo plan seleccionado.
+  // Si el formulario marca autoGenerate, generamos el plan en este mismo
+  // request (tarda 10-20 s pero ahorra una navegación más). Si falla la IA,
+  // el plan queda creado vacío y el nutri puede pulsar "Generar plan"
+  // después.
+  if (parseStr(formData.get("autoGenerate")) === "true") {
+    try {
+      await runFullPlanGeneration({ planId: plan.id, prof });
+    } catch (e) {
+      console.warn("[createPlan] auto-generate failed:", (e as Error).message);
+    }
+  }
+
   redirect(`/clientes/${clientId}?tab=plan&planId=${plan.id}`);
 }
 
@@ -170,13 +188,45 @@ export async function deleteMeal(formData: FormData) {
 export async function generatePlanFromAI(formData: FormData) {
   const prof = await requireAccess();
   const planId = String(formData.get("planId"));
-  const plan = await loadPlanForEdit(planId, prof);
+  await loadPlanForEdit(planId, prof);
 
-  // Tipo del plan + contexto opcional de competición.
+  // Lee los inputs del formulario "Generar plan" (competición / overrides
+  // adhoc). Para el flujo normal, los overrides se sacan de la fila del plan
+  // (donde se persistieron al crear). Aquí permitimos que el formulario los
+  // pise (el modal de competición los pasa explícitos).
   const kindRaw = parseStr(formData.get("kind"));
-  const kind = kindRaw === "competition" ? "competition" : "regular";
+  const overrideKind = kindRaw === "competition" ? "competition" : kindRaw === "regular" ? "regular" : null;
   const competitionName = parseStr(formData.get("competitionName"));
   const competitionContext = parseStr(formData.get("competitionContext"));
+
+  await runFullPlanGeneration({
+    planId,
+    prof,
+    overrideKind,
+    competitionName,
+    competitionContext,
+  });
+}
+
+// Helper interno: ejecuta toda la cadena HB → Claude → persistencia para un
+// plan ya existente. Lo llaman tanto generatePlanFromAI (botón "Generar plan")
+// como createPlan (cuando se marca autoGenerate al añadir).
+async function runFullPlanGeneration(opts: {
+  planId: string;
+  prof: { id: string; role: string };
+  overrideKind?: "regular" | "competition" | null;
+  competitionName?: string | null;
+  competitionContext?: string | null;
+}) {
+  const { planId, prof } = opts;
+  const plan = await prisma.nutritionPlan.findUnique({ where: { id: planId } });
+  if (!plan) return;
+
+  // Resuelve los flags efectivos: si el formulario "Generar plan" pasó algo,
+  // gana; si no, se usa lo persistido en el plan.
+  const kind = opts.overrideKind ?? plan.kind ?? "regular";
+  const competitionName = opts.competitionName ?? plan.competitionName ?? null;
+  const competitionContext = opts.competitionContext ?? plan.competitionContext ?? null;
   const isCompetition = kind === "competition" && !!competitionContext;
 
   const client = await prisma.client.findUnique({
@@ -240,6 +290,17 @@ export async function generatePlanFromAI(formData: FormData) {
     },
   });
 
+  // Goal y consideraciones efectivas para este plan:
+  // - goal: si el plan tiene goalOverride, gana; si no, el del cliente.
+  // - considerations: si el plan tiene override (no vacío), gana; si no,
+  //   las del cliente. Sigue siendo aditivo si el manager lo prefiere
+  //   marcando varios en la ficha del cliente.
+  const effectiveGoal = plan.goalOverride ?? client.profile?.goal ?? null;
+  const effectiveConsiderationIds =
+    plan.specialConsiderationOverrideIds.length > 0
+      ? plan.specialConsiderationOverrideIds
+      : client.profile?.specialConsiderationIds ?? [];
+
   // 2) Llamamos al generador. Usa el brief de /biblioteca/brief-ia (textos +
   //    adjuntos PDF/Excel/CSV) y los targets recién recalculados.
   const { generatePlanDraft } = await import("@/lib/planGenerator");
@@ -252,7 +313,7 @@ export async function generatePlanFromAI(formData: FormData) {
     weeklyFrequency: client.profile?.weeklyFrequency ?? null,
     level: client.profile?.level ?? null,
     boxName: client.profile?.boxName ?? null,
-    goal: client.profile?.goal ?? null,
+    goal: effectiveGoal,
     targetWeightKg: client.profile?.targetWeightKg ?? null,
     dietaryStyle: client.profile?.dietaryStyle ?? null,
     allergies: client.profile?.allergies ?? [],
@@ -268,9 +329,10 @@ export async function generatePlanFromAI(formData: FormData) {
     proteinRest: client.macroTargets?.proteinRest ?? null,
     carbsRest: client.macroTargets?.carbsRest ?? null,
     fatRest: client.macroTargets?.fatRest ?? null,
-    specialConsiderationIds: client.profile?.specialConsiderationIds ?? [],
+    specialConsiderationIds: effectiveConsiderationIds,
     competitionContext: isCompetition ? competitionContext : null,
     competitionName: isCompetition ? competitionName : null,
+    userInstructions: plan.instructions ?? null,
   });
 
   // 3) Reset de la estructura del plan (igual que HB).

@@ -653,6 +653,16 @@ model NutritionPlan {
   // pega para que la IA construya el plan en torno a la prueba.
   competitionContext  String?
 
+  // Instrucciones que el nutri escribió al añadir este plan: tono, énfasis,
+  // peticiones específicas para la IA. Se inyectan en el system prompt.
+  instructions String?
+  // Si tiene valor, el plan usa este goal en lugar del goal del cliente
+  // (cambia el brief específico que se aplica).
+  goalOverride String?
+  // Si no está vacío, sustituye al array de consideraciones del cliente
+  // SOLO para este plan. Vacío = se aplican las del cliente.
+  specialConsiderationOverrideIds String[] @default([])
+
   client    Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   createdBy Professional? @relation(fields: [createdById], references: [id], onDelete: SetNull)
   days      PlanDay[]
