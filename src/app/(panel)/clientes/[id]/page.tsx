@@ -219,6 +219,8 @@ export default async function ClientDetailPage({
                   clientName={activePlanData.plan.client.fullName}
                   planName={activePlanData.plan.name}
                   initialDays={activePlanData.days}
+                  initialNotes={activePlanData.plan.notes}
+                  initialSupplementation={activePlanData.plan.supplementation}
                   initialTargets={activePlanData.targets}
                 />
               </>

@@ -103,8 +103,6 @@ export default async function ClientPlanPage({
       <div className="mt-2">
         <MacroLine m={planMacros} big />
       </div>
-      {plan.notes && <p className="mt-3 rounded-xl bg-surface-2 p-3 text-sm">{plan.notes}</p>}
-
       {/* Tabs Completo / Semanal */}
       <nav className="mt-5 flex gap-1 rounded-xl border border-border bg-surface p-1">
         <ViewTab href={`/cliente/plan?view=completo`} active={view === "completo"} icon={<LayoutList size={14} />}>
@@ -186,6 +184,28 @@ export default async function ClientPlanPage({
           </div>
         )}
       </div>
+
+      {/* Observaciones y suplementación al final del plan. */}
+      {(plan.notes || plan.supplementation) ? (
+        <div className="mt-6 space-y-4">
+          {plan.notes ? (
+            <section className="rounded-2xl border border-border bg-surface p-4">
+              <p className="mb-1 text-xs font-bold uppercase tracking-wider text-primary">
+                Observaciones
+              </p>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{plan.notes}</p>
+            </section>
+          ) : null}
+          {plan.supplementation ? (
+            <section className="rounded-2xl border border-border bg-surface p-4">
+              <p className="mb-1 text-xs font-bold uppercase tracking-wider text-primary">
+                Suplementación
+              </p>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{plan.supplementation}</p>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

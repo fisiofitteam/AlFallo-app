@@ -22,6 +22,7 @@ import {
   deleteMeal,
   renameMeal,
   moveMeal,
+  updatePlanCopy,
 } from "@/app/(panel)/planes/actions";
 import { MEAL_TYPE_OPTIONS, DAY_TYPES } from "@/lib/nutrition";
 
@@ -98,6 +99,8 @@ export function PlanBuilder({
   planName,
   initialDays,
   initialTargets,
+  initialNotes,
+  initialSupplementation,
   embedded = false,
 }: {
   planId: string;
@@ -106,8 +109,8 @@ export function PlanBuilder({
   planName: string;
   initialDays: PlanBuilderDay[];
   initialTargets: PlanBuilderTargets;
-  /** Si está embebido dentro de la ficha del cliente, ocultamos back-link y
-   *  subtitulo (redundantes con la cabecera del cliente que ya los muestra). */
+  initialNotes: string | null;
+  initialSupplementation: string | null;
   embedded?: boolean;
 }) {
   const [days, setDays] = useState<PlanBuilderDay[]>(initialDays);
@@ -115,6 +118,19 @@ export function PlanBuilder({
     initialDays[0]?.id ?? null,
   );
   const [generatingAI, startGeneratingAI] = useTransition();
+  const [notesDraft, setNotesDraft] = useState(initialNotes ?? "");
+  const [supplementationDraft, setSupplementationDraft] = useState(initialSupplementation ?? "");
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [, startCopySave] = useTransition();
+
+  function persistCopySoon(nextNotes: string, nextSupp: string) {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => {
+      startCopySave(async () => {
+        await updatePlanCopy(planId, nextNotes || null, nextSupp || null);
+      });
+    }, 800);
+  }
 
   const activeDay = days.find((d) => d.id === activeDayId) ?? days[0] ?? null;
 
@@ -302,6 +318,47 @@ export function PlanBuilder({
           </form>
         ) : null}
       </div>
+
+      {/* Observaciones y suplementación. Texto libre que el cliente ve en su
+          app junto al plan. Autosave debounce 800 ms. */}
+      <section className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+          <header className="border-b border-border px-5 py-3">
+            <p className="font-semibold">Observaciones</p>
+            <p className="mt-0.5 text-xs text-muted">
+              Notas generales del plan, indicaciones importantes para el atleta.
+            </p>
+          </header>
+          <textarea
+            rows={6}
+            value={notesDraft}
+            onChange={(e) => {
+              setNotesDraft(e.target.value);
+              persistCopySoon(e.target.value, supplementationDraft);
+            }}
+            placeholder="Ej. Bebe 35 ml/kg al día. Si entrenas dos sesiones, repite Pre-WOD. Pesa los alimentos en crudo salvo verduras."
+            className="block w-full resize-y bg-transparent px-5 py-3 text-sm leading-relaxed outline-none focus:bg-bg/40"
+          />
+        </div>
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+          <header className="border-b border-border px-5 py-3">
+            <p className="font-semibold">Suplementación</p>
+            <p className="mt-0.5 text-xs text-muted">
+              Suplementos y dosis pautadas. El cliente lo ve como bloque propio.
+            </p>
+          </header>
+          <textarea
+            rows={6}
+            value={supplementationDraft}
+            onChange={(e) => {
+              setSupplementationDraft(e.target.value);
+              persistCopySoon(notesDraft, e.target.value);
+            }}
+            placeholder="Ej. Creatina monohidrato 5 g/día con comida principal. Whey 30 g post-WOD. Magnesio 300 mg antes de dormir. Vit. D3 2000 UI con desayuno."
+            className="block w-full resize-y bg-transparent px-5 py-3 text-sm leading-relaxed outline-none focus:bg-bg/40"
+          />
+        </div>
+      </section>
     </div>
   );
 }

@@ -3,7 +3,14 @@ import { prisma } from "@/lib/prisma";
 import type { PlanBuilderDay, PlanBuilderTargets } from "@/components/PlanBuilder";
 
 export type LoadedPlan = {
-  plan: { id: string; name: string; clientId: string; client: { fullName: string } };
+  plan: {
+    id: string;
+    name: string;
+    clientId: string;
+    client: { fullName: string };
+    notes: string | null;
+    supplementation: string | null;
+  };
   targets: PlanBuilderTargets;
   days: PlanBuilderDay[];
 };
@@ -68,6 +75,8 @@ export async function loadPlanForBuilder(planId: string): Promise<LoadedPlan | n
       name: plan.name,
       clientId: plan.clientId,
       client: { fullName: plan.client.fullName },
+      notes: plan.notes,
+      supplementation: plan.supplementation,
     },
     targets,
     days,

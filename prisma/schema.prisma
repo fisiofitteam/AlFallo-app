@@ -634,7 +634,12 @@ model NutritionPlan {
   id          String   @id @default(cuid())
   name        String
   goal        String?
+  // Observaciones generales del plan. Texto libre que el cliente ve junto
+  // a su plan. Editable desde el builder.
   notes       String?
+  // Suplementación pautada. Texto libre, separado de notes para que el
+  // cliente lo vea como un bloque propio.
+  supplementation String?
   clientId    String
   createdById String?
   createdAt   DateTime @default(now())

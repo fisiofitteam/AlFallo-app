@@ -401,6 +401,26 @@ export async function updatePlanNotes(formData: FormData) {
   revalidatePath(`/planes/${planId}`);
 }
 
+// Actualiza observaciones / suplementación a la vez. Recibe los textos
+// directamente (no FormData) para que el builder pueda llamar a esto desde
+// el cliente con debounce sin tener que armar FormData.
+export async function updatePlanCopy(
+  planId: string,
+  notes: string | null,
+  supplementation: string | null,
+): Promise<void> {
+  const prof = await requireAccess();
+  await loadPlanForEdit(planId, prof);
+  await prisma.nutritionPlan.update({
+    where: { id: planId },
+    data: {
+      notes: notes && notes.trim() ? notes.slice(0, 5000) : null,
+      supplementation:
+        supplementation && supplementation.trim() ? supplementation.slice(0, 5000) : null,
+    },
+  });
+}
+
 // Añade un alimento de la biblioteca a una comida (con su cantidad en gramos).
 export async function addItem(formData: FormData) {
   const prof = await requireAccess();
