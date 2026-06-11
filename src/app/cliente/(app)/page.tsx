@@ -6,7 +6,6 @@ import {
   ChefHat,
   ClipboardCheck,
   Dumbbell,
-  MessageCircle,
   NotebookPen,
   ShoppingCart,
   Stethoscope,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
+import { getDailyQuote } from "@/lib/dailyQuote";
 
 export const metadata = { title: "Al Fallo" };
 
@@ -28,6 +28,10 @@ type Section = {
   ready: boolean;
 };
 
+// Lista MAESTRA de secciones del cliente. El mosaico de la home solo pinta
+// las que tienen `ready: true` — los placeholders se ocultan hasta que se
+// monten para no enseñar tiles muertos. Mantén los `ready: false` aquí (con
+// su icono/key) para que sea trivial activarlos cuando toque.
 const SECTIONS: Section[] = [
   { key: "plan", href: "/cliente/plan", label: "Mi plan", icon: UtensilsCrossed, ready: true },
   { key: "comunidad", href: "/cliente/comunidad", label: "Comunidad", icon: Users, ready: true },
@@ -39,6 +43,7 @@ const SECTIONS: Section[] = [
   { key: "training", href: "/cliente/training", label: "Entreno", icon: Dumbbell, ready: false },
   { key: "nutri", href: "/cliente/nutricionista", label: "Tu nutri", icon: Stethoscope, ready: false },
 ];
+const VISIBLE_SECTIONS = SECTIONS.filter((s) => s.ready);
 
 // Si existe public/avocados/<key>.png devuelve la ruta; si no, null.
 function avocadoSrc(key: string): string | null {
@@ -71,6 +76,8 @@ async function hasNewCommunity(clientId: string): Promise<boolean> {
 export default async function ClientHomePage() {
   const me = await requireOnboardedClient();
   const newCommunity = await hasNewCommunity(me.id);
+  // Frase del día (estable durante todo el calendario, ver lib/dailyQuote).
+  const quote = getDailyQuote();
 
   return (
     <div className="relative pt-1">
@@ -89,16 +96,18 @@ export default async function ClientHomePage() {
         <path d="M7.7 14 H16.3" />
       </svg>
 
-      {/* Frase motivacional */}
+      {/* Frase motivacional del día. Rota por día del año (ver lib/dailyQuote)
+          para que el cliente no se queme con la misma frase eternamente. */}
       <h1 className="relative text-[2rem] font-extrabold leading-tight tracking-tight">
-        Lo difícil era empezar.
+        {quote.head}
         <br />
-        <span className="text-primary">Ya estás aquí.</span>
+        <span className="text-primary">{quote.tail}</span>
       </h1>
 
-      {/* Mosaico de secciones */}
+      {/* Mosaico de secciones — solo las "ready". Las que no, se ocultan
+          hasta que estén montadas (sin badges "Pronto" que ensucien la UI). */}
       <div className="relative mt-7 grid grid-cols-2 gap-3">
-        {SECTIONS.map((s) => {
+        {VISIBLE_SECTIONS.map((s) => {
           const Icon = s.icon;
           const avocado = avocadoSrc(s.key);
           return (
@@ -124,11 +133,6 @@ export default async function ClientHomePage() {
                 />
               )}
               <span className="text-base font-bold">{s.label}</span>
-              {!s.ready && (
-                <span className="absolute right-2 top-2 rounded-full bg-primary-soft px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
-                  Pronto
-                </span>
-              )}
               {s.key === "comunidad" && newCommunity && (
                 <span
                   aria-label="Hay novedades"

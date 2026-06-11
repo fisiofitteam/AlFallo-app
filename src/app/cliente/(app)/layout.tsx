@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LogOut } from "lucide-react";
 import { requireOnboardedClient } from "@/lib/client-session";
+import { ClientTabBar } from "@/components/cliente/ClientTabBar";
 import { clientLogout } from "../actions";
 
 export default async function ClientAppLayout({ children }: { children: React.ReactNode }) {
@@ -34,7 +35,11 @@ export default async function ClientAppLayout({ children }: { children: React.Re
           </form>
         </header>
 
-        <main className="flex-1 px-5 pb-10">{children}</main>
+        {/* pb-24 deja hueco para que la tab bar sticky no tape el contenido. */}
+        <main className="flex-1 px-5 pb-24">{children}</main>
+
+        {/* Barra inferior fija con los 5 atajos principales. */}
+        <ClientTabBar />
       </div>
     </div>
   );
