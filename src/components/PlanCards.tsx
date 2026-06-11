@@ -53,10 +53,13 @@ function PlanCard({
 
   return (
     <article className="group relative overflow-hidden rounded-2xl border border-border bg-surface transition hover:border-primary hover:shadow-sm">
-      {/* Click cubre toda la card excepto los botones de acción (z-10 abajo). */}
+      {/* El Link cubre TODA la card como capa de fondo. El contenido va con
+          pointer-events-none para que los clicks atraviesen y lleguen al
+          Link; los elementos interactivos individuales (editar descripción,
+          borrar) re-activan pointer-events-auto en ellos mismos. */}
       <Link href={href} className="absolute inset-0 z-0" aria-label={`Abrir ${plan.name}`} />
 
-      <div className="relative z-0 p-5">
+      <div className="pointer-events-none relative p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -163,7 +166,9 @@ function DescriptionEditor({ planId, initial }: { planId: string; initial: strin
             setEditing(true);
           }}
           title="Editar descripción"
-          className="rounded-md border border-border p-1 text-muted opacity-0 transition group-hover:opacity-100 hover:border-primary hover:text-primary"
+          // pointer-events-auto para sobreescribir el pointer-events-none
+          // del wrapper de la card; si no, el lápiz no recibe el click.
+          className="pointer-events-auto rounded-md border border-border p-1 text-muted opacity-0 transition group-hover:opacity-100 hover:border-primary hover:text-primary"
         >
           <Pencil size={12} />
         </button>
@@ -173,8 +178,9 @@ function DescriptionEditor({ planId, initial }: { planId: string; initial: strin
 
   return (
     <form
-      // z-10 sobre el Link de la card.
-      className="relative z-10 mt-2"
+      // pointer-events-auto + z-10 para sobreescribir el wrapper de la card
+      // y que el formulario (textarea + botones) capture sus propios clicks.
+      className="pointer-events-auto relative z-10 mt-2"
       onClick={(e) => e.stopPropagation()}
       action={(fd) => {
         fd.set("planId", planId);
@@ -222,8 +228,9 @@ function DescriptionEditor({ planId, initial }: { planId: string; initial: strin
 function DeleteButton({ planId, planName }: { planId: string; planName: string }) {
   return (
     <form
-      // z-10 para sentarse sobre el Link transparente.
-      className="absolute right-2 top-2 z-10"
+      // pointer-events-auto para que el botón papelera reciba su propio click
+      // por encima del Link de fondo.
+      className="pointer-events-auto absolute right-2 top-2 z-10"
       action={async (fd) => {
         if (
           !confirm(
