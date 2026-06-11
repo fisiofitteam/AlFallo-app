@@ -567,6 +567,10 @@ model NutritionProfile {
   // IA cuando se genera plan para este cliente.
   specialConsiderationIds String[] @default([])
 
+  // URL del grupo de WhatsApp de seguimiento del cliente. Se enlaza desde el
+  // botón de la lista de clientes y desde la ficha individual.
+  whatsappGroupUrl String?
+
   // Objetivo
   goal          String? // perdida_grasa | recomposicion | ganancia_masa | rendimiento | definicion
   targetWeightKg Float?

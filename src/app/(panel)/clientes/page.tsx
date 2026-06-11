@@ -1,15 +1,25 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Plus, Search, Users, Stethoscope, Star } from "lucide-react";
+import { ArrowRight, Plus, Search, Users, Stethoscope, Star } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import {
   CLIENT_ACCESS_ROLES,
+  GOAL_OPTIONS,
+  LEVEL_OPTIONS,
   clientScopeWhere,
   isManagerRole,
+  optionLabel,
   statusBadgeClass,
   statusLabel,
 } from "@/lib/clients";
+import {
+  computeCompliance,
+  computeSubscription,
+  metricTone,
+  renewalLabel,
+} from "@/lib/clientMetrics";
+import { MetricDonut } from "@/components/MetricDonut";
 
 export const metadata = { title: "Clientes · Al Fallo Nutrition" };
 export const dynamic = "force-dynamic";
@@ -55,7 +65,6 @@ export default async function ClientsPage({
     else if (filter.kind === "nutri" && filter.nutriId)
       filterWhere = { nutritionistId: filter.nutriId };
   }
-  // (Nutricionista no usa estos filtros; ve siempre su scope.)
 
   const whereSearch = q
     ? {
@@ -66,10 +75,25 @@ export default async function ClientsPage({
       }
     : {};
 
-  const [clients, nutris] = await Promise.all([
+  // Para pintar la card de cada cliente necesitamos: profile (goal, nivel,
+  // consideraciones, whatsapp), última venta (suscripción) y check-ins
+  // recientes (cumplimiento). Los check-ins los acotamos en un único query
+  // global y los agrupamos en memoria — mucho más barato que un include
+  // anidado por cliente con muchos check-ins.
+  const [clients, nutris, considerations] = await Promise.all([
     prisma.client.findMany({
       where: { ...baseScope, ...filterWhere, ...whereSearch },
-      include: { nutritionist: { select: { fullName: true } } },
+      include: {
+        nutritionist: { select: { fullName: true } },
+        profile: {
+          select: {
+            goal: true,
+            level: true,
+            specialConsiderationIds: true,
+            whatsappGroupUrl: true,
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
     }),
     manager
@@ -79,11 +103,52 @@ export default async function ClientsPage({
           orderBy: { fullName: "asc" },
         })
       : ([] as { id: string; fullName: string; role: string }[]),
+    // Todas las consideraciones activas — para resolver título por ID en cada
+    // card sin tirar por cliente.
+    prisma.specialConsideration.findMany({
+      where: { active: true },
+      select: { id: true, title: true },
+      orderBy: { order: "asc" },
+    }),
   ]);
 
-  // Counts para cada chip (managers). Cuando hay búsqueda activa, los counts
-  // siguen reflejando "qué hay con este filtro" sin la búsqueda — para no
-  // confundir al usuario sobre el universo de cada chip.
+  // Cargamos para los clientes resultantes la venta más reciente con planMonths
+  // (suscripción vigente) y los check-ins de los últimos 12 meses. Ambas con
+  // queries por separado para no inflar el findMany.
+  const clientIds = clients.map((c) => c.id);
+  const [sales, checkIns] = await Promise.all([
+    clientIds.length
+      ? prisma.sale.findMany({
+          where: { clientId: { in: clientIds } },
+          orderBy: { startDate: "desc" },
+          select: { clientId: true, startDate: true, endDate: true, planMonths: true },
+        })
+      : [],
+    clientIds.length
+      ? prisma.checkIn.findMany({
+          where: {
+            clientId: { in: clientIds },
+            date: { gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) },
+          },
+          select: { clientId: true, date: true },
+        })
+      : [],
+  ]);
+
+  // Mapa clientId → última venta (la primera del findMany ordenado desc).
+  const saleByClient = new Map<string, (typeof sales)[number]>();
+  for (const s of sales) {
+    if (s.clientId && !saleByClient.has(s.clientId)) saleByClient.set(s.clientId, s);
+  }
+  const checkInsByClient = new Map<string, Date[]>();
+  for (const ci of checkIns) {
+    const arr = checkInsByClient.get(ci.clientId) ?? [];
+    arr.push(ci.date);
+    checkInsByClient.set(ci.clientId, arr);
+  }
+  const considerationLabelById = new Map(considerations.map((c) => [c.id, c.title]));
+
+  // Counts para cada chip (managers).
   let counts: {
     all: number;
     mine: number;
@@ -126,8 +191,7 @@ export default async function ClientsPage({
         </Link>
       </header>
 
-      {/* Chips de filtro — solo para managers. El nutricionista ve siempre
-          sus clientes y no necesita estos atajos. */}
+      {/* Chips de filtro — solo para managers. */}
       {manager ? (
         <nav className="mb-5 flex flex-wrap items-center gap-2">
           <FilterChip
@@ -150,7 +214,6 @@ export default async function ClientsPage({
             tone="warning"
           />
           {nutris
-            // Quitamos al actor si es head_coach: ya tiene su chip "Míos".
             .filter((n) => n.id !== prof.id)
             .map((n) => (
               <FilterChip
@@ -166,7 +229,6 @@ export default async function ClientsPage({
       ) : null}
 
       <form className="mb-5">
-        {/* Mantenemos el filtro al buscar (la chip activa no se pierde). */}
         {searchParams.filter ? (
           <input type="hidden" name="filter" value={searchParams.filter} />
         ) : null}
@@ -184,49 +246,145 @@ export default async function ClientsPage({
       {clients.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-12 text-center">
           <Users size={32} className="mx-auto text-muted" />
-          <p className="mt-3 font-medium">{q ? "Sin resultados" : "Aún no hay clientes en este filtro"}</p>
+          <p className="mt-3 font-medium">
+            {q ? "Sin resultados" : "Aún no hay clientes en este filtro"}
+          </p>
           <p className="mt-1 text-sm text-muted">
             {q ? "Prueba con otra búsqueda." : "Cambia de filtro o crea uno con \"Nuevo cliente\"."}
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-left text-muted">
-              <tr>
-                <th className="px-4 py-3 font-medium">Nombre</th>
-                <th className="hidden px-4 py-3 font-medium sm:table-cell">Nutricionista</th>
-                <th className="px-4 py-3 font-medium">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {clients.map((c) => (
-                <tr key={c.id} className="border-t border-border transition hover:bg-surface-2">
-                  <td className="px-4 py-3">
-                    <Link href={`/clientes/${c.id}`} className="block font-medium hover:text-primary">
-                      {c.fullName}
-                      {c.email && <span className="block text-xs text-muted">{c.email}</span>}
-                    </Link>
-                  </td>
-                  <td className="hidden px-4 py-3 text-muted sm:table-cell">
-                    {c.nutritionist?.fullName ?? <span className="italic">Sin asignar</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${statusBadgeClass(
-                        c.status,
-                      )}`}
-                    >
-                      {statusLabel(c.status)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {clients.map((c) => {
+            const goalLabel = c.profile?.goal ? optionLabel(GOAL_OPTIONS, c.profile.goal) : null;
+            const levelText = c.profile?.level
+              ? optionLabel(LEVEL_OPTIONS, c.profile.level)
+              : null;
+            const consTitles = (c.profile?.specialConsiderationIds ?? [])
+              .map((id) => considerationLabelById.get(id))
+              .filter((t): t is string => !!t);
+            // Línea verde con la info nutricional resumida (estilo FisioFit).
+            const infoBits: string[] = [];
+            if (goalLabel) infoBits.push(goalLabel);
+            consTitles.forEach((t) => infoBits.push(t));
+            if (!c.nutritionist?.fullName && manager) infoBits.push("Sin nutri asignado");
+
+            // Métricas
+            const sub = computeSubscription(saleByClient.get(c.id) ?? null);
+            const comp = computeCompliance(sub, checkInsByClient.get(c.id) ?? []);
+            const subTone = metricTone(sub.progressPct, sub.hasSubscription);
+            const compTone = metricTone(comp.compliancePct, comp.hasCompliance);
+            const waUrl = c.profile?.whatsappGroupUrl?.trim() || null;
+
+            return (
+              <article
+                key={c.id}
+                className="rounded-2xl border border-border bg-surface p-5 transition hover:border-primary"
+              >
+                <div className="flex flex-wrap items-start gap-4 sm:flex-nowrap">
+                  {/* Bloque izquierdo: nombre, badges, info nutricional */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/clientes/${c.id}`}
+                        className="text-lg font-bold hover:text-primary"
+                      >
+                        {c.fullName}
+                      </Link>
+                      <span
+                        className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${statusBadgeClass(c.status)}`}
+                      >
+                        {statusLabel(c.status)}
+                      </span>
+                      {levelText ? (
+                        <span className="inline-block rounded-full bg-[#fdecd9] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#b45309]">
+                          {levelText}
+                        </span>
+                      ) : null}
+                    </div>
+                    {c.email ? (
+                      <p className="mt-0.5 text-xs text-muted">{c.email}</p>
+                    ) : null}
+                    {infoBits.length > 0 ? (
+                      <p className="mt-2 text-sm font-medium text-[#15803d]">
+                        ✓ {infoBits.join(" · ")}
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-sm italic text-muted">
+                        Ficha sin objetivo definido todavía.
+                      </p>
+                    )}
+                    {manager && c.nutritionist?.fullName ? (
+                      <p className="mt-1 text-xs text-muted">
+                        Nutri: {c.nutritionist.fullName}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  {/* Bloque derecho: métricas + WhatsApp + flecha */}
+                  <div className="flex shrink-0 flex-col items-end gap-2 sm:items-end">
+                    <span className="text-xs text-muted">{renewalLabel(sub)}</span>
+                    <div className="flex items-center gap-4">
+                      <MetricDonut
+                        value={sub.progressPct}
+                        tone={subTone}
+                        label="Suscripción"
+                      />
+                      <MetricDonut
+                        value={comp.compliancePct}
+                        tone={compTone}
+                        label="Cumplimiento"
+                      />
+                      <WhatsAppButton url={waUrl} />
+                      <Link
+                        href={`/clientes/${c.id}`}
+                        aria-label="Abrir ficha del cliente"
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-bg text-text transition hover:border-primary hover:text-primary"
+                      >
+                        <ArrowRight size={16} />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
     </div>
+  );
+}
+
+function WhatsAppButton({ url }: { url: string | null }) {
+  // Icono de WhatsApp simple en SVG para no añadir dependencia. Si no hay URL,
+  // queda gris y deshabilitado con tooltip explicando que se rellena en la
+  // ficha del cliente.
+  const Icon = (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+      <path d="M20.52 3.48A11.94 11.94 0 0 0 12.02 0C5.4 0 .03 5.37.03 11.99c0 2.11.55 4.17 1.6 5.98L0 24l6.18-1.62a11.95 11.95 0 0 0 5.84 1.49h.01c6.62 0 11.99-5.37 11.99-11.99 0-3.2-1.25-6.21-3.5-8.4ZM12.03 21.3h-.01a9.94 9.94 0 0 1-5.07-1.39l-.36-.21-3.67.96.98-3.57-.24-.37a9.93 9.93 0 0 1-1.52-5.32c0-5.49 4.47-9.96 9.97-9.96 2.66 0 5.16 1.04 7.04 2.92a9.9 9.9 0 0 1 2.92 7.04c0 5.49-4.47 9.96-9.97 9.96Zm5.47-7.46c-.3-.15-1.77-.87-2.04-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.25-.46-2.39-1.47-.88-.78-1.48-1.75-1.65-2.05-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51l-.57-.01c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.49 0 1.47 1.06 2.89 1.21 3.09.15.2 2.08 3.18 5.04 4.46.7.3 1.25.48 1.68.62.71.22 1.35.19 1.86.12.57-.08 1.77-.72 2.02-1.42.25-.7.25-1.3.17-1.42-.07-.13-.27-.2-.57-.35Z" />
+    </svg>
+  );
+  if (!url) {
+    return (
+      <span
+        title="Pega el enlace al grupo en la ficha del cliente"
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-muted"
+      >
+        {Icon}
+      </span>
+    );
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer noopener"
+      title="Abrir grupo de WhatsApp"
+      aria-label="Abrir grupo de WhatsApp"
+      className="flex h-9 w-9 items-center justify-center rounded-full bg-[#25D366] text-white transition hover:opacity-90"
+    >
+      {Icon}
+    </a>
   );
 }
 
@@ -254,11 +412,6 @@ function FilterChip({
   icon?: "stetho" | "star";
 }) {
   const Icon = icon === "star" ? Star : icon === "stetho" ? Stethoscope : null;
-  // Tonalidades:
-  // - active default → bg negro como el sidebar de FisioFit (resalta).
-  // - active warning → amarillo suave (cuando es "Por asignar" activo).
-  // - inactivo default → borde sutil + texto.
-  // - inactivo warning → borde amarillo claro, texto ámbar.
   const cls = active
     ? tone === "warning"
       ? "border-amber-300 bg-amber-50 text-amber-800"

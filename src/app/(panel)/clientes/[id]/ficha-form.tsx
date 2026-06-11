@@ -139,6 +139,27 @@ export function FichaForm({
         />
       </section>
 
+      {/* Grupo de WhatsApp de seguimiento. El enlace aparece como botón verde
+          en la card del cliente dentro del listado /clientes. */}
+      <section>
+        <SectionTitle>Seguimiento</SectionTitle>
+        <div className="grid grid-cols-1 gap-4">
+          <Field
+            label="Grupo de WhatsApp"
+            htmlFor="whatsappGroupUrl"
+            hint="Pega aquí el enlace de invitación al grupo del cliente. Ej. https://chat.whatsapp.com/XXXX"
+          >
+            <TextInput
+              id="whatsappGroupUrl"
+              name="whatsappGroupUrl"
+              type="url"
+              placeholder="https://chat.whatsapp.com/…"
+              defaultValue={p?.whatsappGroupUrl ?? ""}
+            />
+          </Field>
+        </div>
+      </section>
+
       <div className="flex justify-end">
         <button
           type="submit"

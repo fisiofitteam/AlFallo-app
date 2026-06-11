@@ -185,6 +185,7 @@ export async function updateNutritionProfile(formData: FormData) {
       .getAll("specialConsiderationIds")
       .map((v) => (typeof v === "string" ? v : ""))
       .filter(Boolean),
+    whatsappGroupUrl: parseStr(formData.get("whatsappGroupUrl")),
   };
 
   await prisma.nutritionProfile.upsert({
