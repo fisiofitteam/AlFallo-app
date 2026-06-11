@@ -2,8 +2,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  ClipboardCheck,
   Home,
+  ShoppingCart,
   TrendingUp,
   Users,
   UtensilsCrossed,
@@ -14,12 +14,15 @@ import {
 // alcanza desde el mosaico de la home. Marca activa cuando el pathname
 // empieza por su href (así "/cliente/plan/cualquier-cosa" sigue resaltando
 // "Mi plan").
+//
+// Check-in no aparece aquí: se accede SOLO desde el aviso rosa de la home
+// el día que toca (ver lib/weeklyCheckin).
 type Tab = { href: string; label: string; icon: LucideIcon };
 
 const TABS: Tab[] = [
   { href: "/cliente", label: "Inicio", icon: Home },
   { href: "/cliente/plan", label: "Mi plan", icon: UtensilsCrossed },
-  { href: "/cliente/checkin", label: "Check-in", icon: ClipboardCheck },
+  { href: "/cliente/compra", label: "Compra", icon: ShoppingCart },
   { href: "/cliente/comunidad", label: "Comunidad", icon: Users },
   { href: "/cliente/progreso", label: "Progreso", icon: TrendingUp },
 ];

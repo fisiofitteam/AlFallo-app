@@ -11,11 +11,13 @@ import {
   TrendingUp,
   Users,
   UtensilsCrossed,
+  ArrowRight,
   type LucideIcon,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
 import { getDailyQuote } from "@/lib/dailyQuote";
+import { shouldShowCheckInReminder } from "@/lib/weeklyCheckin";
 
 export const metadata = { title: "Al Fallo" };
 
@@ -36,7 +38,6 @@ const SECTIONS: Section[] = [
   { key: "comunidad", href: "/cliente/comunidad", label: "Comunidad", icon: Users, ready: true },
   { key: "recetas", href: "/cliente/recetas", label: "Recetas", icon: ChefHat, ready: false },
   { key: "compra", href: "/cliente/compra", label: "Tu compra", icon: ShoppingCart, ready: true },
-  { key: "checkin", href: "/cliente/checkin", label: "Check-in", icon: ClipboardCheck, ready: true },
   { key: "progreso", href: "/cliente/progreso", label: "Mi progreso", icon: TrendingUp, ready: true },
   { key: "training", href: "/cliente/training", label: "Entreno", icon: Dumbbell, ready: false },
   { key: "nutri", href: "/cliente/nutricionista", label: "Tu nutri", icon: Stethoscope, ready: false },
@@ -76,6 +77,8 @@ export default async function ClientHomePage() {
   const newCommunity = await hasNewCommunity(me.id);
   // Frase del día (estable durante todo el calendario, ver lib/dailyQuote).
   const quote = getDailyQuote();
+  // Aviso de check-in: solo se ve el lunes hasta que el cliente lo envía.
+  const showCheckInReminder = await shouldShowCheckInReminder(me.id);
 
   return (
     <div className="relative pt-1">
@@ -101,6 +104,11 @@ export default async function ClientHomePage() {
         <br />
         <span className="text-primary">{quote.tail}</span>
       </h1>
+
+      {/* Aviso del check-in semanal — visible solo el día del aviso si todavía
+          no lo han enviado. Recuadro rosa translúcido para que destaque sin
+          robarle la portada a la frase. */}
+      {showCheckInReminder ? <CheckInReminderCard /> : null}
 
       {/* Mosaico de secciones — solo las "ready". Las que no, se ocultan
           hasta que estén montadas (sin badges "Pronto" que ensucien la UI). */}
@@ -145,5 +153,27 @@ export default async function ClientHomePage() {
         })}
       </div>
     </div>
+  );
+}
+
+/** Banner rosa translúcido que invita a hacer el check-in semanal. Se pinta
+ *  debajo de la frase motivacional cuando toca (lunes y aún no enviado). */
+function CheckInReminderCard() {
+  return (
+    <Link
+      href="/cliente/checkin"
+      className="relative mt-5 flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-4 backdrop-blur-sm transition hover:bg-primary/15"
+    >
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-fg shadow-md">
+        <ClipboardCheck size={22} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-primary">Hoy toca check-in</p>
+        <p className="text-xs leading-snug text-text/80">
+          Cuéntanos cómo te ha ido la semana — peso, perímetros y sensaciones.
+        </p>
+      </div>
+      <ArrowRight size={18} className="shrink-0 text-primary" />
+    </Link>
   );
 }
