@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Users, UserCheck, Clock, ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
@@ -145,19 +146,38 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {shortcuts.map((item) => {
             const Icon = item.icon;
-            return (
-              <div
-                key={item.href}
-                className="group rounded-2xl border border-border bg-surface p-5 transition hover:border-primary"
-              >
+            // Los items con `description` definida son módulos activos y se
+            // renderizan como <Link>. El resto (solo /ajustes ahora mismo)
+            // queda como tarjeta inerte con leyenda 'Próximamente'.
+            const active = !!item.description;
+            const className =
+              "group rounded-2xl border border-border bg-surface p-5 transition hover:border-primary";
+            const content = (
+              <>
                 <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-primary">
                   <Icon size={20} />
                 </div>
                 <p className="flex items-center gap-1 font-semibold">
                   {item.label}
-                  <ArrowRight size={15} className="text-primary opacity-0 transition group-hover:opacity-100" />
+                  {active ? (
+                    <ArrowRight
+                      size={15}
+                      className="text-primary opacity-0 transition group-hover:opacity-100"
+                    />
+                  ) : null}
                 </p>
-                <p className="mt-1 text-sm text-muted">Próximamente en su fase del roadmap.</p>
+                <p className="mt-1 text-sm text-muted">
+                  {item.description ?? "Próximamente en su fase del roadmap."}
+                </p>
+              </>
+            );
+            return active ? (
+              <Link key={item.href} href={item.href} className={className}>
+                {content}
+              </Link>
+            ) : (
+              <div key={item.href} className={`${className} opacity-70`}>
+                {content}
               </div>
             );
           })}
