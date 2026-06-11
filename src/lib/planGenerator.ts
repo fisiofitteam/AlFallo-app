@@ -48,7 +48,17 @@ export type GeneratedDay = {
   dayType: (typeof DAY_TYPES)[number];
   meals: GeneratedMeal[];
 };
-export type GeneratedPlan = { days: GeneratedDay[]; source: "ai" | "fallback"; notes?: string };
+export type GeneratedPlan = {
+  days: GeneratedDay[];
+  source: "ai" | "fallback";
+  /** Texto para la card de Observaciones del plan. Lo escribe la IA cuando
+   *  está disponible; en modo fallback es un placeholder genérico. */
+  notes?: string;
+  /** Texto para la card de Suplementación del plan. Lo escribe la IA con la
+   *  propuesta basada en el brief + ficha del cliente. Vacío si la IA no
+   *  lo devolvió y en fallback. */
+  supplementation?: string;
+};
 
 export type PlanContext = {
   clientName: string;
@@ -137,8 +147,14 @@ INSTRUCCIONES
 - Aplica las equivalencias y porciones del brief para que las cantidades sean coherentes con cómo medimos en el equipo.
 - Adapta a la cultura gastronómica española.
 
+ADEMÁS, en la raíz del JSON devuelves dos campos de texto que se muestran al atleta tal cual:
+- "notes" (Observaciones generales del plan): 4-8 frases concretas con pautas que aplican a TODO el plan: hidratación, horarios alrededor del entreno, qué hacer si come fuera, manejo del fin de semana, descanso, señales para ajustar. Sé específico para ESTE atleta (objetivo, nivel, preferencias) — nada genérico tipo "come sano". Sigue el tono del brief del equipo.
+- "supplementation" (Suplementación propuesta): lista corta (3-6 ítems) con producto + dosis + cuándo tomarlo, adaptada al objetivo, al horario de entreno y a lo que ya está tomando el atleta (lo tienes en RESTRICCIONES → Suplementos). Si el brief o las consideraciones especiales mencionan suplementos concretos, prioriza esos. Si no hace falta suplementar nada, devuelve un texto breve explicando por qué.
+
 Devuelve SOLO el JSON con esta forma exacta, sin markdown, sin texto fuera del JSON:
 {
+  "notes": "Hidrátate con 35 ml/kg/día … (texto plano, salto de línea con \\n permitido)",
+  "supplementation": "- Creatina monohidrato: 5 g/día …\\n- Omega-3: …",
   "days": [
     {
       "name": "Día tipo",
@@ -178,6 +194,23 @@ const SYSTEM_PROMPT =
   "que se te facilita en el system prompt junto a las instrucciones base. " +
   "Respondes SIEMPRE en JSON válido con la estructura exacta especificada. " +
   "Sin markdown, sin comentarios, sin texto fuera del JSON.";
+
+// Extrae notes/supplementation del JSON devuelto por la IA. Limita longitud
+// para que no se cuele un bloque kilométrico que rompa la UI (la columna en
+// BD acepta más, pero la card sigue siendo una textarea para humanos).
+function extractPlanCopy(raw: unknown): { notes: string | null; supplementation: string | null } {
+  if (!raw || typeof raw !== "object") return { notes: null, supplementation: null };
+  const obj = raw as Record<string, unknown>;
+  const clip = (v: unknown): string | null => {
+    if (typeof v !== "string") return null;
+    const t = v.trim();
+    return t ? t.slice(0, 4000) : null;
+  };
+  return {
+    notes: clip(obj.notes),
+    supplementation: clip(obj.supplementation),
+  };
+}
 
 function clampPlan(raw: unknown): GeneratedDay[] {
   if (!raw || typeof raw !== "object") return [];
@@ -308,7 +341,9 @@ function fallbackPlan(): GeneratedDay[] {
   ];
 }
 
-async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
+async function generateWithClaude(
+  ctx: PlanContext,
+): Promise<{ days: GeneratedDay[]; notes: string | null; supplementation: string | null }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("No ANTHROPIC_API_KEY");
 
@@ -435,14 +470,20 @@ async function generateWithClaude(ctx: PlanContext): Promise<GeneratedDay[]> {
   const parsed = JSON.parse(jsonMatch[0]);
   const days = clampPlan(parsed);
   if (days.length === 0) throw new Error("Plan generado vacío");
-  return days;
+  const { notes, supplementation } = extractPlanCopy(parsed);
+  return { days, notes, supplementation };
 }
 
 export async function generatePlanDraft(ctx: PlanContext): Promise<GeneratedPlan> {
   if (process.env.ANTHROPIC_API_KEY) {
     try {
-      const days = await generateWithClaude(ctx);
-      return { days, source: "ai" };
+      const { days, notes, supplementation } = await generateWithClaude(ctx);
+      return {
+        days,
+        source: "ai",
+        notes: notes ?? undefined,
+        supplementation: supplementation ?? undefined,
+      };
     } catch (e) {
       console.warn("[planGenerator] Claude failed, using fallback:", (e as Error).message);
     }

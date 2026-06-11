@@ -383,12 +383,27 @@ async function runFullPlanGeneration(opts: {
     }
   }
 
-  if (!plan.notes) {
-    const noteBase =
-      draft.source === "ai"
-        ? "Borrador generado con IA. Revísalo y ajústalo antes de mostrar al cliente."
-        : "Borrador genérico (sin IA). Edítalo para adaptarlo al cliente.";
-    await prisma.nutritionPlan.update({ where: { id: planId }, data: { notes: noteBase } });
+  // Observaciones + Suplementación:
+  // - Si la IA devolvió texto específico → lo escribimos siempre (regeneración
+  //   = el nutri quiere copy fresca acorde al brief; si quiere conservar lo
+  //   anterior puede no regenerar).
+  // - Si no hay IA (fallback): solo rellenamos `notes` con placeholder cuando
+  //   está vacío para no pisar lo que el nutri haya escrito a mano.
+  if (draft.source === "ai") {
+    const data: { notes?: string; supplementation?: string } = {};
+    if (draft.notes && draft.notes.trim()) data.notes = draft.notes.trim();
+    if (draft.supplementation && draft.supplementation.trim())
+      data.supplementation = draft.supplementation.trim();
+    if (Object.keys(data).length > 0) {
+      await prisma.nutritionPlan.update({ where: { id: planId }, data });
+    }
+  } else if (!plan.notes) {
+    await prisma.nutritionPlan.update({
+      where: { id: planId },
+      data: {
+        notes: draft.notes ?? "Borrador genérico (sin IA). Edítalo para adaptarlo al cliente.",
+      },
+    });
   }
 
   revalidatePath(`/planes/${planId}`);
