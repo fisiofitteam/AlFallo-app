@@ -3,6 +3,10 @@ import type { MacroTargets } from "@prisma/client";
 import { Field, TextInput } from "@/components/form-ui";
 import { updateMacroTargets } from "../actions";
 
+// Objetivos diarios de macros del cliente. Hasta junio 2026 separábamos
+// entreno y descanso; ya no — el cliente come igual cada día y solo
+// guardamos un set único. Las columnas *Rest siguen en BD por compatibilidad
+// pero ya no se editan ni se persisten desde aquí.
 export function MacroTargetsForm({
   clientId,
   targets,
@@ -21,48 +25,47 @@ export function MacroTargetsForm({
         Objetivos de macros
       </h2>
       <p className="mt-1 text-xs text-muted">
-        Objetivos diarios. Separa entreno y descanso si el cliente come distinto cuando entrena.
-        En el plan, cada día se compara con estos números.
+        Macros diarios del cliente. Cada plan se compara con estos números para
+        ver si las opciones del día cuadran con el objetivo.
       </p>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {/* Entreno */}
-        <div className="rounded-xl border border-border p-4">
-          <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-primary">💪 Día de entreno</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Kcal" htmlFor="kcalTraining">
-              <TextInput id="kcalTraining" name="kcalTraining" inputMode="numeric" defaultValue={t?.kcalTraining ?? ""} />
-            </Field>
-            <Field label="Proteína (g)" htmlFor="proteinTraining">
-              <TextInput id="proteinTraining" name="proteinTraining" inputMode="decimal" defaultValue={t?.proteinTraining ?? ""} />
-            </Field>
-            <Field label="Carbos (g)" htmlFor="carbsTraining">
-              <TextInput id="carbsTraining" name="carbsTraining" inputMode="decimal" defaultValue={t?.carbsTraining ?? ""} />
-            </Field>
-            <Field label="Grasa (g)" htmlFor="fatTraining">
-              <TextInput id="fatTraining" name="fatTraining" inputMode="decimal" defaultValue={t?.fatTraining ?? ""} />
-            </Field>
-          </div>
-        </div>
-
-        {/* Descanso */}
-        <div className="rounded-xl border border-border p-4">
-          <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-primary">🛌 Día de descanso</h3>
-          <p className="mb-2 text-[11px] text-muted">Si lo dejas vacío, se usan los de entreno.</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Kcal" htmlFor="kcalRest">
-              <TextInput id="kcalRest" name="kcalRest" inputMode="numeric" defaultValue={t?.kcalRest ?? ""} />
-            </Field>
-            <Field label="Proteína (g)" htmlFor="proteinRest">
-              <TextInput id="proteinRest" name="proteinRest" inputMode="decimal" defaultValue={t?.proteinRest ?? ""} />
-            </Field>
-            <Field label="Carbos (g)" htmlFor="carbsRest">
-              <TextInput id="carbsRest" name="carbsRest" inputMode="decimal" defaultValue={t?.carbsRest ?? ""} />
-            </Field>
-            <Field label="Grasa (g)" htmlFor="fatRest">
-              <TextInput id="fatRest" name="fatRest" inputMode="decimal" defaultValue={t?.fatRest ?? ""} />
-            </Field>
-          </div>
+      <div className="mt-4 rounded-xl border border-border p-4">
+        <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-primary">
+          💪 Diario
+        </h3>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Field label="Kcal" htmlFor="kcalTraining">
+            <TextInput
+              id="kcalTraining"
+              name="kcalTraining"
+              inputMode="numeric"
+              defaultValue={t?.kcalTraining ?? ""}
+            />
+          </Field>
+          <Field label="Proteína (g)" htmlFor="proteinTraining">
+            <TextInput
+              id="proteinTraining"
+              name="proteinTraining"
+              inputMode="decimal"
+              defaultValue={t?.proteinTraining ?? ""}
+            />
+          </Field>
+          <Field label="Carbos (g)" htmlFor="carbsTraining">
+            <TextInput
+              id="carbsTraining"
+              name="carbsTraining"
+              inputMode="decimal"
+              defaultValue={t?.carbsTraining ?? ""}
+            />
+          </Field>
+          <Field label="Grasa (g)" htmlFor="fatTraining">
+            <TextInput
+              id="fatTraining"
+              name="fatTraining"
+              inputMode="decimal"
+              defaultValue={t?.fatTraining ?? ""}
+            />
+          </Field>
         </div>
       </div>
 

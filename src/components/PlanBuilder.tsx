@@ -17,14 +17,13 @@ import {
   updateOptionTextAndEstimate,
   addDay,
   deleteDay,
-  setDayType,
   addMeal,
   deleteMeal,
   renameMeal,
   moveMeal,
   updatePlanCopy,
 } from "@/app/(panel)/planes/actions";
-import { MEAL_TYPE_OPTIONS, DAY_TYPES } from "@/lib/nutrition";
+import { MEAL_TYPE_OPTIONS } from "@/lib/nutrition";
 
 export type PlanBuilderOption = {
   id: string;
@@ -517,28 +516,6 @@ function DayPanel({
 }) {
   return (
     <div className="space-y-4">
-      {/* Tipo de día */}
-      <form action={setDayType} className="flex flex-wrap items-center gap-2 text-sm">
-        <input type="hidden" name="planId" value={planId} />
-        <input type="hidden" name="dayId" value={day.id} />
-        <span className="font-medium text-muted">Tipo de día:</span>
-        {DAY_TYPES.map((t) => (
-          <button
-            key={t.value}
-            type="submit"
-            name="dayType"
-            value={t.value}
-            className={`rounded-full border px-3 py-1 text-xs transition ${
-              day.dayType === t.value
-                ? "border-primary bg-primary-soft text-primary"
-                : "border-border text-muted hover:border-primary"
-            }`}
-          >
-            {t.emoji} {t.label}
-          </button>
-        ))}
-      </form>
-
       {day.meals.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
           Este día no tiene comidas todavía.

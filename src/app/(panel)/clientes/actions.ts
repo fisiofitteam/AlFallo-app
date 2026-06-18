@@ -121,7 +121,9 @@ export async function reviewCheckIn(formData: FormData) {
   revalidatePath(`/clientes/${checkIn.clientId}`);
 }
 
-// Guarda los objetivos diarios de macros del cliente (entreno y descanso).
+// Guarda los objetivos diarios de macros del cliente. Las columnas *Rest
+// quedan en BD por compatibilidad pero ya no se usan; las dejamos a null
+// para evitar arrastrar datos antiguos que distorsionan informes.
 export async function updateMacroTargets(formData: FormData) {
   const prof = await requireClientAccess();
   const clientId = String(formData.get("clientId"));
@@ -132,10 +134,10 @@ export async function updateMacroTargets(formData: FormData) {
     proteinTraining: parseNumber(formData.get("proteinTraining")),
     carbsTraining: parseNumber(formData.get("carbsTraining")),
     fatTraining: parseNumber(formData.get("fatTraining")),
-    kcalRest: parseNumber(formData.get("kcalRest")),
-    proteinRest: parseNumber(formData.get("proteinRest")),
-    carbsRest: parseNumber(formData.get("carbsRest")),
-    fatRest: parseNumber(formData.get("fatRest")),
+    kcalRest: null,
+    proteinRest: null,
+    carbsRest: null,
+    fatRest: null,
     notes: parseStr(formData.get("notes")),
   };
 

@@ -52,7 +52,7 @@ const SECTIONS: { key: SectionKey; label: string; description: string; icon: Luc
   { key: "plan", label: "Plan nutricional", description: "Comidas, opciones y macros", icon: UtensilsCrossed },
   { key: "semanal", label: "Plan semanal", description: "L-D con opción asignada por día", icon: CalendarDays },
   { key: "ficha", label: "Ficha nutricional", description: "Anamnesis y datos personales", icon: ClipboardList },
-  { key: "macros", label: "Macros objetivo", description: "Kcal y reparto entreno/descanso", icon: Target },
+  { key: "macros", label: "Macros objetivo", description: "Kcal y macros diarios", icon: Target },
   { key: "evolucion", label: "Evolución", description: "Peso, cintura y % grasa", icon: TrendingUp },
   { key: "checkins", label: "Check-ins", description: "Cuestionarios semanales", icon: NotebookPen },
   { key: "acceso", label: "Acceso a la app", description: "Credenciales del cliente", icon: KeyRound },

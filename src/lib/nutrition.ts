@@ -46,10 +46,13 @@ export type Macros = { kcal: number; protein: number; carbs: number; fat: number
 export const ZERO_MACROS: Macros = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
 
 // Tipos de día del plan, para comparar contra los objetivos del cliente.
+// Ahora solo "entreno": ya no diferenciamos descanso/mixto (el cliente come
+// igual independientemente del día). Mantenemos el array de un solo elemento
+// para no romper APIs ni datos antiguos: los planes guardados con dayType
+// "descanso" o "mixto" siguen renderizando con los macros de entreno
+// (ver targetsForDayType más abajo).
 export const DAY_TYPES = [
-  { value: "entreno", label: "Día de entreno", emoji: "💪" },
-  { value: "descanso", label: "Día de descanso", emoji: "🛌" },
-  { value: "mixto", label: "Día mixto", emoji: "🔄" },
+  { value: "entreno", label: "Día tipo", emoji: "💪" },
 ] as const;
 
 export type DayType = (typeof DAY_TYPES)[number]["value"];
@@ -77,23 +80,18 @@ export function targetsForDayType(
     proteinTraining: number | null;
     carbsTraining: number | null;
     fatTraining: number | null;
+    // Columnas *Rest se mantienen en el schema por compatibilidad pero ya
+    // no se usan — todo el plan se compara contra los macros de entreno.
     kcalRest: number | null;
     proteinRest: number | null;
     carbsRest: number | null;
     fatRest: number | null;
   } | null,
-  dayType: string,
+  _dayType: string,
 ): DayTargets {
   if (!mt) return { kcal: null, protein: null, carbs: null, fat: null };
-  if (dayType === "descanso") {
-    return {
-      kcal: mt.kcalRest ?? mt.kcalTraining ?? null,
-      protein: mt.proteinRest ?? mt.proteinTraining ?? null,
-      carbs: mt.carbsRest ?? mt.carbsTraining ?? null,
-      fat: mt.fatRest ?? mt.fatTraining ?? null,
-    };
-  }
-  // entreno o mixto → usa el de entreno por defecto
+  // Único set de macros: el de "entreno". Aunque el día tenga dayType
+  // antiguo "descanso" o "mixto", se compara contra estos números.
   return {
     kcal: mt.kcalTraining ?? null,
     protein: mt.proteinTraining ?? null,

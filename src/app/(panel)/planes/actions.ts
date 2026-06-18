@@ -125,19 +125,9 @@ export async function addDay(formData: FormData) {
   revalidatePath(`/planes/${planId}`);
 }
 
-// Cambia el tipo del día (entreno / descanso / mixto) para comparar macros
-// contra los objetivos del cliente.
-export async function setDayType(formData: FormData) {
-  const prof = await requireAccess();
-  const planId = String(formData.get("planId"));
-  await loadPlanForEdit(planId, prof);
-  const dayType = parseStr(formData.get("dayType")) ?? "entreno";
-  await prisma.planDay.update({
-    where: { id: String(formData.get("dayId")) },
-    data: { dayType },
-  });
-  revalidatePath(`/planes/${planId}`);
-}
+// setDayType retirado: ya no diferenciamos entreno/descanso/mixto. Todos los
+// días nuevos se crean como "entreno"; los antiguos siguen como estén pero se
+// pintan contra los macros únicos (ver lib/nutrition.targetsForDayType).
 
 export async function deleteDay(formData: FormData) {
   const prof = await requireAccess();
@@ -280,6 +270,8 @@ async function runFullPlanGeneration(opts: {
     config,
   );
   if (targets && !isCompetition) {
+    // Solo macros únicas (entreno). Las columnas *Rest del schema quedan a
+    // null porque ya no diferenciamos día de descanso/mixto.
     await prisma.macroTargets.upsert({
       where: { clientId: client.id },
       create: {
@@ -288,20 +280,20 @@ async function runFullPlanGeneration(opts: {
         proteinTraining: targets.protein,
         carbsTraining: targets.carbs,
         fatTraining: targets.fat,
-        kcalRest: Math.round(targets.kcal * 0.9),
-        proteinRest: targets.protein,
-        carbsRest: Math.round(targets.carbs * 0.85),
-        fatRest: targets.fat,
+        kcalRest: null,
+        proteinRest: null,
+        carbsRest: null,
+        fatRest: null,
       },
       update: {
         kcalTraining: targets.kcal,
         proteinTraining: targets.protein,
         carbsTraining: targets.carbs,
         fatTraining: targets.fat,
-        kcalRest: Math.round(targets.kcal * 0.9),
-        proteinRest: targets.protein,
-        carbsRest: Math.round(targets.carbs * 0.85),
-        fatRest: targets.fat,
+        kcalRest: null,
+        proteinRest: null,
+        carbsRest: null,
+        fatRest: null,
       },
     });
   }
@@ -351,10 +343,6 @@ async function runFullPlanGeneration(opts: {
     proteinTraining: targets?.protein ?? client.macroTargets?.proteinTraining ?? null,
     carbsTraining: targets?.carbs ?? client.macroTargets?.carbsTraining ?? null,
     fatTraining: targets?.fat ?? client.macroTargets?.fatTraining ?? null,
-    kcalRest: client.macroTargets?.kcalRest ?? null,
-    proteinRest: client.macroTargets?.proteinRest ?? null,
-    carbsRest: client.macroTargets?.carbsRest ?? null,
-    fatRest: client.macroTargets?.fatRest ?? null,
     specialConsiderationIds: effectiveConsiderationIds,
     competitionContext: isCompetition ? competitionContext : null,
     competitionName: isCompetition ? competitionName : null,
@@ -731,7 +719,8 @@ export async function generatePlanFromHB(formData: FormData) {
   );
 
   if (targets) {
-    // -10% en kcal/carbos para día de descanso por defecto. Protein/Fat se mantienen.
+    // Solo un set de macros (entreno). Las columnas *Rest quedan a null —
+    // ya no diferenciamos día de descanso.
     await prisma.macroTargets.upsert({
       where: { clientId: client.id },
       create: {
@@ -740,20 +729,20 @@ export async function generatePlanFromHB(formData: FormData) {
         proteinTraining: targets.protein,
         carbsTraining: targets.carbs,
         fatTraining: targets.fat,
-        kcalRest: Math.round(targets.kcal * 0.9),
-        proteinRest: targets.protein,
-        carbsRest: Math.round(targets.carbs * 0.85),
-        fatRest: targets.fat,
+        kcalRest: null,
+        proteinRest: null,
+        carbsRest: null,
+        fatRest: null,
       },
       update: {
         kcalTraining: targets.kcal,
         proteinTraining: targets.protein,
         carbsTraining: targets.carbs,
         fatTraining: targets.fat,
-        kcalRest: Math.round(targets.kcal * 0.9),
-        proteinRest: targets.protein,
-        carbsRest: Math.round(targets.carbs * 0.85),
-        fatRest: targets.fat,
+        kcalRest: null,
+        proteinRest: null,
+        carbsRest: null,
+        fatRest: null,
       },
     });
   }

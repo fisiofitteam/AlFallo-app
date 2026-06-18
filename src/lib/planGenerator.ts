@@ -81,10 +81,6 @@ export type PlanContext = {
   proteinTraining: number | null;
   carbsTraining: number | null;
   fatTraining: number | null;
-  kcalRest: number | null;
-  proteinRest: number | null;
-  carbsRest: number | null;
-  fatRest: number | null;
   /** IDs de las SpecialConsideration marcadas en la ficha del cliente. */
   specialConsiderationIds?: string[];
 
