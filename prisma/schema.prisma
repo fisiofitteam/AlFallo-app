@@ -62,6 +62,11 @@ model Professional {
   recipesCreated Recipe[]        @relation("RecipeCreator")
   videosCreated  VideoResource[] @relation("VideoCreator")
 
+  // IA entrenable: reglas y feedback creados por este profesional.
+  planRulesCreated    PlanGenerationRule[]     @relation("PlanRuleCreator")
+  planFeedbackCreated PlanGenerationFeedback[] @relation("PlanFeedbackCreator")
+  planDraftsCreated   PlanGenerationDraft[]    @relation("PlanDraftCreator")
+
   @@index([role])
 }
 
@@ -1244,4 +1249,70 @@ model VideoResource {
   updatedAt DateTime @updatedAt
 
   @@index([category])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IA ENTRENABLE — reglas y feedback de generación de planes
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Reglas globales que el equipo va acumulando sobre cómo debe la IA generar
+// los planes. Se inyectan en TODAS las generaciones como bloque "REGLAS
+// GLOBALES" del system prompt. Se crean desde el modal de revisión cuando el
+// nutri marca "guardar como regla general" tras ajustar un plan, o desde
+// Biblioteca → Aprendizaje IA.
+model PlanGenerationRule {
+  id          String   @id @default(cuid())
+  text        String
+  active      Boolean  @default(true)
+  order       Int      @default(0)
+  createdById String?
+  createdBy   Professional? @relation("PlanRuleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active, order])
+}
+
+// Histórico de planes evaluados por el equipo (good / bad) con la razón. Se
+// usan tanto para revisión humana como para inyectar las razones recientes
+// en el prompt como aprendizajes previos.
+model PlanGenerationFeedback {
+  id        String   @id @default(cuid())
+  verdict   String   // "good" | "bad"
+  reason    String
+  // Snapshot completo del plan generado (días + comidas + opciones + notes
+  // + supplementation) para poder mostrarlo en la revisión histórica.
+  planSnapshot Json
+  // Contexto del cliente cuando se generó (objetivo, restricciones, brief,
+  // consideraciones especiales aplicadas). Sirve para no descontextualizar
+  // ejemplos de un caso muy específico.
+  planContextSnapshot Json
+  // Referencias opcionales — no FK fuertes porque el plan/cliente pueden
+  // borrarse y queremos conservar el aprendizaje.
+  clientId    String?
+  planId      String?
+  createdById String?
+  createdBy   Professional? @relation("PlanFeedbackCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([verdict, createdAt])
+}
+
+// Borrador temporal de un plan generado por la IA. Se crea al pulsar
+// "Generar plan" antes de que el nutri lo revise. Se borra cuando se acepta
+// (commit a NutritionPlan) o se rechaza. Si queda colgado por una pestaña
+// cerrada, expira a las 24h y se limpia periódicamente.
+model PlanGenerationDraft {
+  id          String   @id @default(cuid())
+  planId      String   // NutritionPlan al que aplica el borrador
+  payload     Json     // GeneratedPlan + targets + contextSummary
+  status      String   @default("preview") // "preview" | "accepted" | "rejected"
+  createdById String?
+  createdBy   Professional? @relation("PlanDraftCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  expiresAt   DateTime
+
+  @@index([planId, status])
+  @@index([expiresAt])
 }

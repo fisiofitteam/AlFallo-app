@@ -11,8 +11,10 @@ import {
   createPlan,
   deletePlan,
   renamePlan,
-  generatePlanFromAI,
+  previewPlanGeneration,
+  type DraftPayload,
 } from "@/app/(panel)/planes/actions";
+import { PlanReviewModal } from "@/components/PlanReviewModal";
 
 export type PlanPickerItem = { id: string; name: string };
 export type ConsiderationOption = { id: string; title: string };
@@ -47,6 +49,12 @@ export function PlanPicker({
   const [genBusy, startGen] = useTransition();
   // Modal: 'idle' (cerrado), 'choose' (eligiendo tipo), 'competition' (form competición).
   const [genMode, setGenMode] = useState<"idle" | "choose" | "competition">("idle");
+  // Borrador en revisión tras pulsar Generar plan. Cuando esté seteado se
+  // muestra el PlanReviewModal y el nutri decide aceptar/ajustar/rechazar.
+  const [pendingReview, setPendingReview] = useState<{
+    draftId: string;
+    payload: DraftPayload;
+  } | null>(null);
 
   const selected = plans.find((p) => p.id === selectedPlanId) ?? plans[0] ?? null;
 
@@ -66,8 +74,12 @@ export function PlanPicker({
       }
     }
     startGen(async () => {
-      await generatePlanFromAI(fd);
-      window.location.reload();
+      const r = await previewPlanGeneration(fd);
+      if ("error" in r) {
+        alert(r.error);
+        return;
+      }
+      setPendingReview({ draftId: r.draftId, payload: r.payload });
     });
   }
 
@@ -202,6 +214,23 @@ export function PlanPicker({
           goalOptions={goalOptions}
           considerations={considerations}
           onClose={() => setAdding(false)}
+          onDraftReady={(d) => {
+            setAdding(false);
+            setPendingReview(d);
+          }}
+        />
+      ) : null}
+
+      {pendingReview ? (
+        <PlanReviewModal
+          draftId={pendingReview.draftId}
+          payload={pendingReview.payload}
+          onClose={() => setPendingReview(null)}
+          onAccepted={() => {
+            setPendingReview(null);
+            window.location.reload();
+          }}
+          onRejected={() => setPendingReview(null)}
         />
       ) : null}
     </section>
@@ -413,6 +442,10 @@ export function AddPlanButton({
   variant?: "primary" | "subtle";
 }) {
   const [open, setOpen] = useState(false);
+  const [pendingReview, setPendingReview] = useState<{
+    draftId: string;
+    payload: DraftPayload;
+  } | null>(null);
   const cls =
     variant === "primary"
       ? "flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition hover:opacity-90"
@@ -428,6 +461,22 @@ export function AddPlanButton({
           goalOptions={goalOptions}
           considerations={considerations}
           onClose={() => setOpen(false)}
+          onDraftReady={(d) => {
+            setOpen(false);
+            setPendingReview(d);
+          }}
+        />
+      ) : null}
+      {pendingReview ? (
+        <PlanReviewModal
+          draftId={pendingReview.draftId}
+          payload={pendingReview.payload}
+          onClose={() => setPendingReview(null)}
+          onAccepted={() => {
+            setPendingReview(null);
+            window.location.reload();
+          }}
+          onRejected={() => setPendingReview(null)}
         />
       ) : null}
     </>
@@ -439,11 +488,15 @@ function AddPlanModal({
   goalOptions,
   considerations,
   onClose,
+  onDraftReady,
 }: {
   clientId: string;
   goalOptions: GoalOption[];
   considerations: ConsiderationOption[];
   onClose: () => void;
+  /** Llamado cuando el plan se ha creado Y la IA ha generado un draft que
+   *  toca revisar. Pasa los datos al padre para abrir el ReviewModal. */
+  onDraftReady: (d: { draftId: string; payload: DraftPayload }) => void;
 }) {
   // Tipo de plan al crear: pauta nutricional (default) o plan de competición.
   // Cambia los campos visibles del modal y se persiste en NutritionPlan.kind.
@@ -491,10 +544,16 @@ function AddPlanModal({
       if (considerationId) fd.set("specialConsiderationOverrideId", considerationId);
     }
     start(async () => {
-      // createPlan redirige a /clientes/<id>?tab=plan&planId=<new>. Si
-      // autoGenerate=true, espera dentro del request a que la IA termine
-      // antes de redirigir.
-      await createPlan(fd);
+      // createPlan ya no redirige: devuelve { planId, clientId, draftId, payload }.
+      // - Si pediste autoGenerate y la IA respondió → abre review modal.
+      // - Si no → navegamos a la galería del cliente con el plan creado.
+      const r = await createPlan(fd);
+      if (!("ok" in r)) return;
+      if (r.draftId && r.payload) {
+        onDraftReady({ draftId: r.draftId, payload: r.payload });
+        return;
+      }
+      window.location.href = `/clientes/${r.clientId}?tab=plan&planId=${r.planId}`;
     });
   }
 

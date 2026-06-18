@@ -9,7 +9,7 @@ import {
 import {
   addOptionToMeal,
   deleteItem,
-  generatePlanFromAI,
+  previewPlanGeneration,
   toggleItemSelected,
   selectExclusiveOption,
   updateOptionMacros,
@@ -22,8 +22,10 @@ import {
   renameMeal,
   moveMeal,
   updatePlanCopy,
+  type DraftPayload,
 } from "@/app/(panel)/planes/actions";
 import { MEAL_TYPE_OPTIONS } from "@/lib/nutrition";
+import { PlanReviewModal } from "@/components/PlanReviewModal";
 
 export type PlanBuilderOption = {
   id: string;
@@ -217,18 +219,29 @@ export function PlanBuilder({
     );
   }
 
+  // Modal de revisión: lo abrimos con el draft devuelto por previewPlanGeneration.
+  // Al aceptar/rechazar/regenerar, el ReviewModal se ocupa.
+  const [pendingReview, setPendingReview] = useState<{
+    draftId: string;
+    payload: DraftPayload;
+  } | null>(null);
+
   function generateAI() {
     if (
       !confirm(
-        "Esto borra el plan actual y genera uno nuevo: Harris-Benedict recalcula los macros objetivo del cliente y la IA escribe cada opción con alimentos y gramos. Puede tardar 10-20 s. ¿Seguro?",
+        "La IA va a proponerte un plan nuevo. Lo verás en un panel antes de aplicarlo: podrás aceptarlo, rechazarlo o pedir un ajuste. Puede tardar 10-20 s. ¿Seguir?",
       )
     )
       return;
     const fd = new FormData();
     fd.set("planId", planId);
     startGeneratingAI(async () => {
-      await generatePlanFromAI(fd);
-      window.location.reload();
+      const r = await previewPlanGeneration(fd);
+      if ("error" in r) {
+        alert(r.error);
+        return;
+      }
+      setPendingReview({ draftId: r.draftId, payload: r.payload });
     });
   }
 
@@ -358,6 +371,19 @@ export function PlanBuilder({
           />
         </div>
       </section>
+
+      {pendingReview ? (
+        <PlanReviewModal
+          draftId={pendingReview.draftId}
+          payload={pendingReview.payload}
+          onClose={() => setPendingReview(null)}
+          onAccepted={() => {
+            setPendingReview(null);
+            window.location.reload();
+          }}
+          onRejected={() => setPendingReview(null)}
+        />
+      ) : null}
     </div>
   );
 }

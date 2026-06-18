@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import { CLIENT_ACCESS_ROLES, isManagerRole, parseNumber, parseStr } from "@/lib/clients";
@@ -63,19 +64,35 @@ export async function createPlan(formData: FormData) {
     },
   });
 
-  // Si el formulario marca autoGenerate, generamos el plan en este mismo
-  // request (tarda 10-20 s pero ahorra una navegación más). Si falla la IA,
-  // el plan queda creado vacío y el nutri puede pulsar "Generar plan"
-  // después.
-  if (parseStr(formData.get("autoGenerate")) === "true") {
+  // Si el formulario marca autoGenerate, lanzamos la generación AHORA en el
+  // mismo request y devolvemos el draft para que la UI abra directamente el
+  // modal de revisión. Si falla la IA, devolvemos planId sin draft para que
+  // la UI navegue al plan vacío y el nutri reintente con "Generar plan".
+  const autoGenerate = parseStr(formData.get("autoGenerate")) === "true";
+  if (autoGenerate) {
     try {
-      await runFullPlanGeneration({ planId: plan.id, prof });
+      const result = await runDraftGeneration({ planId: plan.id, prof });
+      if (result) {
+        return {
+          ok: true as const,
+          planId: plan.id,
+          clientId,
+          draftId: result.draftId,
+          payload: result.payload,
+        };
+      }
     } catch (e) {
       console.warn("[createPlan] auto-generate failed:", (e as Error).message);
     }
   }
 
-  redirect(`/clientes/${clientId}?tab=plan&planId=${plan.id}`);
+  return {
+    ok: true as const,
+    planId: plan.id,
+    clientId,
+    draftId: null,
+    payload: null,
+  };
 }
 
 export async function deletePlan(formData: FormData) {
@@ -199,44 +216,241 @@ export async function deleteMeal(formData: FormData) {
 // con Harris-Benedict (los guarda en MacroTargets) y pide a Claude que
 // rellene 1 día tipo con 5 comidas × 3 opciones reales (alimentos + gramos).
 //
-// Diferencia con generatePlanFromHB: aquí la IA escribe el contenido. HB
-// solo crea placeholders vacíos con pista de macros.
-export async function generatePlanFromAI(formData: FormData) {
+// Genera un borrador con IA y lo deja en estado "preview" para que el nutri
+// lo revise en el modal. Sustituye al antiguo generatePlanFromAI: ya no
+// persiste days/meals; eso lo hace acceptPlanDraft.
+export async function previewPlanGeneration(formData: FormData) {
   const prof = await requireAccess();
   const planId = String(formData.get("planId"));
   await loadPlanForEdit(planId, prof);
 
-  // Lee los inputs del formulario "Generar plan" (competición / overrides
-  // adhoc). Para el flujo normal, los overrides se sacan de la fila del plan
-  // (donde se persistieron al crear). Aquí permitimos que el formulario los
-  // pise (el modal de competición los pasa explícitos).
   const kindRaw = parseStr(formData.get("kind"));
   const overrideKind = kindRaw === "competition" ? "competition" : kindRaw === "regular" ? "regular" : null;
   const competitionName = parseStr(formData.get("competitionName"));
   const competitionContext = parseStr(formData.get("competitionContext"));
 
-  await runFullPlanGeneration({
+  const result = await runDraftGeneration({
     planId,
     prof,
     overrideKind,
     competitionName,
     competitionContext,
   });
+  if (!result) return { error: "No se pudo generar el plan." } as const;
+  return { ok: true as const, draftId: result.draftId, payload: result.payload };
 }
 
-// Helper interno: ejecuta toda la cadena HB → Claude → persistencia para un
-// plan ya existente. Lo llaman tanto generatePlanFromAI (botón "Generar plan")
-// como createPlan (cuando se marca autoGenerate al añadir).
-async function runFullPlanGeneration(opts: {
+// Acepta un borrador y persiste el plan. Si el nutri marcó "guardar como
+// ejemplo de referencia" + razón, archiva además un feedback "good".
+export async function acceptPlanDraft(formData: FormData) {
+  const prof = await requireAccess();
+  const draftId = String(formData.get("draftId"));
+  const saveAsExample = parseStr(formData.get("saveAsExample")) === "true";
+  const reason = parseStr(formData.get("reason"));
+
+  const draftRow = await prisma.planGenerationDraft.findUnique({
+    where: { id: draftId },
+  });
+  if (!draftRow) return { error: "El borrador ya no existe." } as const;
+  const payload = draftRow.payload as unknown as DraftPayload;
+
+  if (saveAsExample && reason && reason.trim().length > 0) {
+    await prisma.planGenerationFeedback.create({
+      data: {
+        verdict: "good",
+        reason: reason.trim(),
+        planSnapshot: payload.draft as unknown as Prisma.InputJsonValue,
+        planContextSnapshot: payload.contextSnapshot as unknown as Prisma.InputJsonValue,
+        clientId: payload.contextSnapshot.clientId,
+        planId: draftRow.planId,
+        createdById: prof.id,
+      },
+    });
+  }
+
+  const result = await commitDraft(draftId, prof);
+  if (!result) return { error: "No se pudo guardar el plan." } as const;
+  return { ok: true as const, planId: result.planId };
+}
+
+// Rechaza un borrador: archiva feedback "bad" con la razón obligatoria y
+// marca el draft como rejected (no se persisten days/meals).
+export async function rejectPlanDraft(formData: FormData) {
+  const prof = await requireAccess();
+  const draftId = String(formData.get("draftId"));
+  const reason = parseStr(formData.get("reason"));
+  if (!reason || reason.trim().length === 0) {
+    return { error: "Explica por qué el plan no sirve para que la IA aprenda." } as const;
+  }
+  const draftRow = await prisma.planGenerationDraft.findUnique({
+    where: { id: draftId },
+  });
+  if (!draftRow) return { error: "El borrador ya no existe." } as const;
+  const payload = draftRow.payload as unknown as DraftPayload;
+
+  await prisma.planGenerationFeedback.create({
+    data: {
+      verdict: "bad",
+      reason: reason.trim(),
+      planSnapshot: payload.draft as unknown as Prisma.InputJsonValue,
+      planContextSnapshot: payload.contextSnapshot as unknown as Prisma.InputJsonValue,
+      clientId: payload.contextSnapshot.clientId,
+      planId: draftRow.planId,
+      createdById: prof.id,
+    },
+  });
+
+  await prisma.planGenerationDraft.update({
+    where: { id: draftId },
+    data: { status: "rejected" },
+  });
+
+  return { ok: true as const };
+}
+
+// Regenera el borrador con una instrucción nueva. Opcionalmente guarda la
+// instrucción como PlanGenerationRule activa para que se aplique a TODAS
+// las generaciones futuras.
+export async function regeneratePlanDraft(formData: FormData) {
+  const prof = await requireAccess();
+  const draftId = String(formData.get("draftId"));
+  const instruction = parseStr(formData.get("instruction"));
+  if (!instruction || instruction.trim().length === 0) {
+    return { error: "Escribe qué ajuste quieres que aplique la IA." } as const;
+  }
+  const saveAsRule = parseStr(formData.get("saveAsRule")) === "true";
+
+  const draftRow = await prisma.planGenerationDraft.findUnique({
+    where: { id: draftId },
+  });
+  if (!draftRow || draftRow.status !== "preview") {
+    return { error: "El borrador ya no existe." } as const;
+  }
+  const planId = draftRow.planId;
+  await loadPlanForEdit(planId, prof);
+
+  if (saveAsRule) {
+    const lastOrder = await prisma.planGenerationRule.aggregate({
+      _max: { order: true },
+    });
+    await prisma.planGenerationRule.create({
+      data: {
+        text: instruction.trim(),
+        order: (lastOrder._max.order ?? 0) + 10,
+        createdById: prof.id,
+      },
+    });
+  }
+
+  // Recuperamos el kind/competition del plan persistidos (no cambian entre
+  // intentos del mismo borrador) y lanzamos otra generación pasando la
+  // nueva instrucción como attemptInstruction (que entra en el prompt).
+  const plan = await prisma.nutritionPlan.findUnique({ where: { id: planId } });
+  if (!plan) return { error: "El plan ya no existe." } as const;
+
+  const result = await runDraftGeneration({
+    planId,
+    prof,
+    overrideKind: plan.kind === "competition" ? "competition" : "regular",
+    competitionName: plan.competitionName ?? null,
+    competitionContext: plan.competitionContext ?? null,
+    attemptInstruction: instruction.trim(),
+  });
+  if (!result) return { error: "No se pudo regenerar." } as const;
+  return { ok: true as const, draftId: result.draftId, payload: result.payload };
+}
+
+// CRUD reglas de IA (las inyecta lib/planFeedback.buildLearningPromptBlocks).
+export async function upsertPlanGenerationRule(formData: FormData) {
+  const prof = await requireAccess();
+  const id = parseStr(formData.get("id"));
+  const text = parseStr(formData.get("text"));
+  if (!text) return;
+  if (id) {
+    await prisma.planGenerationRule.update({
+      where: { id },
+      data: { text: text.trim() },
+    });
+  } else {
+    const lastOrder = await prisma.planGenerationRule.aggregate({
+      _max: { order: true },
+    });
+    await prisma.planGenerationRule.create({
+      data: {
+        text: text.trim(),
+        order: (lastOrder._max.order ?? 0) + 10,
+        createdById: prof.id,
+      },
+    });
+  }
+  revalidatePath("/biblioteca/brief-ia");
+}
+
+export async function togglePlanGenerationRule(formData: FormData) {
+  await requireAccess();
+  const id = String(formData.get("id"));
+  const row = await prisma.planGenerationRule.findUnique({ where: { id } });
+  if (!row) return;
+  await prisma.planGenerationRule.update({
+    where: { id },
+    data: { active: !row.active },
+  });
+  revalidatePath("/biblioteca/brief-ia");
+}
+
+export async function deletePlanGenerationRule(formData: FormData) {
+  await requireAccess();
+  const id = String(formData.get("id"));
+  await prisma.planGenerationRule.delete({ where: { id } });
+  revalidatePath("/biblioteca/brief-ia");
+}
+
+export async function deletePlanGenerationFeedback(formData: FormData) {
+  await requireAccess();
+  const id = String(formData.get("id"));
+  await prisma.planGenerationFeedback.delete({ where: { id } });
+  revalidatePath("/biblioteca/brief-ia");
+}
+
+// Payload que guardamos en PlanGenerationDraft.payload. Lo necesitamos del
+// lado cliente para pintar el modal de revisión sin tener que recargar.
+export type DraftPayload = {
+  draft: import("@/lib/planGenerator").GeneratedPlan;
+  targets: { kcal: number; protein: number; carbs: number; fat: number } | null;
+  contextSnapshot: {
+    clientId: string;
+    clientName: string;
+    planName: string;
+    isCompetition: boolean;
+    goal: string | null;
+    considerationIds: string[];
+    competitionName: string | null;
+    competitionContext: string | null;
+    /** Última instrucción usada en este intento (para mostrarla al revisar). */
+    lastInstruction: string | null;
+  };
+};
+
+// TTL del borrador en BD: si el nutri cierra la pestaña sin aceptar/rechazar,
+// el draft se queda muerto. Lo expiramos a las 24h.
+const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+
+// Helper interno: ejecuta HB → Claude pero NO toca days/meals/items. Crea
+// una fila en PlanGenerationDraft y devuelve su id + payload. Lo usan tanto
+// previewPlanGeneration (botón "Generar plan") como createPlan (autoGenerate
+// al crear). El commit a la estructura real del plan ocurre en commitDraft
+// cuando el nutri acepta desde el modal de revisión.
+async function runDraftGeneration(opts: {
   planId: string;
   prof: { id: string; role: string };
   overrideKind?: "regular" | "competition" | null;
   competitionName?: string | null;
   competitionContext?: string | null;
-}) {
+  attemptInstruction?: string | null;
+}): Promise<{ draftId: string; payload: DraftPayload } | null> {
   const { planId, prof } = opts;
   const plan = await prisma.nutritionPlan.findUnique({ where: { id: planId } });
-  if (!plan) return;
+  if (!plan) return null;
 
   // Resuelve los flags efectivos: si el formulario "Generar plan" pasó algo,
   // gana; si no, se usa lo persistido en el plan.
@@ -249,7 +463,7 @@ async function runFullPlanGeneration(opts: {
     where: { id: plan.clientId },
     include: { profile: true, macroTargets: true },
   });
-  if (!client) return;
+  if (!client) return null;
 
   // 1) Calculamos los objetivos con HB. Para PAUTA NUTRICIONAL: usamos el
   //    goal del cliente y persistimos en MacroTargets (cliente lo ve como
@@ -347,14 +561,67 @@ async function runFullPlanGeneration(opts: {
     competitionContext: isCompetition ? competitionContext : null,
     competitionName: isCompetition ? competitionName : null,
     userInstructions: plan.instructions ?? null,
+    attemptInstruction: opts.attemptInstruction ?? null,
   });
 
-  // 3) Reset de la estructura del plan (igual que HB).
+  // 3) Persistimos el borrador en BD. Limpiamos primero cualquier draft
+  //    previo en estado "preview" del mismo plan para no acumular basura
+  //    si el nutri regeneró varias veces sin cerrar.
+  await prisma.planGenerationDraft.deleteMany({
+    where: { planId, status: "preview" },
+  });
+
+  const payload: DraftPayload = {
+    draft,
+    targets: targets
+      ? { kcal: targets.kcal, protein: targets.protein, carbs: targets.carbs, fat: targets.fat }
+      : null,
+    contextSnapshot: {
+      clientId: client.id,
+      clientName: client.fullName,
+      planName: plan.name,
+      isCompetition,
+      goal: effectiveGoal,
+      considerationIds: effectiveConsiderationIds,
+      competitionName: isCompetition ? competitionName : null,
+      competitionContext: isCompetition ? competitionContext : null,
+      lastInstruction: opts.attemptInstruction ?? null,
+    },
+  };
+
+  const draftRow = await prisma.planGenerationDraft.create({
+    data: {
+      planId,
+      payload: payload as unknown as Prisma.InputJsonValue,
+      createdById: prof.id,
+      expiresAt: new Date(Date.now() + DRAFT_TTL_MS),
+    },
+  });
+
+  return { draftId: draftRow.id, payload };
+}
+
+// Persiste un draft en el plan real: borra estructura previa, crea
+// days/meals/items + plan.notes/supplementation. Marca el draft como
+// accepted. Devuelve el planId para que la UI redirija o haga refresh.
+async function commitDraft(
+  draftId: string,
+  prof: { id: string; role: string },
+): Promise<{ planId: string } | null> {
+  const draftRow = await prisma.planGenerationDraft.findUnique({
+    where: { id: draftId },
+  });
+  if (!draftRow || draftRow.status !== "preview") return null;
+
+  // Comprueba que el profesional tiene acceso al plan referenciado.
+  const plan = await loadPlanForEdit(draftRow.planId, prof);
+  const payload = draftRow.payload as unknown as DraftPayload;
+  const { draft } = payload;
+  const planId = draftRow.planId;
+
+  // Reset y persistencia. Misma lógica que tenía runFullPlanGeneration.
   await prisma.planDay.deleteMany({ where: { planId } });
 
-  // 4) Persistimos las opciones generadas. Cada opción se guarda como
-  //    MealItem freestyle (foodId=null, quantityG=100, *Per100 = totales).
-  //    La primera opción de cada comida queda seleccionada por defecto.
   for (let di = 0; di < draft.days.length; di++) {
     const d = draft.days[di];
     const newDay = await prisma.planDay.create({
@@ -375,9 +642,7 @@ async function runFullPlanGeneration(opts: {
         const key = sub ?? "__nosub__";
         const isFirstOfGroup = !seenSubTypes.has(key);
         seenSubTypes.add(key);
-        const selected = sub
-          ? isFirstOfGroup
-          : oi === 0;
+        const selected = sub ? isFirstOfGroup : oi === 0;
         await prisma.mealItem.create({
           data: {
             mealId: newMeal.id,
@@ -397,12 +662,9 @@ async function runFullPlanGeneration(opts: {
     }
   }
 
-  // Observaciones + Suplementación:
-  // - Si la IA devolvió texto específico → lo escribimos siempre (regeneración
-  //   = el nutri quiere copy fresca acorde al brief; si quiere conservar lo
-  //   anterior puede no regenerar).
-  // - Si no hay IA (fallback): solo rellenamos `notes` con placeholder cuando
-  //   está vacío para no pisar lo que el nutri haya escrito a mano.
+  // Observaciones + Suplementación generadas por la IA. Si vinieron, las
+  // escribimos (el nutri ya las revisó al ver el draft). Si vino de fallback,
+  // solo rellenamos notes si estaba vacío para no pisar lo que tuviera.
   if (draft.source === "ai") {
     const data: { notes?: string; supplementation?: string } = {};
     if (draft.notes && draft.notes.trim()) data.notes = draft.notes.trim();
@@ -420,7 +682,14 @@ async function runFullPlanGeneration(opts: {
     });
   }
 
+  await prisma.planGenerationDraft.update({
+    where: { id: draftId },
+    data: { status: "accepted" },
+  });
+
   revalidatePath(`/planes/${planId}`);
+  revalidatePath(`/clientes/${plan.clientId}`);
+  return { planId };
 }
 
 // Añade un item "freestyle" con macros estimadas por IA (texto libre).

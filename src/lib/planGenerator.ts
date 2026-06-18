@@ -93,6 +93,11 @@ export type PlanContext = {
   /** Instrucciones escritas por el nutri al añadir el plan: peticiones
    *  concretas para la IA (énfasis, alimentos a forzar, presentación, etc.). */
   userInstructions?: string | null;
+
+  /** Instrucción de ESTE intento de generación. La pone el nutri en el modal
+   *  de revisión al pulsar "Ajustar" ("añade más variedad de proteína", etc.).
+   *  Se inyecta con prioridad alta para que la IA corrija el draft anterior. */
+  attemptInstruction?: string | null;
 };
 
 function ageFromBirthDate(d: Date | null): number | null {
@@ -413,12 +418,28 @@ async function generateWithClaude(
     textBlocks.push(lines.join("\n"));
   }
 
+  // Reglas globales + aprendizajes recientes (PlanGenerationRule +
+  // razones de PlanGenerationFeedback). Se inyectan antes que las
+  // instrucciones específicas del plan para que sean siempre tenidas en
+  // cuenta — son cómo aprende la IA del equipo.
+  const { buildLearningPromptBlocks } = await import("@/lib/planFeedback");
+  const learningBlocks = await buildLearningPromptBlocks();
+  for (const block of learningBlocks) textBlocks.push(block);
+
   // Instrucciones del nutri al añadir el plan: van como bloque dedicado al
   // final del system prompt, antes (sobre) el contexto de competición. Así
   // tienen prioridad alta sobre los briefs y consideraciones.
   if (ctx.userInstructions && ctx.userInstructions.trim()) {
     textBlocks.push(
       `\n\n=== INSTRUCCIONES DEL NUTRICIONISTA PARA ESTE PLAN ===\n${ctx.userInstructions.trim()}\n\nEstas instrucciones son prioritarias: si entran en conflicto con el brief general, sigue lo que diga el nutri aquí.`,
+    );
+  }
+
+  // Ajuste del intento actual: el nutri viene del modal de revisión y la IA
+  // tiene que corregir el draft anterior siguiendo esta indicación.
+  if (ctx.attemptInstruction && ctx.attemptInstruction.trim()) {
+    textBlocks.push(
+      `\n\n=== AJUSTE PARA ESTA GENERACIÓN ===\n${ctx.attemptInstruction.trim()}\n\nEsta es una RE-GENERACIÓN: el nutri ha rechazado el intento anterior pidiendo este cambio concreto. Aplícalo manteniendo todo lo bueno del plan.`,
     );
   }
 

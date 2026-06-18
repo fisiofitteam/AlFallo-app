@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Save, Loader2, Sparkles, ClipboardList, Settings2 } from "lucide-react";
+import { Save, Loader2, Sparkles, ClipboardList, Settings2, GraduationCap } from "lucide-react";
 import {
   BRIEF_SCOPES,
   BRIEF_SCOPE_LABELS,
@@ -11,17 +11,22 @@ import {
 import { saveBriefAction } from "@/app/(panel)/biblioteca/brief-ia/actions";
 import { DocAttachmentList } from "@/components/DocAttachmentList";
 import { SpecialConsiderationsEditor } from "@/components/SpecialConsiderationsEditor";
+import { AILearningEditor, type RuleDTO, type FeedbackDTO } from "@/components/AILearningEditor";
 import type { SpecialConsiderationDTO } from "@/lib/specialConsiderations";
 
 type LocalState = Record<BriefScope, BriefShape>;
-type Mode = BriefScope | "_special";
+type Mode = BriefScope | "_special" | "_learning";
 
 export function AIBriefEditor({
   initial,
   initialSpecial,
+  initialRules,
+  initialFeedback,
 }: {
   initial: BriefShape[];
   initialSpecial: SpecialConsiderationDTO[];
+  initialRules: RuleDTO[];
+  initialFeedback: FeedbackDTO[];
 }) {
   const [state, setState] = useState<LocalState>(() =>
     Object.fromEntries(initial.map((b) => [b.scope, b])) as LocalState,
@@ -108,10 +113,24 @@ export function AIBriefEditor({
           <Settings2 size={13} />
           Consideraciones especiales
         </button>
+        <button
+          type="button"
+          onClick={() => setMode("_learning")}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition ${
+            mode === "_learning"
+              ? "bg-primary font-semibold text-white"
+              : "text-muted hover:bg-bg hover:text-text"
+          }`}
+        >
+          <GraduationCap size={13} />
+          Aprendizaje IA
+        </button>
       </nav>
 
       {mode === "_special" ? (
         <SpecialConsiderationsEditor initial={initialSpecial} />
+      ) : mode === "_learning" ? (
+        <AILearningEditor initialRules={initialRules} initialFeedback={initialFeedback} />
       ) : (
         <section className="rounded-2xl border border-border bg-surface">
           <header className="flex items-center justify-between border-b border-border px-5 py-3">
