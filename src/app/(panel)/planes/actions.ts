@@ -38,6 +38,15 @@ export async function createPlan(formData: FormData) {
   const considerationId = parseStr(formData.get("specialConsiderationOverrideId"));
   const overrideIds = considerationId ? [considerationId] : [];
 
+  // Tipo de plan: "regular" (default, pauta nutricional) o "competition"
+  // (plan puntual de una prueba: la generación fuerza brief 'rendimiento'
+  // y no toca los macros base del cliente). Si el form marca competition,
+  // persistimos también nombre del evento y contexto (WODs/horarios).
+  const kindRaw = parseStr(formData.get("kind"));
+  const isCompetition = kindRaw === "competition";
+  const competitionName = isCompetition ? parseStr(formData.get("competitionName")) : null;
+  const competitionContext = isCompetition ? parseStr(formData.get("competitionContext")) : null;
+
   const plan = await prisma.nutritionPlan.create({
     data: {
       clientId,
@@ -48,6 +57,9 @@ export async function createPlan(formData: FormData) {
       instructions: parseStr(formData.get("instructions")),
       goalOverride: parseStr(formData.get("goalOverride")),
       specialConsiderationOverrideIds: overrideIds,
+      kind: isCompetition ? "competition" : "regular",
+      competitionName,
+      competitionContext,
     },
   });
 

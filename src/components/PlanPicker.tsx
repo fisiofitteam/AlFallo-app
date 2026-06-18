@@ -445,24 +445,51 @@ function AddPlanModal({
   considerations: ConsiderationOption[];
   onClose: () => void;
 }) {
+  // Tipo de plan al crear: pauta nutricional (default) o plan de competición.
+  // Cambia los campos visibles del modal y se persiste en NutritionPlan.kind.
+  const [kind, setKind] = useState<"regular" | "competition">("regular");
   const [name, setName] = useState("Plan nutricional");
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [goalOverride, setGoalOverride] = useState("");
   const [considerationId, setConsiderationId] = useState("");
+  const [competitionName, setCompetitionName] = useState("");
+  const [competitionContext, setCompetitionContext] = useState("");
   const [autoGenerate, setAutoGenerate] = useState(true);
   const [pending, start] = useTransition();
 
+  // Si está en modo competición, exigimos el contexto WODs/horarios para que
+  // la generación tenga sentido. Sin él, el botón se queda deshabilitado.
+  const canSubmit =
+    name.trim().length > 0 &&
+    (kind === "regular" || competitionContext.trim().length > 0);
+
+  // Al cambiar a competición, sugerimos un nombre por defecto si el nutri
+  // todavía no lo había cambiado (y viceversa para no dejarlo raro).
+  function selectKind(next: "regular" | "competition") {
+    setKind(next);
+    if (next === "competition" && name === "Plan nutricional") setName("Plan de competición");
+    if (next === "regular" && name === "Plan de competición") setName("Plan nutricional");
+  }
+
   function submit() {
-    if (!name.trim()) return;
+    if (!canSubmit) return;
     const fd = new FormData();
     fd.set("clientId", clientId);
     fd.set("name", name.trim());
     if (description.trim()) fd.set("description", description.trim());
     if (instructions.trim()) fd.set("instructions", instructions.trim());
-    if (goalOverride) fd.set("goalOverride", goalOverride);
-    if (considerationId) fd.set("specialConsiderationOverrideId", considerationId);
     if (autoGenerate) fd.set("autoGenerate", "true");
+    if (kind === "competition") {
+      fd.set("kind", "competition");
+      if (competitionName.trim()) fd.set("competitionName", competitionName.trim());
+      fd.set("competitionContext", competitionContext.trim());
+    } else {
+      // Estos overrides solo aplican a pauta nutricional. En competición la
+      // generación fuerza brief 'rendimiento' y los ignora.
+      if (goalOverride) fd.set("goalOverride", goalOverride);
+      if (considerationId) fd.set("specialConsiderationOverrideId", considerationId);
+    }
     start(async () => {
       // createPlan redirige a /clientes/<id>?tab=plan&planId=<new>. Si
       // autoGenerate=true, espera dentro del request a que la IA termine
@@ -477,7 +504,9 @@ function AddPlanModal({
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-xl rounded-2xl border border-border bg-surface shadow-xl"
+        // max-h + overflow-y-auto: con el form de competición el modal puede
+        // crecer bastante; permitimos scroll interno en pantallas pequeñas.
+        className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-border bg-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
@@ -493,12 +522,69 @@ function AddPlanModal({
         </header>
 
         <div className="space-y-4 px-5 py-4">
+          {/* Tipo de plan: dos botones grandes en la cabecera del form. */}
+          <div>
+            <span className="block text-sm font-semibold">Tipo de plan</span>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => selectKind("regular")}
+                disabled={pending}
+                className={`flex items-start gap-2 rounded-xl border p-3 text-left transition disabled:opacity-50 ${
+                  kind === "regular"
+                    ? "border-primary bg-primary-soft"
+                    : "border-border bg-bg hover:border-primary/60"
+                }`}
+              >
+                <span
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                    kind === "regular" ? "bg-primary text-primary-fg" : "bg-primary-soft text-primary"
+                  }`}
+                >
+                  <UtensilsCrossed size={16} />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">Pauta nutricional</span>
+                  <span className="block text-[11px] leading-snug text-muted">
+                    Plan habitual con macros del cliente y 5 comidas × 3 opciones.
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => selectKind("competition")}
+                disabled={pending}
+                className={`flex items-start gap-2 rounded-xl border p-3 text-left transition disabled:opacity-50 ${
+                  kind === "competition"
+                    ? "border-amber-400 bg-amber-50"
+                    : "border-border bg-bg hover:border-amber-300"
+                }`}
+              >
+                <span
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                    kind === "competition"
+                      ? "bg-amber-500 text-white"
+                      : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  <Trophy size={16} />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">Plan de competición</span>
+                  <span className="block text-[11px] leading-snug text-muted">
+                    Plan puntual para una prueba: aplica el brief de Rendimiento y se ajusta a los WODs.
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+
           <label className="block">
             <span className="block text-sm font-semibold">Nombre del plan</span>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Plan nutricional"
+              placeholder={kind === "competition" ? "Plan de competición" : "Plan nutricional"}
               className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
             />
           </label>
@@ -512,50 +598,96 @@ function AddPlanModal({
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ej. Semana de mañana — entrenas antes de comer"
+              placeholder={
+                kind === "competition"
+                  ? "Ej. Carga 36-24h antes del Hyrox Madrid"
+                  : "Ej. Semana de mañana — entrenas antes de comer"
+              }
               className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
             />
           </label>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="block text-sm font-semibold">Objetivo del plan</span>
-              <span className="block text-xs text-muted">
-                Si lo dejas en automático, se usa el objetivo del cliente.
-              </span>
-              <select
-                value={goalOverride}
-                onChange={(e) => setGoalOverride(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
-              >
-                <option value="">Usar el del cliente</option>
-                {goalOptions.map((g) => (
-                  <option key={g.value} value={g.value}>
-                    {g.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+          {/* Campos condicionales: pauta vs competición. */}
+          {kind === "regular" ? (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="block text-sm font-semibold">Objetivo del plan</span>
+                  <span className="block text-xs text-muted">
+                    Si lo dejas en automático, se usa el objetivo del cliente.
+                  </span>
+                  <select
+                    value={goalOverride}
+                    onChange={(e) => setGoalOverride(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="">Usar el del cliente</option>
+                    {goalOptions.map((g) => (
+                      <option key={g.value} value={g.value}>
+                        {g.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <label className="block">
-              <span className="block text-sm font-semibold">Consideración especial</span>
-              <span className="block text-xs text-muted">
-                Solo para este plan, anula las marcadas en la ficha.
-              </span>
-              <select
-                value={considerationId}
-                onChange={(e) => setConsiderationId(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
-              >
-                <option value="">Usar las de la ficha</option>
-                {considerations.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+                <label className="block">
+                  <span className="block text-sm font-semibold">Consideración especial</span>
+                  <span className="block text-xs text-muted">
+                    Solo para este plan, anula las marcadas en la ficha.
+                  </span>
+                  <select
+                    value={considerationId}
+                    onChange={(e) => setConsiderationId(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="">Usar las de la ficha</option>
+                    {considerations.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </>
+          ) : (
+            <>
+              <label className="block">
+                <span className="block text-sm font-semibold">Nombre del evento</span>
+                <span className="block text-xs text-muted">
+                  Solo para identificarlo (ej. "Hyrox Madrid 14 jul"). Opcional.
+                </span>
+                <input
+                  value={competitionName}
+                  onChange={(e) => setCompetitionName(e.target.value)}
+                  placeholder="Hyrox Madrid 14 jul"
+                  className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-semibold">
+                  WODs, horarios y contexto <span className="text-red-500">*</span>
+                </span>
+                <span className="block text-xs text-muted">
+                  Pega WODs (warm-up, formato, duración), horarios del día, fecha del evento,
+                  logística (comidas con el equipo, etc.). La IA lo usará para diseñar el plan
+                  alrededor de la prueba (carga 36-24h, día-evento, recovery).
+                </span>
+                <textarea
+                  rows={8}
+                  value={competitionContext}
+                  onChange={(e) => setCompetitionContext(e.target.value)}
+                  placeholder={`Ej:\n\n14 jul 2026 — Hyrox Madrid\nLlegada al recinto 08:00. WOD 11:30:\n  Run 1km · Ski 1km · Run 1km · Sled push 50m · ...\nNecesidad de carga 36-24h previa. Postwod: cervecera 19:00.`}
+                  className="mt-1.5 w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                El brief de <strong>Plan de competición</strong> guardado en{" "}
+                <strong>Biblioteca → Brief IA → Plan de competición</strong> se aplica automáticamente
+                a este tipo de plan.
+              </p>
+            </>
+          )}
 
           <label className="block">
             <span className="block text-sm font-semibold">Instrucciones para la IA</span>
@@ -564,10 +696,14 @@ function AddPlanModal({
               forzar / evitar, presentación, etc. Opcional.
             </span>
             <textarea
-              rows={6}
+              rows={4}
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="Ej. Necesita mucha proteína porque viene de bajada en analítica. Prefiere arroz blanco a integral. Cena temprano (sobre 20:30). Sin lácteos de vaca."
+              placeholder={
+                kind === "competition"
+                  ? "Ej. Le sienta mejor pasta que arroz. Prefiere desayuno salado el día del evento."
+                  : "Ej. Necesita mucha proteína porque viene de bajada en analítica. Prefiere arroz blanco a integral. Cena temprano (sobre 20:30). Sin lácteos de vaca."
+              }
               className="mt-1.5 w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
             />
           </label>
@@ -601,7 +737,7 @@ function AddPlanModal({
           <button
             type="button"
             onClick={submit}
-            disabled={pending || !name.trim()}
+            disabled={pending || !canSubmit}
             className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md hover:opacity-90 disabled:opacity-50"
             style={{ backgroundColor: "var(--c-primary)" }}
           >
