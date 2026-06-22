@@ -39,14 +39,14 @@ export async function createPlan(formData: FormData) {
   const considerationId = parseStr(formData.get("specialConsiderationOverrideId"));
   const overrideIds = considerationId ? [considerationId] : [];
 
-  // Tipo de plan: "regular" (default, pauta nutricional) o "competition"
-  // (plan puntual de una prueba: la generación fuerza brief 'rendimiento'
-  // y no toca los macros base del cliente). Si el form marca competition,
-  // persistimos también nombre del evento y contexto (WODs/horarios).
+  // Tipo de plan:
+  //  - "regular" → pauta nutricional. Si autoGenerate=true, la IA genera el
+  //    plan y devolvemos draft para que el nutri lo revise.
+  //  - "competition" → plan puntual de una prueba. Ya NO se genera con IA;
+  //    se aplica una plantilla (CompetitionPlanTemplate) tal cual y el
+  //    nutri ajusta a mano. El form trae competitionTemplateId.
   const kindRaw = parseStr(formData.get("kind"));
   const isCompetition = kindRaw === "competition";
-  const competitionName = isCompetition ? parseStr(formData.get("competitionName")) : null;
-  const competitionContext = isCompetition ? parseStr(formData.get("competitionContext")) : null;
 
   const plan = await prisma.nutritionPlan.create({
     data: {
@@ -59,15 +59,37 @@ export async function createPlan(formData: FormData) {
       goalOverride: parseStr(formData.get("goalOverride")),
       specialConsiderationOverrideIds: overrideIds,
       kind: isCompetition ? "competition" : "regular",
-      competitionName,
-      competitionContext,
+      // Los campos legacy competitionName/competitionContext (input de IA)
+      // ya no se usan en el nuevo flujo. Quedan a null.
+      competitionName: null,
+      competitionContext: null,
     },
   });
 
-  // Si el formulario marca autoGenerate, lanzamos la generación AHORA en el
-  // mismo request y devolvemos el draft para que la UI abra directamente el
-  // modal de revisión. Si falla la IA, devolvemos planId sin draft para que
-  // la UI navegue al plan vacío y el nutri reintente con "Generar plan".
+  // Competición → aplicar plantilla y volver directo al plan (sin modal).
+  if (isCompetition) {
+    const templateId = parseStr(formData.get("competitionTemplateId"));
+    if (templateId) {
+      try {
+        const { applyCompetitionTemplateToPlan } = await import(
+          "@/lib/competitionTemplates"
+        );
+        await applyCompetitionTemplateToPlan(templateId, plan.id);
+      } catch (e) {
+        console.warn("[createPlan] applyTemplate failed:", (e as Error).message);
+      }
+    }
+    return {
+      ok: true as const,
+      planId: plan.id,
+      clientId,
+      draftId: null,
+      payload: null,
+    };
+  }
+
+  // Pauta nutricional con autoGenerate: la IA genera draft, lo devolvemos
+  // para que la UI abra el modal de revisión.
   const autoGenerate = parseStr(formData.get("autoGenerate")) === "true";
   if (autoGenerate) {
     try {

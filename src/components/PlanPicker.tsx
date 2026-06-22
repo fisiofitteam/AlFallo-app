@@ -16,7 +16,7 @@ import {
 } from "@/app/(panel)/planes/actions";
 import { PlanReviewModal } from "@/components/PlanReviewModal";
 
-export type PlanPickerItem = { id: string; name: string };
+export type PlanPickerItem = { id: string; name: string; kind: string };
 export type ConsiderationOption = { id: string; title: string };
 export type GoalOption = { value: string; label: string };
 
@@ -35,20 +35,20 @@ export function PlanPicker({
   selectedPlanId,
   goalOptions,
   considerations,
+  competitionTemplates,
 }: {
   clientId: string;
   plans: PlanPickerItem[];
   selectedPlanId: string | null;
   goalOptions: GoalOption[];
   considerations: ConsiderationOption[];
+  competitionTemplates: CompetitionTemplateOption[];
 }) {
   const router = useRouter();
   const [, startNav] = useTransition();
   const [renaming, setRenaming] = useState(false);
   const [adding, setAdding] = useState(false);
   const [genBusy, startGen] = useTransition();
-  // Modal: 'idle' (cerrado), 'choose' (eligiendo tipo), 'competition' (form competición).
-  const [genMode, setGenMode] = useState<"idle" | "choose" | "competition">("idle");
   // Borrador en revisión tras pulsar Generar plan. Cuando esté seteado se
   // muestra el PlanReviewModal y el nutri decide aceptar/ajustar/rechazar.
   const [pendingReview, setPendingReview] = useState<{
@@ -62,40 +62,24 @@ export function PlanPicker({
     startNav(() => router.push(`/clientes/${clientId}?tab=plan&planId=${planId}`));
   }
 
-  function runGenerate(extra?: { competitionName?: string; competitionContext?: string }) {
+  function runGenerate() {
     if (!selected) return;
+    if (
+      !confirm(
+        "La IA va a proponerte un plan nuevo (pauta nutricional). Lo verás en un panel antes de aplicarlo. Puede tardar 10-20 s. ¿Seguir?",
+      )
+    )
+      return;
     const fd = new FormData();
     fd.set("planId", selected.id);
-    if (extra?.competitionContext?.trim()) {
-      fd.set("kind", "competition");
-      fd.set("competitionContext", extra.competitionContext.trim());
-      if (extra.competitionName?.trim()) {
-        fd.set("competitionName", extra.competitionName.trim());
-      }
-    }
     startGen(async () => {
       const r = await previewPlanGeneration(fd);
       if ("error" in r) {
-        alert(r.error);
+        alert(r.error ?? "Error generando plan");
         return;
       }
       setPendingReview({ draftId: r.draftId, payload: r.payload });
     });
-  }
-
-  function chooseRegular() {
-    setGenMode("idle");
-    if (
-      !confirm(
-        "Esto borra el plan actual y genera una PAUTA NUTRICIONAL: Harris-Benedict recalcula los macros del cliente y la IA escribe 5 comidas × 3 opciones con alimentos y gramos. Puede tardar 10-20 s. ¿Seguro?",
-      )
-    )
-      return;
-    runGenerate();
-  }
-
-  function chooseCompetition() {
-    setGenMode("competition");
   }
 
   return (
@@ -175,8 +159,10 @@ export function PlanPicker({
         </div>
       </div>
 
-      {/* Fila 2: generación combinada (HB + IA en un solo clic) */}
-      {selected ? (
+      {/* Fila 2: generación con IA — solo para pauta. Los planes de
+          competición se construyen aplicando una plantilla al crearlos,
+          NO con IA. */}
+      {selected && selected.kind !== "competition" ? (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-bg/40 px-5 py-3">
           <p className="text-xs text-muted">
             <span className="font-medium text-text">Harris-Benedict</span> recalcula los macros objetivo del
@@ -185,27 +171,28 @@ export function PlanPicker({
           </p>
           <button
             type="button"
-            onClick={() => setGenMode("choose")}
+            onClick={runGenerate}
             disabled={genBusy}
             className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:opacity-90 disabled:opacity-60"
             style={{ backgroundColor: "var(--c-primary)" }}
-            title="Pauta nutricional o plan de competición"
           >
             {genBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
             Generar plan
           </button>
         </div>
-      ) : null}
-
-      {genMode !== "idle" ? (
-        <GenerateModal
-          mode={genMode}
-          busy={genBusy}
-          onClose={() => setGenMode("idle")}
-          onChooseRegular={chooseRegular}
-          onChooseCompetition={chooseCompetition}
-          onSubmitCompetition={(name, ctx) => runGenerate({ competitionName: name, competitionContext: ctx })}
-        />
+      ) : selected && selected.kind === "competition" ? (
+        <div className="border-t border-border bg-amber-50 px-5 py-3 text-xs text-amber-800">
+          🏆 Plan de competición — se gestiona desde su plantilla en{" "}
+          <a
+            href="/biblioteca/competicion"
+            className="font-semibold underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Biblioteca → Plantillas de competición
+          </a>
+          . Lo editas directamente en este builder.
+        </div>
       ) : null}
 
       {adding ? (
@@ -213,6 +200,7 @@ export function PlanPicker({
           clientId={clientId}
           goalOptions={goalOptions}
           considerations={considerations}
+          competitionTemplates={competitionTemplates}
           onClose={() => setAdding(false)}
           onDraftReady={(d) => {
             setAdding(false);
@@ -234,143 +222,6 @@ export function PlanPicker({
         />
       ) : null}
     </section>
-  );
-}
-
-function GenerateModal({
-  mode,
-  busy,
-  onClose,
-  onChooseRegular,
-  onChooseCompetition,
-  onSubmitCompetition,
-}: {
-  mode: "choose" | "competition";
-  busy: boolean;
-  onClose: () => void;
-  onChooseRegular: () => void;
-  onChooseCompetition: () => void;
-  onSubmitCompetition: (name: string, ctx: string) => void;
-}) {
-  const [name, setName] = useState("");
-  const [ctx, setCtx] = useState("");
-
-  return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
-      onClick={onClose}
-    >
-      <div
-        className="relative w-full max-w-xl rounded-2xl border border-border bg-surface shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="flex items-center justify-between border-b border-border px-5 py-3">
-          <p className="font-semibold">
-            {mode === "choose" ? "¿Qué quieres generar?" : "Plan de competición"}
-          </p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md p-1.5 text-muted hover:bg-bg hover:text-text"
-            title="Cerrar"
-          >
-            <X size={14} />
-          </button>
-        </header>
-
-        {mode === "choose" ? (
-          <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={onChooseRegular}
-              disabled={busy}
-              className="flex flex-col items-start gap-2 rounded-xl border border-border bg-bg p-4 text-left hover:border-primary disabled:opacity-50"
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary">
-                <UtensilsCrossed size={18} />
-              </span>
-              <span className="font-semibold">Pauta nutricional</span>
-              <span className="text-xs text-muted">
-                Plan habitual del cliente. HB recalcula sus macros base y la IA escribe 5 comidas
-                × 3 opciones según su objetivo.
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={onChooseCompetition}
-              disabled={busy}
-              className="flex flex-col items-start gap-2 rounded-xl border border-border bg-bg p-4 text-left hover:border-primary disabled:opacity-50"
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-primary">
-                <Trophy size={18} />
-              </span>
-              <span className="font-semibold">Plan de competición</span>
-              <span className="text-xs text-muted">
-                Plan puntual para una prueba. Aplica el brief de Rendimiento y pega los WODs,
-                horarios y fecha del evento para que la IA construya el plan en torno a eso.
-              </span>
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4 p-5">
-            <label className="block">
-              <span className="block text-sm font-semibold">Nombre del evento</span>
-              <span className="block text-xs text-muted">
-                Solo para identificarlo en el plan (ej. "Hyrox Madrid 14 jul"). Opcional.
-              </span>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Hyrox Madrid 14 jul"
-                className="mt-2 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
-              />
-            </label>
-            <label className="block">
-              <span className="block text-sm font-semibold">WODs, horarios y contexto</span>
-              <span className="block text-xs text-muted">
-                Pega aquí los WODs (warm-up, formato, duración estimada), el horario del día, la
-                fecha del evento, cualquier nota relevante (logística, comidas con el equipo, etc.).
-                La IA lo usará para diseñar el plan.
-              </span>
-              <textarea
-                rows={10}
-                value={ctx}
-                onChange={(e) => setCtx(e.target.value)}
-                placeholder={`Ej:\n\n14 jul 2026 — Hyrox Madrid\nLlegada al recinto 08:00. WOD 11:30:\n  Run 1km · Ski 1km · Run 1km · Sled push 50m · ...\nNecesidad de carga 36-24h previa. Postwod: cervecera 19:00.`}
-                className="mt-2 w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
-              />
-            </label>
-            <p className="text-xs text-muted">
-              El brief de <strong>Plan de competición</strong> que tengas guardado en{" "}
-              <strong>Biblioteca → Brief IA → Plan de competición</strong> se aplicará automáticamente
-              junto a este contexto.
-            </p>
-          </div>
-        )}
-
-        <footer className="flex justify-end gap-2 border-t border-border px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm text-muted hover:bg-bg hover:text-text"
-          >
-            Cancelar
-          </button>
-          {mode === "competition" ? (
-            <button
-              type="button"
-              onClick={() => onSubmitCompetition(name, ctx)}
-              disabled={busy || !ctx.trim()}
-              className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md hover:opacity-90 disabled:opacity-50"
-              style={{ backgroundColor: "var(--c-primary)" }}
-            >
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-              Generar plan de competición
-            </button>
-          ) : null}
-        </footer>
-      </div>
-    </div>
   );
 }
 
@@ -434,11 +285,13 @@ export function AddPlanButton({
   clientId,
   goalOptions,
   considerations,
+  competitionTemplates,
   variant = "primary",
 }: {
   clientId: string;
   goalOptions: GoalOption[];
   considerations: ConsiderationOption[];
+  competitionTemplates: CompetitionTemplateOption[];
   variant?: "primary" | "subtle";
 }) {
   const [open, setOpen] = useState(false);
@@ -460,6 +313,7 @@ export function AddPlanButton({
           clientId={clientId}
           goalOptions={goalOptions}
           considerations={considerations}
+          competitionTemplates={competitionTemplates}
           onClose={() => setOpen(false)}
           onDraftReady={(d) => {
             setOpen(false);
@@ -483,16 +337,22 @@ export function AddPlanButton({
   );
 }
 
+export type CompetitionTemplateOption = { id: string; name: string; description: string | null };
+
 function AddPlanModal({
   clientId,
   goalOptions,
   considerations,
+  competitionTemplates,
   onClose,
   onDraftReady,
 }: {
   clientId: string;
   goalOptions: GoalOption[];
   considerations: ConsiderationOption[];
+  /** Plantillas de competición disponibles (CRUD vive en Biblioteca →
+   *  Plantillas de competición). En este modal solo se eligen. */
+  competitionTemplates: CompetitionTemplateOption[];
   onClose: () => void;
   /** Llamado cuando el plan se ha creado Y la IA ha generado un draft que
    *  toca revisar. Pasa los datos al padre para abrir el ReviewModal. */
@@ -506,16 +366,17 @@ function AddPlanModal({
   const [instructions, setInstructions] = useState("");
   const [goalOverride, setGoalOverride] = useState("");
   const [considerationId, setConsiderationId] = useState("");
-  const [competitionName, setCompetitionName] = useState("");
-  const [competitionContext, setCompetitionContext] = useState("");
+  const [templateId, setTemplateId] = useState("");
   const [autoGenerate, setAutoGenerate] = useState(true);
   const [pending, start] = useTransition();
 
-  // Si está en modo competición, exigimos el contexto WODs/horarios para que
-  // la generación tenga sentido. Sin él, el botón se queda deshabilitado.
+  // Reglas:
+  // - Pauta nutricional: necesita nombre.
+  // - Plan de competición: necesita nombre + plantilla elegida (porque la
+  //   plantilla aporta la estructura del plan; ya no se genera con IA).
   const canSubmit =
     name.trim().length > 0 &&
-    (kind === "regular" || competitionContext.trim().length > 0);
+    (kind === "regular" || templateId.length > 0);
 
   // Al cambiar a competición, sugerimos un nombre por defecto si el nutri
   // todavía no lo había cambiado (y viceversa para no dejarlo raro).
@@ -531,22 +392,21 @@ function AddPlanModal({
     fd.set("clientId", clientId);
     fd.set("name", name.trim());
     if (description.trim()) fd.set("description", description.trim());
-    if (instructions.trim()) fd.set("instructions", instructions.trim());
-    if (autoGenerate) fd.set("autoGenerate", "true");
     if (kind === "competition") {
       fd.set("kind", "competition");
-      if (competitionName.trim()) fd.set("competitionName", competitionName.trim());
-      fd.set("competitionContext", competitionContext.trim());
+      fd.set("competitionTemplateId", templateId);
+      // Competición ya NO usa IA: ignoramos autoGenerate / instructions.
     } else {
-      // Estos overrides solo aplican a pauta nutricional. En competición la
-      // generación fuerza brief 'rendimiento' y los ignora.
+      if (instructions.trim()) fd.set("instructions", instructions.trim());
+      if (autoGenerate) fd.set("autoGenerate", "true");
       if (goalOverride) fd.set("goalOverride", goalOverride);
       if (considerationId) fd.set("specialConsiderationOverrideId", considerationId);
     }
     start(async () => {
       // createPlan ya no redirige: devuelve { planId, clientId, draftId, payload }.
-      // - Si pediste autoGenerate y la IA respondió → abre review modal.
-      // - Si no → navegamos a la galería del cliente con el plan creado.
+      // - Pauta + autoGenerate + IA OK → abre review modal.
+      // - Competición → plan ya rellenado por la plantilla; redirigimos al builder.
+      // - Pauta sin autoGenerate → galería del cliente.
       const r = await createPlan(fd);
       if (!("ok" in r)) return;
       if (r.draftId && r.payload) {
@@ -666,7 +526,7 @@ function AddPlanModal({
             />
           </label>
 
-          {/* Campos condicionales: pauta vs competición. */}
+          {/* Campos condicionales: pauta (con IA) vs competición (plantilla). */}
           {kind === "regular" ? (
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -708,80 +568,84 @@ function AddPlanModal({
                   </select>
                 </label>
               </div>
+
+              <label className="block">
+                <span className="block text-sm font-semibold">Instrucciones para la IA</span>
+                <span className="block text-xs text-muted">
+                  Lo que quieras que la IA tenga en cuenta al generar este plan: enfoque, alimentos
+                  a forzar / evitar, presentación, etc. Opcional.
+                </span>
+                <textarea
+                  rows={4}
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  placeholder="Ej. Necesita mucha proteína porque viene de bajada en analítica. Prefiere arroz blanco a integral. Cena temprano (sobre 20:30). Sin lácteos de vaca."
+                  className="mt-1.5 w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+
+              <label className="flex items-start gap-2 rounded-lg border border-border bg-bg/40 px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={autoGenerate}
+                  onChange={(e) => setAutoGenerate(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-border accent-[color:var(--c-primary)]"
+                />
+                <span>
+                  <strong>Generar con IA al crear</strong>
+                  <span className="block text-xs text-muted">
+                    Si lo desactivas, el plan se crea vacío y lo generas tú con el botón
+                    "Generar plan" cuando quieras. (Tardará 10-20 s si lo activas.)
+                  </span>
+                </span>
+              </label>
             </>
           ) : (
             <>
               <label className="block">
-                <span className="block text-sm font-semibold">Nombre del evento</span>
-                <span className="block text-xs text-muted">
-                  Solo para identificarlo (ej. "Hyrox Madrid 14 jul"). Opcional.
-                </span>
-                <input
-                  value={competitionName}
-                  onChange={(e) => setCompetitionName(e.target.value)}
-                  placeholder="Hyrox Madrid 14 jul"
-                  className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
-                />
-              </label>
-              <label className="block">
                 <span className="block text-sm font-semibold">
-                  WODs, horarios y contexto <span className="text-red-500">*</span>
+                  Plantilla a aplicar <span className="text-red-500">*</span>
                 </span>
                 <span className="block text-xs text-muted">
-                  Pega WODs (warm-up, formato, duración), horarios del día, fecha del evento,
-                  logística (comidas con el equipo, etc.). La IA lo usará para diseñar el plan
-                  alrededor de la prueba (carga 36-24h, día-evento, recovery).
+                  Se copia la estructura entera al plan del cliente. Después la ajustas en el
+                  builder para este atleta concreto. Las plantillas se gestionan en{" "}
+                  <strong>Biblioteca → Plantillas de competición</strong>.
                 </span>
-                <textarea
-                  rows={8}
-                  value={competitionContext}
-                  onChange={(e) => setCompetitionContext(e.target.value)}
-                  placeholder={`Ej:\n\n14 jul 2026 — Hyrox Madrid\nLlegada al recinto 08:00. WOD 11:30:\n  Run 1km · Ski 1km · Run 1km · Sled push 50m · ...\nNecesidad de carga 36-24h previa. Postwod: cervecera 19:00.`}
-                  className="mt-1.5 w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
-                />
+                {competitionTemplates.length === 0 ? (
+                  <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    No hay plantillas todavía. Crea la primera en{" "}
+                    <a
+                      href="/biblioteca/competicion"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold underline"
+                    >
+                      Biblioteca → Plantillas de competición
+                    </a>
+                    .
+                  </p>
+                ) : (
+                  <select
+                    value={templateId}
+                    onChange={(e) => setTemplateId(e.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="">— Elige una plantilla —</option>
+                    {competitionTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                        {t.description ? ` — ${t.description.slice(0, 60)}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </label>
               <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                El brief de <strong>Plan de competición</strong> guardado en{" "}
-                <strong>Biblioteca → Brief IA → Plan de competición</strong> se aplica automáticamente
-                a este tipo de plan.
+                Los planes de competición ya no se generan con IA — son demasiado individuales.
+                Aplicas una plantilla y la afinas a mano para este atleta.
               </p>
             </>
           )}
-
-          <label className="block">
-            <span className="block text-sm font-semibold">Instrucciones para la IA</span>
-            <span className="block text-xs text-muted">
-              Lo que quieras que la IA tenga en cuenta al generar este plan: enfoque, alimentos a
-              forzar / evitar, presentación, etc. Opcional.
-            </span>
-            <textarea
-              rows={4}
-              value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              placeholder={
-                kind === "competition"
-                  ? "Ej. Le sienta mejor pasta que arroz. Prefiere desayuno salado el día del evento."
-                  : "Ej. Necesita mucha proteína porque viene de bajada en analítica. Prefiere arroz blanco a integral. Cena temprano (sobre 20:30). Sin lácteos de vaca."
-              }
-              className="mt-1.5 w-full resize-y rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
-            />
-          </label>
-
-          <label className="flex items-start gap-2 rounded-lg border border-border bg-bg/40 px-3 py-2 text-sm">
-            <input
-              type="checkbox"
-              checked={autoGenerate}
-              onChange={(e) => setAutoGenerate(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-border accent-[color:var(--c-primary)]"
-            />
-            <span>
-              <strong>Generar con IA al crear</strong>
-              <span className="block text-xs text-muted">
-                Si lo desactivas, el plan se crea vacío y lo generas tú con el botón "Generar plan"
-                cuando quieras. (Tardará 10-20 s si lo activas.)
-              </span>
-            </span>
-          </label>
         </div>
 
         <footer className="flex justify-end gap-2 border-t border-border px-5 py-3">

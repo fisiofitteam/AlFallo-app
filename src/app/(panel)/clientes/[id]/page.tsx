@@ -31,6 +31,7 @@ import { loadPlanForBuilder } from "@/lib/loadPlanData";
 import { buildWeeklyMenu } from "@/lib/weeklyMenu";
 import { WeeklyMenuView } from "@/components/WeeklyMenuView";
 import { getAllSpecialConsiderations } from "@/lib/specialConsiderations";
+import { getAllCompetitionTemplates } from "@/lib/competitionTemplates";
 
 function shortDate(d: Date): string {
   return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
@@ -99,6 +100,14 @@ export default async function ClientDetailPage({
   // selector de la pestaña "Ficha nutricional".
   const specialConsiderations = await getAllSpecialConsiderations();
   const selectedConsiderationIds = client.profile?.specialConsiderationIds ?? [];
+  // Plantillas de competición disponibles para el selector "Plan de
+  // competición" al añadir un plan. Las gestiona el equipo en Biblioteca.
+  const competitionTemplates = await getAllCompetitionTemplates();
+  const competitionTemplateOptions = competitionTemplates.map((t) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description,
+  }));
 
   // Pestañas Plan/Semanal: galería ↔ detalle.
   // - Sin ?planId  → galería con cards (name + descripción + macros).
@@ -223,10 +232,11 @@ export default async function ClientDetailPage({
                 </Link>
                 <PlanPicker
                   clientId={client.id}
-                  plans={client.plans.map((p) => ({ id: p.id, name: p.name }))}
+                  plans={client.plans.map((p) => ({ id: p.id, name: p.name, kind: p.kind }))}
                   selectedPlanId={activePlanData.plan.id}
                   goalOptions={GOAL_OPTIONS}
                   considerations={specialConsiderations.map((c) => ({ id: c.id, title: c.title }))}
+                  competitionTemplates={competitionTemplateOptions}
                 />
                 {active === "plan" ? (
                   <PlanBuilder
@@ -240,6 +250,7 @@ export default async function ClientDetailPage({
                     clientId={activePlanData.plan.clientId}
                     clientName={activePlanData.plan.client.fullName}
                     planName={activePlanData.plan.name}
+                    planKind={activePlanData.plan.kind}
                     initialDays={activePlanData.days}
                     initialNotes={activePlanData.plan.notes}
                     initialSupplementation={activePlanData.plan.supplementation}
@@ -267,6 +278,7 @@ export default async function ClientDetailPage({
                     clientId={client.id}
                     goalOptions={GOAL_OPTIONS}
                     considerations={specialConsiderations.map((c) => ({ id: c.id, title: c.title }))}
+                    competitionTemplates={competitionTemplateOptions}
                   />
                 </div>
                 {planCards.length === 0 ? (

@@ -67,6 +67,9 @@ model Professional {
   planFeedbackCreated PlanGenerationFeedback[] @relation("PlanFeedbackCreator")
   planDraftsCreated   PlanGenerationDraft[]    @relation("PlanDraftCreator")
 
+  // Plantillas de competición creadas por este profesional.
+  competitionTemplatesCreated CompetitionPlanTemplate[] @relation("CompetitionTemplateCreator")
+
   @@index([role])
 }
 
@@ -1315,4 +1318,29 @@ model PlanGenerationDraft {
 
   @@index([planId, status])
   @@index([expiresAt])
+}
+
+// Plantilla de plan de competición. Los planes de competición ya no se
+// generan con IA: el equipo crea aquí plantillas (Hyrox 6 semanas, Carga
+// pre-CrossFit, Maratón, etc.) y al añadir un plan de competición a un
+// cliente se copia la estructura tal cual. El nutri retoca lo que haga
+// falta para ese atleta concreto.
+//
+// La estructura completa (días, comidas, opciones, macros) vive en el
+// campo `structure` (JSON) para no inflar el schema con 4 tablas
+// adicionales paralelas a NutritionPlan. Forma del JSON:
+//   { days: [{ name, dayType, meals: [{ name, options: [{ text, kcal,
+//     protein, carbs, fat, subType?, selected? }] }] }] }
+model CompetitionPlanTemplate {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  // Observaciones y suplementación se copian al plan del cliente al aplicar.
+  notes           String?
+  supplementation String?
+  structure       Json     @default("{\"days\":[]}")
+  createdById     String?
+  createdBy       Professional? @relation("CompetitionTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

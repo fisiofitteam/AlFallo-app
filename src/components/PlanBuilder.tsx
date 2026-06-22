@@ -98,6 +98,7 @@ export function PlanBuilder({
   clientName,
   clientId,
   planName,
+  planKind = "regular",
   initialDays,
   initialTargets,
   initialNotes,
@@ -108,6 +109,9 @@ export function PlanBuilder({
   clientName: string;
   clientId: string;
   planName: string;
+  /** "regular" o "competition". En competición ocultamos el botón "Generar
+   *  plan" porque esos planes se construyen a partir de plantilla, no IA. */
+  planKind?: string;
   initialDays: PlanBuilderDay[];
   initialTargets: PlanBuilderTargets;
   initialNotes: string | null;
@@ -261,9 +265,16 @@ export function PlanBuilder({
           <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold md:text-3xl">{planName}</h1>
-              <p className="text-sm text-muted">Plan nutricional · {clientName}</p>
+              <p className="text-sm text-muted">
+                {planKind === "competition" ? "Plan de competición" : "Plan nutricional"} ·{" "}
+                {clientName}
+              </p>
             </div>
-            <PlanGenerationButtons onAI={generateAI} busyAI={generatingAI} />
+            {/* Botón "Generar plan" solo en pauta; los de competición se
+                construyen aplicando plantilla al crear. */}
+            {planKind !== "competition" ? (
+              <PlanGenerationButtons onAI={generateAI} busyAI={generatingAI} />
+            ) : null}
           </header>
         </>
       ) : null}
@@ -290,7 +301,7 @@ export function PlanBuilder({
       ) : null}
 
       {!activeDay ? (
-        <EmptyPlan onGenerate={generateAI} planId={planId} />
+        <EmptyPlan onGenerate={generateAI} planId={planId} planKind={planKind} />
       ) : (
         <DayPanel
           day={activeDay}
@@ -495,11 +506,26 @@ function SummaryCard({
 
 function EmptyPlan({
   onGenerate,
-  planId,
+  planKind,
 }: {
   onGenerate: () => void;
   planId: string;
+  planKind: string;
 }) {
+  // Plan de competición vacío → mensaje específico: la generación viene de
+  // aplicar plantilla al crear; aquí no hay botón "Generar plan".
+  if (planKind === "competition") {
+    return (
+      <div className="rounded-2xl border border-dashed border-border bg-surface/50 p-12 text-center">
+        <FileText size={28} className="mx-auto text-muted" />
+        <p className="mt-3 font-medium">Plan de competición vacío</p>
+        <p className="mt-1 text-sm text-muted">
+          Crea el plan desde la ficha del cliente eligiendo una plantilla, o añade los días y
+          comidas a mano abajo.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="rounded-2xl border border-dashed border-border bg-surface/50 p-12 text-center">
       <FileText size={28} className="mx-auto text-muted" />

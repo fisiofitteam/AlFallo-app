@@ -6,6 +6,7 @@ export type LoadedPlan = {
   plan: {
     id: string;
     name: string;
+    kind: string;
     clientId: string;
     client: { fullName: string };
     notes: string | null;
@@ -73,6 +74,7 @@ export async function loadPlanForBuilder(planId: string): Promise<LoadedPlan | n
     plan: {
       id: plan.id,
       name: plan.name,
+      kind: plan.kind,
       clientId: plan.clientId,
       client: { fullName: plan.client.fullName },
       notes: plan.notes,

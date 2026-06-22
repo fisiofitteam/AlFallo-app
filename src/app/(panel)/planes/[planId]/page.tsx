@@ -31,6 +31,7 @@ export default async function PlanPage({ params }: { params: { planId: string } 
       clientId={loaded.plan.clientId}
       clientName={loaded.plan.client.fullName}
       planName={loaded.plan.name}
+      planKind={loaded.plan.kind}
       initialDays={loaded.days}
       initialNotes={loaded.plan.notes}
       initialSupplementation={loaded.plan.supplementation}
