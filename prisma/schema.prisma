@@ -741,6 +741,14 @@ model MealItem {
   selected      Boolean @default(true)
   order         Int     @default(0)
 
+  // Ingredientes descompuestos del freestyle text. La IA y el estimador
+  // de macros devuelven, además del texto y los macros totales, un array
+  // de ingredientes individuales con cantidad en gramos y categoría. Se
+  // usa para alimentar /cliente/compra. Forma del JSON:
+  //   [{ name: "avena", quantityG: 120, category: "carbohidrato" }, ...]
+  // Items reales del banco (foodId set) no lo usan.
+  ingredients Json?
+
   meal Meal         @relation(fields: [mealId], references: [id], onDelete: Cascade)
   food FoodLibrary? @relation(fields: [foodId], references: [id], onDelete: SetNull)
 

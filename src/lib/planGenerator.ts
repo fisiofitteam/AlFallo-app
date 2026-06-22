@@ -30,6 +30,16 @@ type MealName = (typeof MEAL_NAMES)[number];
 
 const DAY_TYPES = ["entreno", "descanso", "mixto"] as const;
 
+/** Ingrediente individual de una opción, en gramos para que la lista de
+ *  compra pueda sumarlo. La IA convierte ml/unidades a gramos aproximados
+ *  ("250 ml leche" → 250, "1 plátano" → ~120). */
+export type GeneratedIngredient = {
+  name: string;
+  quantityG: number;
+  /** proteina | carbohidrato | grasa | verdura | lacteo | suplemento | otro */
+  category?: string | null;
+};
+
 export type GeneratedOption = {
   text: string;
   protein: number;
@@ -39,7 +49,22 @@ export type GeneratedOption = {
   // Solo presente en comida/cena: subgrupo combinable
   // (intro|grasas|carbos|proteina|postre). Para otras comidas es null.
   subType?: string | null;
+  /** Desglose de la opción en alimentos individuales con cantidad en gramos.
+   *  La IA siempre debería devolverlo para que la lista de la compra agregue
+   *  correctamente. Si falta, /cliente/compra cae a la opción entera como
+   *  una línea. */
+  ingredients?: GeneratedIngredient[];
 };
+
+const INGREDIENT_CATEGORIES = [
+  "proteina",
+  "carbohidrato",
+  "grasa",
+  "verdura",
+  "lacteo",
+  "suplemento",
+  "otro",
+] as const;
 
 const COMPOSED_SUBTYPES = ["intro", "grasas", "carbos", "proteina", "postre"] as const;
 export type GeneratedMeal = { name: MealName; options: GeneratedOption[] };
@@ -147,6 +172,7 @@ INSTRUCCIONES
   El atleta combinará 1 opción de cada subgrupo. Por eso los macros de cada opción dentro de un subgrupo deben ser SIMILARES entre sí (intercambiables), y la SUMA "intro + grasa elegida + carbo elegido + proteína elegida + postre" debe acercarse a las kcal/macros que tocan en esa comida (la comida y la cena suman juntas ~50-55 % del total diario).
 - Aplica las equivalencias y porciones del brief para que las cantidades sean coherentes con cómo medimos en el equipo.
 - Adapta a la cultura gastronómica española.
+- En CADA opción, además del texto y los macros totales, devuelves un array "ingredients" con los alimentos individuales desglosados. Cada ingrediente tiene { name, quantityG, category }. Convierte ml y unidades a gramos aproximados (250 ml leche → 250 g, 1 plátano → 120 g, 1 huevo → 50 g). Esto alimenta la lista de la compra del cliente. Categorías válidas: proteina | carbohidrato | grasa | verdura | lacteo | suplemento | otro.
 
 ADEMÁS, en la raíz del JSON devuelves dos campos de texto que se muestran al atleta tal cual:
 - "notes" (Observaciones generales del plan): 4-8 frases concretas con pautas que aplican a TODO el plan: hidratación, horarios alrededor del entreno, qué hacer si come fuera, manejo del fin de semana, descanso, señales para ajustar. Sé específico para ESTE atleta (objetivo, nivel, preferencias) — nada genérico tipo "come sano". Sigue el tono del brief del equipo.
@@ -164,22 +190,37 @@ Devuelve SOLO el JSON con esta forma exacta, sin markdown, sin texto fuera del J
         {
           "name": "desayuno",
           "options": [
-            { "text": "120 g avena + 250 ml leche + 30 g whey + 1 plátano", "kcal": 480, "protein": 35, "carbs": 65, "fat": 9 },
-            { "text": "...", "kcal": 470, "protein": 32, "carbs": 60, "fat": 12 },
-            { "text": "...", "kcal": 475, "protein": 36, "carbs": 55, "fat": 11 }
+            {
+              "text": "120 g avena + 250 ml leche + 30 g whey + 1 plátano",
+              "kcal": 480, "protein": 35, "carbs": 65, "fat": 9,
+              "ingredients": [
+                { "name": "avena", "quantityG": 120, "category": "carbohidrato" },
+                { "name": "leche semi", "quantityG": 250, "category": "lacteo" },
+                { "name": "whey", "quantityG": 30, "category": "suplemento" },
+                { "name": "plátano", "quantityG": 120, "category": "carbohidrato" }
+              ]
+            }
           ]
         },
         {
           "name": "comida",
           "options": [
-            { "subType": "intro", "text": "Ensalada variada + 200 ml gazpacho", "kcal": 80, "protein": 3, "carbs": 12, "fat": 2 },
-            { "subType": "grasas", "text": "50 g hummus", "kcal": 89, "protein": 4, "carbs": 7, "fat": 5 },
-            { "subType": "grasas", "text": "100 g aguacate", "kcal": 179, "protein": 2, "carbs": 9, "fat": 15 },
-            { "subType": "carbos", "text": "120 g arroz integral cocido", "kcal": 430, "protein": 8, "carbs": 92, "fat": 3 },
-            { "subType": "carbos", "text": "120 g quinoa cocida", "kcal": 439, "protein": 17, "carbs": 77, "fat": 7 },
-            { "subType": "proteina", "text": "155 g pechuga de pollo", "kcal": 163, "protein": 36, "carbs": 0, "fat": 2 },
-            { "subType": "proteina", "text": "200 g salmón a la plancha", "kcal": 394, "protein": 40, "carbs": 0, "fat": 26 },
-            { "subType": "postre", "text": "1 melocotón (200 g)", "kcal": 80, "protein": 1, "carbs": 19, "fat": 0 }
+            {
+              "subType": "proteina",
+              "text": "155 g pechuga de pollo",
+              "kcal": 163, "protein": 36, "carbs": 0, "fat": 2,
+              "ingredients": [
+                { "name": "pechuga de pollo", "quantityG": 155, "category": "proteina" }
+              ]
+            },
+            {
+              "subType": "carbos",
+              "text": "120 g arroz integral cocido",
+              "kcal": 430, "protein": 8, "carbs": 92, "fat": 3,
+              "ingredients": [
+                { "name": "arroz integral", "quantityG": 120, "category": "carbohidrato" }
+              ]
+            }
           ]
         }
       ]
@@ -260,7 +301,35 @@ function clampPlan(raw: unknown): GeneratedDay[] {
           const fat = Math.max(0, Number(o.fat) || 0);
           const kcal =
             Number(o.kcal) > 0 ? Number(o.kcal) : Math.round(kcalFromMacros(protein, carbs, fat));
-          options.push({ text, protein, carbs, fat, kcal: Math.round(kcal), subType });
+          // ingredients (descomposición de la opción para la lista de compra).
+          // Validamos cada uno: nombre no vacío, cantidad numérica >0, categoría
+          // de la lista permitida. Limitamos a 12 ingredientes por opción para
+          // que la IA no nos cuele un poema.
+          const ingredients: GeneratedIngredient[] = [];
+          if (Array.isArray(o.ingredients)) {
+            for (const ing of o.ingredients) {
+              if (!ing || typeof ing !== "object") continue;
+              const r = ing as Record<string, unknown>;
+              const name = String(r.name ?? "").trim().slice(0, 80);
+              if (!name) continue;
+              const qty = Number(r.quantityG);
+              if (!Number.isFinite(qty) || qty <= 0) continue;
+              const rawCat = typeof r.category === "string" ? r.category : "";
+              const category =
+                (INGREDIENT_CATEGORIES as readonly string[]).includes(rawCat) ? rawCat : "otro";
+              ingredients.push({ name, quantityG: Math.round(qty), category });
+              if (ingredients.length >= 12) break;
+            }
+          }
+          options.push({
+            text,
+            protein,
+            carbs,
+            fat,
+            kcal: Math.round(kcal),
+            subType,
+            ingredients: ingredients.length > 0 ? ingredients : undefined,
+          });
           if (options.length >= cap) break;
         }
         if (options.length > 0) meals.push({ name: mname, options });

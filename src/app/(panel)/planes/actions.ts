@@ -678,6 +678,13 @@ async function commitDraft(
             subType: sub,
             selected,
             order: oi,
+            // Descomposición en alimentos individuales (para la lista de
+            // compra). Puede venir vacío si la IA no la devolvió; en ese
+            // caso /cliente/compra cae a la opción entera como una línea.
+            ingredients:
+              o.ingredients && o.ingredients.length > 0
+                ? (o.ingredients as unknown as Prisma.InputJsonValue)
+                : undefined,
           },
         });
       }
@@ -741,6 +748,10 @@ export async function addItemFromText(formData: FormData) {
       fatPer100: macros.fat,
       subType: parseStr(formData.get("subType")),
       order: count,
+      ingredients:
+        macros.ingredients && macros.ingredients.length > 0
+          ? (macros.ingredients as unknown as Prisma.InputJsonValue)
+          : undefined,
     },
   });
   revalidatePath(`/planes/${planId}`);
@@ -942,6 +953,13 @@ export async function updateOptionTextAndEstimate(
       proteinPer100: macros.protein,
       carbsPer100: macros.carbs,
       fatPer100: macros.fat,
+      // Si el estimador devolvió ingredientes, los pisamos. Si no devolvió
+      // ninguno (texto raro), los dejamos como null para no enseñar al
+      // cliente una lista con basura.
+      ingredients:
+        macros.ingredients && macros.ingredients.length > 0
+          ? (macros.ingredients as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
     },
   });
   return {
