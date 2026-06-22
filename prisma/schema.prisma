@@ -97,6 +97,13 @@ model Client {
   // Reset del badge "novedades en comunidad" al entrar la última vez.
   communityLastSeenAt DateTime?
 
+  // Último NutritionPlan regular que el cliente abrió en /cliente/plan. Lo
+  // usamos para decidir las CANTIDADES preferidas en /cliente/compra cuando
+  // el cliente tiene varios planes activos. No es FK porque queremos que
+  // sobreviva al borrado del plan (se queda apuntando a un id muerto y la
+  // lista cae a "más reciente" hasta que el cliente abra otro).
+  lastViewedPlanId    String?
+
   nutritionist     Professional?     @relation("NutritionistClients", fields: [nutritionistId], references: [id], onDelete: SetNull)
   profile          NutritionProfile?
   macroTargets     MacroTargets?

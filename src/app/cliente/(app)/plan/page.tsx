@@ -85,6 +85,17 @@ export default async function ClientPlanPage({
     },
   });
 
+  // Tracking del último plan REGULAR abierto por el cliente: lo usa /cliente/compra
+  // para decidir de qué plan sacar las cantidades cuando hay varios. Usamos
+  // updateMany con NOT-equal para no escribir si ya está marcado y no inflar
+  // updatedAt sin motivo.
+  if (plan && plan.kind !== "competition") {
+    await prisma.client.updateMany({
+      where: { id: me.id, NOT: { lastViewedPlanId: plan.id } },
+      data: { lastViewedPlanId: plan.id },
+    });
+  }
+
   if (!plan) {
     // Plan inexistente o de otro cliente — volvemos a la galería.
     return (
