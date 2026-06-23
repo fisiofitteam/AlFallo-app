@@ -140,6 +140,15 @@ export async function submitOnboarding(formData: FormData) {
 export async function submitCheckIn(formData: FormData) {
   const client = await requireOnboardedClient();
 
+  // Anti-doble-submit: si el atleta ya envió un check-in esta semana
+  // (sin querer le dio dos veces, o vuelve a entrar más tarde), no creamos
+  // otro registro. Para editar las respuestas usa updateCheckIn.
+  const { hasCheckInThisWeek } = await import("@/lib/weeklyCheckin");
+  if (await hasCheckInThisWeek(client.id)) {
+    revalidatePath("/cliente/checkin");
+    return;
+  }
+
   await prisma.checkIn.create({
     data: {
       clientId: client.id,
@@ -156,4 +165,36 @@ export async function submitCheckIn(formData: FormData) {
 
   revalidatePath("/cliente/checkin");
   revalidatePath("/cliente");
+}
+
+/** Edita las respuestas del check-in de esta semana del atleta. Solo lo
+ *  permitimos si el check-in pertenece a este cliente y está dentro de la
+ *  semana actual (mismo criterio que el aviso del lunes). Si la nutri ya
+ *  lo revisó, igualmente se puede tocar; la UI muestra una advertencia. */
+export async function updateCheckIn(formData: FormData) {
+  const client = await requireOnboardedClient();
+  const id = parseStr(formData.get("id"));
+  if (!id) return;
+  const existing = await prisma.checkIn.findUnique({ where: { id } });
+  if (!existing || existing.clientId !== client.id) return;
+
+  // Solo permitimos editar el check-in de ESTA semana (no historicos).
+  const { hasCheckInThisWeek } = await import("@/lib/weeklyCheckin");
+  if (!(await hasCheckInThisWeek(client.id))) return;
+
+  await prisma.checkIn.update({
+    where: { id },
+    data: {
+      weightKg: parseNumber(formData.get("weightKg")),
+      waistCm: parseNumber(formData.get("waistCm")),
+      hipCm: parseNumber(formData.get("hipCm")),
+      armCm: parseNumber(formData.get("armCm")),
+      bodyFatPct: parseNumber(formData.get("bodyFatPct")),
+      adherencePct: parseIntOrNull(formData.get("adherencePct")),
+      energy: parseIntOrNull(formData.get("energy")),
+      notes: parseStr(formData.get("notes")),
+    },
+  });
+
+  revalidatePath("/cliente/checkin");
 }

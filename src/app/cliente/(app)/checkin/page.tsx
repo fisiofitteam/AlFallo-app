@@ -1,23 +1,56 @@
 import { CheckCircle2, Clock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
-import { Field, Select, TextArea, TextInput } from "@/components/form-ui";
-import { submitCheckIn } from "../../actions";
+import { CheckInWeekly, type CheckInActive } from "@/components/cliente/CheckInWeekly";
 
 export const metadata = { title: "Check-in · Al Fallo" };
+export const dynamic = "force-dynamic";
 
-const SCALE_1_5 = [
-  { value: "1", label: "1 · Muy baja" },
-  { value: "2", label: "2 · Baja" },
-  { value: "3", label: "3 · Normal" },
-  { value: "4", label: "4 · Alta" },
-  { value: "5", label: "5 · Muy alta" },
-];
+/** Inicio de la semana (lunes 00:00 zona Madrid) — usado para localizar el
+ *  check-in vigente. Replica la lógica de lib/weeklyCheckin sin importarla
+ *  directamente para que el render sea predecible. */
+function startOfThisWeek(): Date {
+  const now = new Date(
+    new Date().toLocaleString("en-US", { timeZone: "Europe/Madrid" }),
+  );
+  const day = now.getDay(); // 0=dom, 1=lun, ..., 6=sáb
+  const back = (day + 6) % 7;
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - back);
+  mon.setHours(0, 0, 0, 0);
+  return mon;
+}
 
 export default async function CheckInPage() {
   const me = await requireOnboardedClient();
-  const checkIns = await prisma.checkIn.findMany({
-    where: { clientId: me.id },
+  const weekStart = startOfThisWeek();
+
+  // Check-in de la semana actual (si existe). Solo uno por semana — el
+  // server action submitCheckIn rechaza más allá del primero.
+  const activeRaw = await prisma.checkIn.findFirst({
+    where: { clientId: me.id, date: { gte: weekStart } },
+    orderBy: { date: "desc" },
+  });
+  const active: CheckInActive | null = activeRaw
+    ? {
+        id: activeRaw.id,
+        weightKg: activeRaw.weightKg,
+        waistCm: activeRaw.waistCm,
+        hipCm: activeRaw.hipCm,
+        armCm: activeRaw.armCm,
+        bodyFatPct: activeRaw.bodyFatPct,
+        adherencePct: activeRaw.adherencePct,
+        energy: activeRaw.energy,
+        notes: activeRaw.notes,
+        status: activeRaw.status,
+        reviewNotes: activeRaw.reviewNotes,
+      }
+    : null;
+
+  // Histórico (semanas anteriores). Excluimos el de esta semana porque ya
+  // se muestra arriba con su propio bloque editable.
+  const previousCheckIns = await prisma.checkIn.findMany({
+    where: { clientId: me.id, date: { lt: weekStart } },
     orderBy: { date: "desc" },
     take: 12,
   });
@@ -25,46 +58,20 @@ export default async function CheckInPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold">Check-in semanal</h1>
-      <p className="mt-1 text-muted">Registra tu progreso de la semana para que tu nutricionista lo revise.</p>
+      <p className="mt-1 text-muted">
+        Registra tu progreso de la semana para que tu nutricionista lo revise.
+      </p>
 
-      <form action={submitCheckIn} className="mt-5 space-y-4 rounded-2xl border border-border bg-surface p-5">
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Peso (kg)" htmlFor="weightKg">
-            <TextInput id="weightKg" name="weightKg" inputMode="decimal" />
-          </Field>
-          <Field label="% Grasa" htmlFor="bodyFatPct">
-            <TextInput id="bodyFatPct" name="bodyFatPct" inputMode="decimal" />
-          </Field>
-          <Field label="Cintura (cm)" htmlFor="waistCm">
-            <TextInput id="waistCm" name="waistCm" inputMode="decimal" />
-          </Field>
-          <Field label="Cadera (cm)" htmlFor="hipCm">
-            <TextInput id="hipCm" name="hipCm" inputMode="decimal" />
-          </Field>
-          <Field label="Brazo (cm)" htmlFor="armCm">
-            <TextInput id="armCm" name="armCm" inputMode="decimal" />
-          </Field>
-          <Field label="Adherencia (%)" htmlFor="adherencePct">
-            <TextInput id="adherencePct" name="adherencePct" inputMode="numeric" />
-          </Field>
-        </div>
-        <Field label="Energía" htmlFor="energy">
-          <Select id="energy" name="energy" options={SCALE_1_5} />
-        </Field>
-        <Field label="¿Cómo ha ido la semana?" htmlFor="notes" hint="Sensaciones, dificultades, dudas…">
-          <TextArea id="notes" name="notes" />
-        </Field>
-        <button className="w-full rounded-xl bg-primary px-4 py-3 font-semibold text-primary-fg transition hover:opacity-90">
-          Enviar check-in
-        </button>
-      </form>
+      <CheckInWeekly active={active} />
 
-      {/* Historial */}
-      {checkIns.length > 0 && (
-        <div className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Anteriores</h2>
+      {/* Histórico de semanas anteriores. */}
+      {previousCheckIns.length > 0 && (
+        <div className="mt-8">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
+            Semanas anteriores
+          </h2>
           <div className="space-y-3">
-            {checkIns.map((c) => (
+            {previousCheckIns.map((c) => (
               <div key={c.id} className="rounded-2xl border border-border bg-surface p-4">
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{c.date.toLocaleDateString("es-ES")}</span>
