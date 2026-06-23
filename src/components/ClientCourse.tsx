@@ -71,10 +71,10 @@ export function ClientCourse({
   return (
     <div className="pb-10">
       <Link
-        href="/cliente/comunidad"
+        href="/cliente/recursos"
         className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-text"
       >
-        <ChevronLeft size={16} /> Volver a Comunidad
+        <ChevronLeft size={16} /> Volver a Recursos
       </Link>
 
       {/* Cabecera del curso */}

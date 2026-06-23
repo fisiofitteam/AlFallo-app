@@ -4,20 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   Heart, MessageCircle, Send, X, BadgeCheck,
-  GraduationCap, Loader2, Pin,
+  Loader2, Pin,
 } from "lucide-react";
-import { CourseCover } from "@/components/CourseCover";
 import { ImageUpload } from "@/components/ImageUpload";
 import { parseVideo } from "@/lib/video";
-
-type CourseCard = {
-  id: string;
-  title: string;
-  description: string | null;
-  coverUrl: string | null;
-  totalLessons: number;
-  completedLessons: number;
-};
 
 type Post = {
   id: string;
@@ -47,7 +37,9 @@ type Comment = {
   teamRole: string | null;
 };
 
-type Tab = "feed" | "cursos";
+// Antes tenía dos pestañas (feed + cursos). Los cursos se movieron a
+// /cliente/recursos como módulo aparte; aquí queda solo el muro.
+type Tab = "feed";
 
 async function api(url: string, method: string, body?: unknown) {
   const res = await fetch(url, {
@@ -102,34 +94,6 @@ function TeamBadge({ role }: { role: string | null }) {
     <span title={label} className="ml-1 inline-flex items-center text-primary" aria-label={label}>
       <BadgeCheck size={14} fill="currentColor" className="text-primary" />
     </span>
-  );
-}
-
-function CourseRow({ c }: { c: CourseCard }) {
-  const pct = c.totalLessons > 0 ? Math.round((c.completedLessons / c.totalLessons) * 100) : 0;
-  return (
-    <Link
-      href={`/cliente/comunidad/curso/${c.id}`}
-      className="flex gap-3 rounded-xl border border-border bg-surface p-3 transition hover:border-primary"
-    >
-      <div className="w-24 flex-shrink-0">
-        <CourseCover coverUrl={c.coverUrl} title={c.title} className="aspect-video w-full rounded-lg border border-border" />
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <p className="truncate text-sm font-bold text-text">{c.title}</p>
-        {c.description ? (
-          <p className="mt-0.5 line-clamp-2 text-xs text-muted">{c.description}</p>
-        ) : null}
-        <div className="mt-auto pt-2">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-            <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
-          </div>
-          <p className="mt-1 text-[11px] text-muted">
-            {c.completedLessons}/{c.totalLessons} · {pct}%
-          </p>
-        </div>
-      </div>
-    </Link>
   );
 }
 
@@ -423,14 +387,11 @@ function ComposerCard({
 
 export function ClientCommunity({
   me,
-  courses,
   initialPosts,
 }: {
   me: { id: string; fullName: string };
-  courses: CourseCard[];
   initialPosts: Post[];
 }) {
-  const [tab, setTab] = useState<Tab>("feed");
   const [posts, setPosts] = useState<Post[]>(initialPosts);
   const [commentsFor, setCommentsFor] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -475,59 +436,33 @@ export function ClientCommunity({
   return (
     <div className="pb-10">
       <h1 className="mb-1 text-2xl font-extrabold text-text">Comunidad</h1>
-      <p className="mb-4 text-sm text-muted">Tu academia y el muro del equipo.</p>
+      <p className="mb-4 text-sm text-muted">
+        El muro del equipo y los atletas. Los cursos están ahora en{" "}
+        <Link href="/cliente/recursos" className="font-medium text-primary hover:underline">
+          Recursos
+        </Link>
+        .
+      </p>
 
-      <nav className="mb-5 flex rounded-xl border border-border bg-surface p-1">
-        <button
-          onClick={() => setTab("feed")}
-          className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
-            tab === "feed" ? "bg-primary text-primary-fg" : "text-muted hover:text-text"
-          }`}
-        >
-          Muro
-        </button>
-        <button
-          onClick={() => setTab("cursos")}
-          className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
-            tab === "cursos" ? "bg-primary text-primary-fg" : "text-muted hover:text-text"
-          }`}
-        >
-          Cursos
-        </button>
-      </nav>
-
-      {tab === "feed" ? (
-        <div className="space-y-3">
-          <ComposerCard meName={me.fullName} onPosted={(p) => setPosts((prev) => [p, ...prev])} />
-          {posts.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-              Aún no hay publicaciones. ¡Empieza la conversación!
-            </div>
-          ) : (
-            posts.map((p) => (
-              <PostCard
-                key={p.id}
-                post={p}
-                onLike={() => toggleLike(p)}
-                onDelete={() => deletePost(p)}
-                onOpenComments={() => setCommentsFor(p.id)}
-                deleting={deletingId === p.id}
-              />
-            ))
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {courses.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-              <GraduationCap size={28} className="mx-auto mb-2 text-primary" />
-              Tu nutricionista está preparando los cursos. Vuelve pronto.
-            </div>
-          ) : (
-            courses.map((c) => <CourseRow key={c.id} c={c} />)
-          )}
-        </div>
-      )}
+      <div className="space-y-3">
+        <ComposerCard meName={me.fullName} onPosted={(p) => setPosts((prev) => [p, ...prev])} />
+        {posts.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
+            Aún no hay publicaciones. ¡Empieza la conversación!
+          </div>
+        ) : (
+          posts.map((p) => (
+            <PostCard
+              key={p.id}
+              post={p}
+              onLike={() => toggleLike(p)}
+              onDelete={() => deletePost(p)}
+              onOpenComments={() => setCommentsFor(p.id)}
+              deleting={deletingId === p.id}
+            />
+          ))
+        )}
+      </div>
 
       {commentsFor ? (
         <CommentsSheet
