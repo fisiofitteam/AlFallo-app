@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, X, Pencil, Trash2, ChefHat, ChevronDown } from "lucide-react";
 import { createRecipe, updateRecipe, deleteRecipe } from "@/app/(panel)/biblioteca/recetas/actions";
+import { ImageUpload } from "@/components/ImageUpload";
 
 export const MEAL_TYPES = [
   { value: "", label: "Sin tipo" },
@@ -127,6 +128,13 @@ function RecipeCard({ recipe, onEdit }: { recipe: RecipeItem; onEdit: () => void
           </div>
         </summary>
         <div className="border-t border-border p-4">
+          {recipe.imageUrl ? (
+            <img
+              src={recipe.imageUrl}
+              alt={recipe.title}
+              className="mb-4 max-h-72 w-full rounded-xl border border-border object-cover"
+            />
+          ) : null}
           {recipe.ingredients.trim() ? (
             <>
               <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">
@@ -215,6 +223,10 @@ function EditRecipeForm({
 }
 
 function RecipeFields({ defaults }: { defaults?: RecipeItem }) {
+  // imageUrl es controlado por estado: el subidor llama onChange con la URL
+  // pública de Vercel Blob y sincronizamos un hidden input para que viaje
+  // como `imageUrl` en el FormData del server action.
+  const [imageUrl, setImageUrl] = useState<string>(defaults?.imageUrl ?? "");
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <input
@@ -236,17 +248,23 @@ function RecipeFields({ defaults }: { defaults?: RecipeItem }) {
         ))}
       </select>
       <input
-        name="imageUrl"
-        defaultValue={defaults?.imageUrl ?? ""}
-        placeholder="URL de imagen (opcional)"
-        className="rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
-      />
-      <input
         name="description"
         defaultValue={defaults?.description ?? ""}
         placeholder="Resumen breve (opcional)"
-        className="sm:col-span-2 rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
+        className="rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
       />
+      <div className="sm:col-span-2">
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted">
+          Foto del plato
+        </label>
+        <input type="hidden" name="imageUrl" value={imageUrl} />
+        <ImageUpload
+          value={imageUrl}
+          onChange={setImageUrl}
+          label="Subir foto"
+          hint="Una buena foto vende la receta. JPG/PNG/WebP."
+        />
+      </div>
       <textarea
         name="ingredients"
         rows={4}

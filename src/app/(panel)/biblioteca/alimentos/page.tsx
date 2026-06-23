@@ -3,8 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import { optionLabel } from "@/lib/clients";
 import { FOOD_CATEGORY_OPTIONS } from "@/lib/nutrition";
-import { Field, Select, TextInput } from "@/components/form-ui";
-import { createFood, deleteFood } from "../actions";
+import { FoodCreateForm } from "@/components/FoodCreateForm";
+import { deleteFood } from "../actions";
 
 export const metadata = { title: "Alimentos · Biblioteca" };
 export const dynamic = "force-dynamic";
@@ -24,38 +24,8 @@ export default async function AlimentosTab({ searchParams }: { searchParams: { q
         Banco de alimentos con macros por 100 g, reutilizable en los planes.
       </p>
 
-      {/* Alta de alimento */}
-      <form action={createFood} className="mb-8 rounded-2xl border border-border bg-surface p-5">
-        <h2 className="mb-4 font-semibold">Añadir alimento</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Nombre" htmlFor="name">
-            <TextInput id="name" name="name" required placeholder="Pechuga de pollo" />
-          </Field>
-          <Field label="Marca / supermercado" htmlFor="brand">
-            <TextInput id="brand" name="brand" placeholder="Opcional" />
-          </Field>
-          <Field label="Categoría" htmlFor="category">
-            <Select id="category" name="category" options={FOOD_CATEGORY_OPTIONS} />
-          </Field>
-          <Field label="Kcal / 100 g" htmlFor="kcalPer100">
-            <TextInput id="kcalPer100" name="kcalPer100" inputMode="decimal" placeholder="0" />
-          </Field>
-          <Field label="Proteína / 100 g" htmlFor="proteinPer100">
-            <TextInput id="proteinPer100" name="proteinPer100" inputMode="decimal" placeholder="0" />
-          </Field>
-          <Field label="Carbos / 100 g" htmlFor="carbsPer100">
-            <TextInput id="carbsPer100" name="carbsPer100" inputMode="decimal" placeholder="0" />
-          </Field>
-          <Field label="Grasa / 100 g" htmlFor="fatPer100">
-            <TextInput id="fatPer100" name="fatPer100" inputMode="decimal" placeholder="0" />
-          </Field>
-        </div>
-        <div className="mt-4 flex justify-end">
-          <button className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition hover:opacity-90">
-            Añadir
-          </button>
-        </div>
-      </form>
+      {/* Alta de alimento (componente cliente para subir foto a Vercel Blob). */}
+      <FoodCreateForm />
 
       {/* Buscador */}
       <form className="mb-4">
@@ -93,8 +63,23 @@ export default async function AlimentosTab({ searchParams }: { searchParams: { q
               {foods.map((f) => (
                 <tr key={f.id} className="border-t border-border">
                   <td className="px-4 py-3">
-                    <span className="font-medium">{f.name}</span>
-                    {f.brand && <span className="block text-xs text-muted">{f.brand}</span>}
+                    <div className="flex items-center gap-3">
+                      {f.imageUrl ? (
+                        <img
+                          src={f.imageUrl}
+                          alt=""
+                          className="h-10 w-10 flex-shrink-0 rounded-lg border border-border object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary">
+                          <Apple size={16} />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <span className="font-medium">{f.name}</span>
+                        {f.brand && <span className="block text-xs text-muted">{f.brand}</span>}
+                      </div>
+                    </div>
                   </td>
                   <td className="hidden px-4 py-3 text-muted sm:table-cell">
                     {optionLabel(FOOD_CATEGORY_OPTIONS, f.category)}

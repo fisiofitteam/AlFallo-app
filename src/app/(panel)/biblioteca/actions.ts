@@ -23,6 +23,7 @@ export async function createFood(formData: FormData) {
       name,
       brand: parseStr(formData.get("brand")),
       category: parseStr(formData.get("category")),
+      imageUrl: parseStr(formData.get("imageUrl")),
       kcalPer100: parseNumber(formData.get("kcalPer100")) ?? 0,
       proteinPer100: parseNumber(formData.get("proteinPer100")) ?? 0,
       carbsPer100: parseNumber(formData.get("carbsPer100")) ?? 0,
