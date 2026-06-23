@@ -118,6 +118,9 @@ export function ImageUpload({
     );
   }
 
+  // Zona DROP grande: todo el bloque es target y se ve claramente como tal.
+  // Click en cualquier punto abre el diálogo nativo del SO; arrastrar y
+  // soltar dispara el mismo handler.
   return (
     <div className={className}>
       <input
@@ -130,34 +133,49 @@ export function ImageUpload({
           if (file) handleFile(file);
         }}
       />
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => !busy && inputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (busy) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
         onDragEnter={onDragEnter}
         onDragLeave={onDragLeave}
         onDragOver={onDragOver}
         onDrop={onDrop}
-        disabled={busy}
-        // Al arrastrar encima, resalta en rosa con icono de upload bouncing
-        // para dar feedback claro. El borde dashed se mantiene siempre.
-        className={`flex items-center gap-1.5 rounded-xl border border-dashed px-4 py-2.5 text-sm font-medium transition disabled:opacity-60 ${
-          dragging
-            ? "border-primary bg-primary-soft text-primary"
-            : "border-border bg-surface text-muted hover:border-primary hover:text-text"
+        aria-disabled={busy}
+        className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${
+          busy
+            ? "cursor-not-allowed border-border bg-surface opacity-60"
+            : dragging
+              ? "border-primary bg-primary-soft text-primary"
+              : "border-border bg-surface text-muted hover:border-primary hover:bg-primary-soft/30 hover:text-text"
         }`}
       >
         {busy ? (
-          <Loader2 size={15} className="animate-spin" />
+          <Loader2 size={26} className="animate-spin text-primary" />
         ) : (
-          <Upload size={15} className={dragging ? "animate-bounce" : ""} />
+          <Upload
+            size={26}
+            className={dragging ? "animate-bounce text-primary" : "text-primary"}
+          />
         )}
-        {busy ? "Subiendo…" : dragging ? "Suelta para subir" : label}
-      </button>
-      {hint && !error && <p className="mt-1 text-xs text-muted">{hint}</p>}
-      {!hint && !error && (
-        <p className="mt-1 text-xs text-muted">O arrastra una imagen aquí.</p>
-      )}
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+        <p className="text-sm font-semibold">
+          {busy ? "Subiendo…" : dragging ? "Suelta para subir" : label}
+        </p>
+        {!busy && !dragging ? (
+          <p className="text-xs text-muted">
+            Arrastra una imagen aquí o pulsa para elegir
+          </p>
+        ) : null}
+      </div>
+      {hint && !error && <p className="mt-2 text-xs text-muted">{hint}</p>}
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </div>
   );
 }
