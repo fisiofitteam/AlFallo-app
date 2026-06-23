@@ -51,10 +51,8 @@ function normalizeKey(name: string): string {
 }
 
 /** Tokens de descripción de cocción/acompañamiento. Si un fragmento empieza
- *  por alguno de estos lo descartamos: viene de un split desafortunado por
- *  comas/etc. y NO es un ingrediente real (ej. "a la plancha o al horno",
- *  "al horno o en puré", "con verduras").
- *  Las extracciones quedan en lowercase sin tildes antes de comparar. */
+ *  por alguno de estos lo descartamos entero: viene de un split desafortunado
+ *  y NO es un ingrediente real (ej. "a la plancha o al horno"). */
 const NON_INGREDIENT_PREFIXES = [
   "a la ",
   "al ",
@@ -71,6 +69,31 @@ function looksLikeNonIngredient(name: string): boolean {
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "");
   return NON_INGREDIENT_PREFIXES.some((p) => n.startsWith(p));
+}
+
+/** Recorta el método de cocción / acompañamiento del nombre, dejando solo
+ *  el alimento base. "Pollo a la plancha o al horno" → "Pollo". También
+ *  recorta participios típicos al final ("arroz blanco hervido" → "arroz
+ *  blanco"). */
+function stripCookingMethod(name: string): string {
+  let s = name;
+  // 1. Corta al primer trigger preposicional: "<comida> a la/al/en/con/sin …".
+  //    Solo cuenta a partir del segundo carácter para no comernos el propio
+  //    nombre si empezara por una de estas palabras (rarísimo, pero seguro).
+  const triggers = /(?:\s+|,\s*)(?:a la|al|en|con|sin)\s/i;
+  const m = s.match(triggers);
+  if (m && m.index !== undefined && m.index > 0) {
+    s = s.slice(0, m.index);
+  }
+  // 2. Corta participio típico de cocción al final: cocido, asado, frito,
+  //    salteado, hervido, horneado, gratinado, rehogado, marinado, ahumado,
+  //    guisado, escalfado, braseado, aliñado, plancheado.
+  s = s.replace(
+    /\s+(?:cocid|asad|frit|saltead|hervid|hornead|gratinad|rehogad|marinad|ahumad|guisad|escalfad|brasead|alinad|plancheado|plancheado)[oa]s?$/i,
+    "",
+  );
+  // 3. Limpia residuos de puntuación y espacios.
+  return s.replace(/[\s,.;:]+$/g, "").trim();
 }
 
 /** Parser de fallback para opciones de IA viejas que no tienen el array
@@ -102,6 +125,10 @@ function parseIngredientsFromText(text: string): IngredientShape[] {
     s = s.replace(/\s*\(.*?\)\s*$/g, "").trim();
     if (s.length < 2) continue;
     if (looksLikeNonIngredient(s)) continue;
+    // Recorta método de cocción ("pollo a la plancha" → "pollo"). Después
+    // re-comprobamos longitud y prefijo por si quedó vacío o raro.
+    s = stripCookingMethod(s);
+    if (s.length < 2 || looksLikeNonIngredient(s)) continue;
     out.push({ name: s, category: "otros" });
   }
   return out;
