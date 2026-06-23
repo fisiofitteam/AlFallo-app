@@ -8,6 +8,8 @@ import { ComingSoon } from "@/components/coming-soon";
 export const metadata = { title: "Tu compra · Al Fallo" };
 export const dynamic = "force-dynamic";
 
+const WEEK_DAYS = 7;
+
 // Formato bonito de cantidad: 850 g, 1,2 kg, etc.
 function fmtQty(grams: number): string {
   if (grams >= 1000) {
@@ -36,24 +38,33 @@ const CATEGORY_ORDER = [
 type IngredientShape = {
   name: string;
   quantityG: number;
-  category?: string | null;
+  category: string;
 };
 
 type Item = {
   foodId: string | null;
   nameSnapshot: string;
   quantityG: number;
+  subType: string | null;
   food: { category: string | null } | null;
   ingredients: unknown;
 };
 
-type Agg = { name: string; totalG: number; category: string };
+type Meal = { items: Item[] };
+type Day = { meals: Meal[] };
+type PlanLite = { id: string; name: string; days: Day[] };
 
-/** Devuelve los ingredientes de un MealItem como array tipado. Si el item
- *  apunta a un FoodLibrary real (foodId), genera un ingrediente único con
- *  el nombre/categoría/cantidad reales. Si es freestyle, lee la columna
- *  `ingredients` (la rellenan IA y macroEstimator) — si está vacía, cae a
- *  un único "ingrediente" con la opción entera (legacy de plans antiguos). */
+/** Llave de aglomeración: nombre normalizado (lower + sin tildes + trim). */
+function normalizeKey(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Devuelve los ingredientes de un MealItem como array tipado. */
 function ingredientsOf(item: Item): IngredientShape[] {
   if (item.foodId) {
     return [
@@ -78,41 +89,81 @@ function ingredientsOf(item: Item): IngredientShape[] {
     }
     if (out.length > 0) return out;
   }
-  // Sin desglose: lo mostramos como una sola línea con el texto entero,
-  // sin cantidad fiable. Esto es lo que pasaba antes para todas las opciones.
-  return [{ name: item.nameSnapshot, quantityG: 0, category: "otros" }];
+  // Sin desglose (legacy): no se puede aglomerar bien. Devolvemos vacío
+  // para no contaminar la lista con líneas sin cantidad.
+  return [];
 }
 
-/** Llave de aglomeración: nombre normalizado (lower + sin tildes ni espacios
- *  extra). De-duplica "Avena", "avena", "AVENA " a la misma entrada. */
-function normalizeKey(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
+type Acc = Map<string, IngredientShape>;
+
+function addContribution(acc: Acc, ing: IngredientShape, qty: number) {
+  const key = normalizeKey(ing.name);
+  if (!key || qty <= 0) return;
+  const existing = acc.get(key);
+  if (existing) {
+    existing.quantityG += qty;
+  } else {
+    acc.set(key, { name: ing.name, quantityG: qty, category: ing.category });
+  }
 }
 
-function aggregateItemsToMap(items: Item[]): Map<string, Agg> {
-  const agg = new Map<string, Agg>();
-  for (const item of items) {
-    for (const ing of ingredientsOf(item)) {
-      const key = normalizeKey(ing.name);
-      if (!key) continue;
-      const existing = agg.get(key);
-      if (existing) {
-        existing.totalG += ing.quantityG;
-      } else {
-        agg.set(key, {
-          name: ing.name,
-          totalG: ing.quantityG,
-          category: ing.category ?? "otros",
-        });
+/** Agrega los ingredientes de UNA comida en gramos POR SERVICIO. Reglas:
+ *  - Si la comida es compuesta (opciones con subType), agrupamos por subType
+ *    y promediamos dentro de cada subgrupo: el cliente elige 1 opción de cada
+ *    subgrupo por día. Luego sumamos subgrupos para tener la comida completa.
+ *  - Si es plana (sin subType), promediamos todas las opciones (el cliente
+ *    elige 1 opción por día). */
+function aggregateMealServing(items: Item[]): Acc {
+  const result: Acc = new Map();
+  if (items.length === 0) return result;
+
+  // Agrupar por subType. "_flat" = sin subType.
+  const groups = new Map<string, Item[]>();
+  for (const it of items) {
+    const key = it.subType ?? "_flat";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(it);
+  }
+
+  for (const group of groups.values()) {
+    const count = group.length;
+    if (count === 0) continue;
+    for (const item of group) {
+      for (const ing of ingredientsOf(item)) {
+        // contribución por servicio = cantidad / opciones del subgrupo
+        addContribution(result, ing, ing.quantityG / count);
       }
     }
   }
-  return agg;
+  return result;
+}
+
+/** Cantidades SEMANALES por ingrediente para un plan. Trata cada día del
+ *  plan como una rotación equivalente: si hay N días distintos, asumimos
+ *  que el atleta los rota durante la semana → multiplicamos por 7/N. */
+function aggregatePlanWeekly(plan: PlanLite): Acc {
+  const dayTotals: Acc[] = [];
+  for (const day of plan.days) {
+    const dayAcc: Acc = new Map();
+    for (const meal of day.meals) {
+      const serving = aggregateMealServing(meal.items);
+      for (const ing of serving.values()) {
+        addContribution(dayAcc, ing, ing.quantityG);
+      }
+    }
+    dayTotals.push(dayAcc);
+  }
+  if (dayTotals.length === 0) return new Map();
+
+  // Promedio del día (asumiendo rotación uniforme) × 7.
+  const factor = WEEK_DAYS / dayTotals.length;
+  const weekly: Acc = new Map();
+  for (const day of dayTotals) {
+    for (const ing of day.values()) {
+      addContribution(weekly, ing, ing.quantityG * factor);
+    }
+  }
+  return weekly;
 }
 
 export default async function CompraPage() {
@@ -122,9 +173,7 @@ export default async function CompraPage() {
     select: { lastViewedPlanId: true },
   });
 
-  // Todos los planes REGULARES (sin competición). Incluimos TODAS las
-  // opciones (no filtramos `selected`): el cliente puede rotar y la lista
-  // debe cubrirlas todas.
+  // Todos los planes REGULARES (sin competición).
   const plans = await prisma.nutritionPlan.findMany({
     where: { clientId: me.id, kind: { not: "competition" } },
     orderBy: { createdAt: "desc" },
@@ -138,6 +187,7 @@ export default async function CompraPage() {
                   foodId: true,
                   nameSnapshot: true,
                   quantityG: true,
+                  subType: true,
                   food: { select: { category: true } },
                   ingredients: true,
                 },
@@ -149,14 +199,20 @@ export default async function CompraPage() {
     },
   });
 
-  const itemsByPlan = plans.map((p) => ({
+  const planList: PlanLite[] = plans.map((p) => ({
     id: p.id,
     name: p.name,
-    items: p.days.flatMap((d) => d.meals.flatMap((m) => m.items)) as Item[],
+    days: p.days.map((d) => ({
+      meals: d.meals.map((m) => ({ items: m.items as Item[] })),
+    })),
   }));
-  const totalItemsAcrossPlans = itemsByPlan.reduce((acc, p) => acc + p.items.length, 0);
 
-  if (plans.length === 0 || totalItemsAcrossPlans === 0) {
+  const totalItemsAcrossPlans = planList.reduce(
+    (acc, p) => acc + p.days.reduce((a, d) => a + d.meals.reduce((b, m) => b + m.items.length, 0), 0),
+    0,
+  );
+
+  if (planList.length === 0 || totalItemsAcrossPlans === 0) {
     return (
       <ComingSoon
         icon={ShoppingCart}
@@ -168,26 +224,32 @@ export default async function CompraPage() {
 
   // Plan PRIMARY: el último que el cliente abrió. Si no, el más reciente.
   const primary =
-    itemsByPlan.find((p) => p.id === meRow?.lastViewedPlanId) ?? itemsByPlan[0];
+    planList.find((p) => p.id === meRow?.lastViewedPlanId) ?? planList[0];
 
-  // 1) Cantidades del PRIMARY ganan.
-  const aggregated = aggregateItemsToMap(primary.items);
+  // 1) Cantidades del PRIMARY (semanales) ganan.
+  const aggregated = aggregatePlanWeekly(primary);
 
-  // 2) Resto de planes: añadimos solo los ingredientes que NO estén ya.
-  for (const plan of itemsByPlan) {
+  // 2) Resto de planes: añadir solo ingredientes nuevos.
+  for (const plan of planList) {
     if (plan.id === primary.id) continue;
-    const otherAgg = aggregateItemsToMap(plan.items);
-    for (const [key, value] of otherAgg) {
-      if (!aggregated.has(key)) aggregated.set(key, value);
+    const other = aggregatePlanWeekly(plan);
+    for (const [key, ing] of other) {
+      if (!aggregated.has(key)) aggregated.set(key, { ...ing });
     }
   }
 
-  // Agrupar por categoría y ordenar.
-  const byCategory = new Map<string, Agg[]>();
-  for (const item of aggregated.values()) {
-    const cat = item.category;
+  // Redondear a gramos enteros.
+  for (const ing of aggregated.values()) {
+    ing.quantityG = Math.round(ing.quantityG);
+  }
+
+  // Agrupar por categoría.
+  const byCategory = new Map<string, IngredientShape[]>();
+  for (const ing of aggregated.values()) {
+    if (ing.quantityG <= 0) continue; // descartar ingredientes residuales tras redondeo
+    const cat = ing.category || "otros";
     if (!byCategory.has(cat)) byCategory.set(cat, []);
-    byCategory.get(cat)!.push(item);
+    byCategory.get(cat)!.push(ing);
   }
   for (const list of byCategory.values()) {
     list.sort((a, b) => a.name.localeCompare(b.name, "es"));
@@ -198,8 +260,8 @@ export default async function CompraPage() {
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
   });
 
-  const totalItems = aggregated.size;
-  const hasMultiplePlans = plans.length > 1;
+  const totalItems = Array.from(byCategory.values()).reduce((acc, l) => acc + l.length, 0);
+  const hasMultiplePlans = planList.length > 1;
 
   return (
     <div className="pt-1">
@@ -216,16 +278,17 @@ export default async function CompraPage() {
           Tu compra
         </h1>
         <p className="mt-1 text-sm text-muted">
+          Cantidades para <strong className="text-text">una semana</strong>
           {hasMultiplePlans ? (
             <>
-              Cantidades de <span className="font-semibold text-text">{primary.name}</span> (tu plan
-              más reciente). Incluye también alimentos de tus otros planes.
+              {" "}
+              de <span className="font-semibold text-text">{primary.name}</span>. Incluye también
+              alimentos de tus otros planes.
             </>
           ) : (
             <>
-              Calculada a partir de tu plan{" "}
-              <span className="font-semibold text-text">{primary.name}</span> · {totalItems}{" "}
-              {totalItems === 1 ? "alimento" : "alimentos"}.
+              {" "}
+              · {totalItems} {totalItems === 1 ? "alimento" : "alimentos"}.
             </>
           )}
         </p>
@@ -241,11 +304,9 @@ export default async function CompraPage() {
               {byCategory.get(cat)!.map((it, i) => (
                 <li key={i} className="flex items-center justify-between py-2.5 text-sm">
                   <span className="font-medium capitalize">{it.name}</span>
-                  {it.totalG > 0 ? (
-                    <span className="rounded-full bg-primary-soft px-2.5 py-1 text-xs font-bold text-primary">
-                      {fmtQty(it.totalG)}
-                    </span>
-                  ) : null}
+                  <span className="rounded-full bg-primary-soft px-2.5 py-1 text-xs font-bold text-primary">
+                    {fmtQty(it.quantityG)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -254,9 +315,7 @@ export default async function CompraPage() {
       </div>
 
       <p className="mt-6 text-center text-xs text-muted">
-        {hasMultiplePlans
-          ? "Cuando cambies de plan en tu app, las cantidades se actualizan al del plan que abras."
-          : "Suma de TODAS las opciones del plan. Si rotas entre ellas, te sirve sin más."}
+        Asumimos que rotas entre las opciones de cada comida. Cantidades aproximadas para 7 días.
       </p>
     </div>
   );
