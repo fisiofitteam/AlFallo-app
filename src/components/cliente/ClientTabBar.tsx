@@ -22,7 +22,7 @@ type Tab = { href: string; label: string; icon: LucideIcon };
 const TABS: Tab[] = [
   { href: "/cliente", label: "Inicio", icon: Home },
   { href: "/cliente/plan", label: "Mi plan", icon: UtensilsCrossed },
-  { href: "/cliente/compra", label: "Compra", icon: ShoppingCart },
+  { href: "/cliente/compra", label: "Mi compra", icon: ShoppingCart },
   { href: "/cliente/comunidad", label: "Comunidad", icon: Users },
   { href: "/cliente/progreso", label: "Progreso", icon: TrendingUp },
 ];

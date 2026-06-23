@@ -9,7 +9,7 @@ import {
   type ShoppingGroup,
 } from "@/components/cliente/ShoppingChecklist";
 
-export const metadata = { title: "Tu compra · Al Fallo" };
+export const metadata = { title: "Mi compra · Al Fallo" };
 export const dynamic = "force-dynamic";
 
 function categoryLabel(value: string | null | undefined): string {
@@ -317,7 +317,7 @@ export default async function CompraPage() {
     return (
       <ComingSoon
         icon={ShoppingCart}
-        title="Tu compra"
+        title="Mi compra"
         description="En cuanto tu nutricionista te asigne un plan, aquí tendrás tu lista de la compra calculada automáticamente."
       />
     );
@@ -401,7 +401,7 @@ export default async function CompraPage() {
       <header className="mb-5">
         <h1 className="flex items-center gap-2 text-2xl font-extrabold">
           <ShoppingCart className="text-primary" size={26} />
-          Tu compra
+          Mi compra
         </h1>
         <p className="mt-1 text-sm text-muted">
           {totalItems} {totalItems === 1 ? "alimento" : "alimentos"} en tu plan. Marca los que ya

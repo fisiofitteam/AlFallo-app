@@ -34,13 +34,18 @@ type Section = {
 // las que tienen `ready: true` — los placeholders se ocultan hasta que se
 // monten para no enseñar tiles muertos. Mantén los `ready: false` aquí (con
 // su icono/key) para que sea trivial activarlos cuando toque.
+// Orden visible en el mosaico (grid de 2 columnas):
+//   Fila 1: Mi plan        · Mi compra
+//   Fila 2: Recetas        · Mi progreso
+//   Fila 3: Comunidad      · Recursos
+// Los items con ready=false se ocultan hasta que se monten.
 const SECTIONS: Section[] = [
   { key: "plan", href: "/cliente/plan", label: "Mi plan", icon: UtensilsCrossed, ready: true },
-  { key: "comunidad", href: "/cliente/comunidad", label: "Comunidad", icon: Users, ready: true },
+  { key: "compra", href: "/cliente/compra", label: "Mi compra", icon: ShoppingCart, ready: true },
   { key: "recetas", href: "/cliente/recetas", label: "Recetas", icon: ChefHat, ready: true },
-  { key: "recursos", href: "/cliente/recursos", label: "Recursos", icon: GraduationCap, ready: true },
-  { key: "compra", href: "/cliente/compra", label: "Tu compra", icon: ShoppingCart, ready: true },
   { key: "progreso", href: "/cliente/progreso", label: "Mi progreso", icon: TrendingUp, ready: true },
+  { key: "comunidad", href: "/cliente/comunidad", label: "Comunidad", icon: Users, ready: true },
+  { key: "recursos", href: "/cliente/recursos", label: "Recursos", icon: GraduationCap, ready: true },
   { key: "training", href: "/cliente/training", label: "Entreno", icon: Dumbbell, ready: false },
   { key: "nutri", href: "/cliente/nutricionista", label: "Tu nutri", icon: Stethoscope, ready: false },
 ];
