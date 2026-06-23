@@ -40,14 +40,68 @@ type Item = {
   ingredients: unknown;
 };
 
-/** Llave de aglomeración: nombre normalizado (lower + sin tildes + trim). */
+// Marcas habituales de supermercado que la IA mete a veces en el texto.
+// Las quitamos al construir la key para que "muesli mercadona" y "muesli
+// hacendado" colisionen con "muesli" y sean el mismo item en la lista.
+const BRAND_TOKENS = [
+  "mercadona",
+  "lidl",
+  "hacendado",
+  "dia",
+  "alcampo",
+  "carrefour",
+  "eroski",
+  "aldi",
+  "caprabo",
+  "bonpreu",
+  "consum",
+];
+
+// Descriptores que reducen variantes a su alimento base (a efectos de
+// dedupe). No se muestran al cliente — solo se descuentan al hacer key.
+const DESCRIPTOR_NOISE = [
+  "azucares anadidos",
+  "sin azucar",
+  "sin azucares",
+  "sin gluten",
+  "sin lactosa",
+  "sin sal",
+  "bajo en sal",
+  "alta en proteinas",
+  "rico en proteinas",
+  "proteico",
+  "proteica",
+  "light",
+  "natural",
+  "ecologico",
+  "ecologica",
+  "bio",
+];
+
+/** Llave de aglomeración: nombre fuertemente normalizado. Lower + sin tildes
+ *  + sin números/% + sin marcas de super + sin descriptores de marketing.
+ *  Así "Muesli crunchy 0%", "muesli crunchy 0% mercadona" y "muesli crunchy
+ *  0% azúcares añadidos mercadona" producen la misma key. */
 function normalizeKey(name: string): string {
-  return name
+  let s = name
     .toLowerCase()
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/\p{Diacritic}/gu, "");
+
+  // Porcentajes y números (con o sin "g", "ml"): "0%", "100 g", "5".
+  s = s
+    .replace(/\d+\s*%/g, "")
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:g|gr|gramos|ml|kg|l|cl)?\b/g, "");
+
+  // Tokens de marca o descriptores ruidosos.
+  for (const t of [...BRAND_TOKENS, ...DESCRIPTOR_NOISE]) {
+    s = s.replace(new RegExp(`\\b${t}\\b`, "g"), "");
+  }
+
+  // Limpia residuos: signos y espacios múltiples.
+  s = s.replace(/[%()/]/g, " ");
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
 }
 
 /** Tokens de descripción de cocción/acompañamiento. Si un fragmento empieza
@@ -198,13 +252,28 @@ export default async function CompraPage() {
     );
   }
 
-  // De-duplicación por nombre normalizado, agrupación por categoría.
+  // De-duplicación por nombre normalizado. Al colisionar, mantenemos el
+  // NOMBRE MÁS CORTO entre los duplicados (suele ser el más limpio:
+  // "muesli crunchy" gana frente a "muesli crunchy 0% azúcares añadidos
+  // mercadona"). Para la categoría, ganamos si la existente es "otros" y
+  // la nueva trae categoría real.
   const byKey = new Map<string, IngredientShape>();
   for (const item of allItems) {
     for (const ing of ingredientsOf(item)) {
       const key = normalizeKey(ing.name);
-      if (!key || byKey.has(key)) continue;
-      byKey.set(key, ing);
+      if (!key) continue;
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, ing);
+        continue;
+      }
+      const shorterName =
+        ing.name.length < existing.name.length ? ing.name : existing.name;
+      const betterCategory =
+        existing.category === "otros" && ing.category !== "otros"
+          ? ing.category
+          : existing.category;
+      byKey.set(key, { name: shorterName, category: betterCategory });
     }
   }
 
