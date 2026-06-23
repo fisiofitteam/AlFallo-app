@@ -201,9 +201,12 @@ export default async function ClientPlanPage({
                   <div className="space-y-3">
                     {day.meals.map((meal) => {
                       const items = allItems(meal.items);
-                      // Agrupamos por subType para que en comida/cena se vean los
-                      // 5 bloques (Intro / Grasas / Carbos / Proteína / Postre).
-                      const composed = meal.name === "comida" || meal.name === "cena";
+                      // Comida "compuesta" (con subgrupos Intro/Grasas/Carbos/
+                      // Proteína/Postre) → la detectamos por DATOS, no por el
+                      // nombre. En plantillas de competición el nutri puede
+                      // poner "WOD 1: …" o "Comida" indistintamente; lo que
+                      // manda es si las opciones tienen subType.
+                      const composed = items.some((it) => it.subType !== null);
                       const subGroups = composed
                         ? ["intro", "grasas", "carbos", "proteina", "postre"]
                         : [null];

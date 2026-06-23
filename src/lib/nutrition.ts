@@ -13,10 +13,14 @@ export const FOOD_CATEGORY_OPTIONS: Option[] = [
 ];
 
 // Tipos de comida típicos de un atleta (incluye pre/post-WOD).
+// En las plantillas de competición el nombre puede ser libre (ej. "WOD 1: Run
+// + Sled"); optionLabel cae al value tal cual cuando no encuentra el value
+// aquí, así que cualquier texto custom se renderiza bien al cliente.
 export const MEAL_TYPE_OPTIONS: Option[] = [
   { value: "desayuno", label: "Desayuno" },
   { value: "media_manana", label: "Media mañana" },
   { value: "pre_wod", label: "Pre-WOD" },
+  { value: "wod", label: "WOD" },
   { value: "post_wod", label: "Post-WOD" },
   { value: "comida", label: "Comida" },
   { value: "merienda", label: "Merienda" },

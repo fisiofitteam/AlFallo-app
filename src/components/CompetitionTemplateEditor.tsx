@@ -29,13 +29,31 @@ import { saveCompetitionTemplate } from "@/app/(panel)/biblioteca/competicion/ac
  * subgrupo opcional para comida/cena).
  */
 
-const MEAL_NAMES = [
-  { value: "desayuno", label: "Desayuno" },
-  { value: "media_manana", label: "Media mañana" },
-  { value: "comida", label: "Comida" },
-  { value: "merienda", label: "Merienda" },
-  { value: "cena", label: "Cena" },
+// Sugerencias rápidas para el nombre de la comida. El nutri puede pulsar
+// una para autocompletar, o escribir libremente cualquier texto (ej.
+// "WOD 1: Run 1km + Sled 50m", "Carrera 5km", "Semifinal Hyrox 11:30").
+// Lo que se guarda en meal.name es el texto literal. El check de comida
+// "compuesta" (con subgrupos intro/grasas/carbos/...) se hace
+// case-insensitive, así que "Comida" / "comida" / "COMIDA" entran todas
+// en modo compuesto, igual que "Cena".
+const MEAL_NAME_SUGGESTIONS: string[] = [
+  "Desayuno",
+  "Media mañana",
+  "Pre-WOD",
+  "WOD",
+  "Post-WOD",
+  "Comida",
+  "Merienda",
+  "Cena",
+  "Snack",
 ];
+
+/** Devuelve true si el nombre de la comida coincide con "comida" o "cena"
+ *  ignorando mayúsculas. Esos meals tienen el modo compuesto con subgrupos. */
+function isComposedMealName(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  return n === "comida" || n === "cena";
+}
 
 const SUB_TYPES = [
   { value: "", label: "—" },
@@ -320,21 +338,19 @@ export function CompetitionTemplateEditor({ initial }: { initial: CompetitionTem
                   </p>
                 ) : (
                   day.meals.map((meal, mi) => {
-                    const composed = meal.name === "comida" || meal.name === "cena";
+                    const composed = isComposedMealName(meal.name);
                     return (
                       <div key={mi} className="rounded-xl border border-border bg-bg/40 p-3">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
-                          <select
+                          {/* Input libre: escribe lo que quieras o pulsa una
+                              sugerencia de abajo. Útil para WODs concretos
+                              ("WOD 1: Run + Sled", "Semifinal Hyrox 11:30"). */}
+                          <input
                             value={meal.name}
                             onChange={(e) => patchMeal(di, mi, { name: e.target.value })}
-                            className="rounded-md border border-border bg-bg px-2 py-1 text-xs font-semibold outline-none focus:border-primary"
-                          >
-                            {MEAL_NAMES.map((m) => (
-                              <option key={m.value} value={m.value}>
-                                {m.label}
-                              </option>
-                            ))}
-                          </select>
+                            placeholder="Nombre (ej. Desayuno, WOD 1: Run + Sled…)"
+                            className="min-w-[200px] flex-1 rounded-md border border-border bg-bg px-2 py-1 text-sm font-semibold outline-none focus:border-primary"
+                          />
                           <div className="ml-auto flex items-center gap-1">
                             <button
                               type="button"
@@ -363,6 +379,27 @@ export function CompetitionTemplateEditor({ initial }: { initial: CompetitionTem
                               <Trash2 size={11} />
                             </button>
                           </div>
+                        </div>
+
+                        {/* Chips de sugerencias rápidas para el nombre. */}
+                        <div className="mb-2 flex flex-wrap gap-1">
+                          {MEAL_NAME_SUGGESTIONS.map((s) => {
+                            const active = meal.name.trim().toLowerCase() === s.toLowerCase();
+                            return (
+                              <button
+                                key={s}
+                                type="button"
+                                onClick={() => patchMeal(di, mi, { name: s })}
+                                className={`rounded-full border px-2 py-0.5 text-[10px] font-medium transition ${
+                                  active
+                                    ? "border-primary bg-primary-soft text-primary"
+                                    : "border-border text-muted hover:border-primary hover:text-primary"
+                                }`}
+                              >
+                                {s}
+                              </button>
+                            );
+                          })}
                         </div>
 
                         <div className="space-y-1.5">
