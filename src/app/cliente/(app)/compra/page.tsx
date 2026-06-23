@@ -150,40 +150,111 @@ function stripCookingMethod(name: string): string {
   return s.replace(/[\s,.;:]+$/g, "").trim();
 }
 
+// Palabras de "instrucción" o "comentario" — si aparecen dentro de un
+// fragmento, este viene de un texto explicativo de la IA (no es un
+// ingrediente) y se descarta entero. La IA escribe cosas como "puedes
+// añadir sirope o canela" o "esto es la opción ideal postentreno".
+const INSTRUCTION_TOKENS = [
+  "puede",
+  "puedes",
+  "anade",
+  "anadir",
+  "anadid",
+  "ideal",
+  "opcion",
+  "opciones",
+  "perfect",
+  "recomend",
+  "preferible",
+  "alternativ",
+  "sustituy",
+  "cambia",
+  "varia",
+  "elige",
+  "preentreno",
+  "postentreno",
+  "pre entreno",
+  "post entreno",
+  "pre-entreno",
+  "post-entreno",
+  "esto es",
+  "este es",
+  "esta es",
+  "ten en cuenta",
+  "consejo",
+  "nota",
+  "tip",
+];
+
+function isInstruction(text: string): boolean {
+  const n = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+  return INSTRUCTION_TOKENS.some((t) => n.includes(t));
+}
+
+// Texto que es SOLO un verbo de cocción suelto (sin alimento delante).
+// Surge tras split por " o " ("frito o hervido" → "frito" y "hervido").
+const COOKING_ONLY_RE =
+  /^(?:fritos?|fritas?|asados?|asadas?|cocidos?|cocidas?|salteados?|salteadas?|hervidos?|hervidas?|horneados?|horneadas?|gratinados?|gratinadas?|rehogados?|rehogadas?|marinados?|marinadas?|ahumados?|ahumadas?|guisados?|guisadas?|escalfados?|escalfadas?|braseados?|braseadas?|alinados?|alinadas?|plancheados?|plancheadas?)$/i;
+
+function isCookingMethodOnly(text: string): boolean {
+  const n = text
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+  return COOKING_ONLY_RE.test(n);
+}
+
 /** Parser de fallback para opciones de IA viejas que no tienen el array
- *  `ingredients` en BD. La IA usa "+" como separador principal entre
- *  alimentos (a veces "·"). Las comas dentro de un mismo fragmento son
- *  descripción ("salmón a la plancha, al horno"), NO separador — por eso
- *  NO partimos por coma.
- *
- *  Para cada fragmento: quitamos cantidad/unidad/fracción del principio y
- *  paréntesis del final. Descartamos los que claramente no son ingredientes
- *  (empiezan por preposición / conjunción) — vienen de splits raros. */
+ *  `ingredients` en BD. Pipeline:
+ *   1. Split del texto por "+" "·" ","   →  fragmentos.
+ *   2. Cada fragmento que parezca INSTRUCCIÓN ("puedes añadir…") se descarta.
+ *   3. Cada fragmento se subdivide por " o " (alternativas: "patata o boniato"
+ *      son dos items).
+ *   4. Cada subitem: quitar cantidad/unidad/fracción/paréntesis, recortar
+ *      método de cocción, filtrar prefijos no-alimento y palabras sueltas
+ *      de cocción ("frito" pelado), filtrar longitud (2-60 chars). */
 function parseIngredientsFromText(text: string): IngredientShape[] {
   if (!text || !text.trim()) return [];
-  const parts = text
-    .split(/\s*[+·]\s*/)
+
+  const chunks = text
+    .split(/\s*[+·,]\s*/)
     .map((p) => p.trim())
     .filter(Boolean);
+
   const out: IngredientShape[] = [];
-  for (const part of parts) {
-    let s = part;
-    // Fracciones "1/2", "1/4" al principio.
-    s = s.replace(/^\s*\d+\s*\/\s*\d+\s*(?:de\s+)?/i, "");
-    // Cantidad numérica + unidad opcional + "de" opcional.
-    s = s.replace(
-      /^\s*\d+(?:[.,]\d+)?\s*(?:g|gr|gramos|ml|kg|l|cl|cucharadas?|cdas?)?\s*(?:de\s+)?/i,
-      "",
-    );
-    // Paréntesis al final (ej. "manzana (200 g)").
-    s = s.replace(/\s*\(.*?\)\s*$/g, "").trim();
-    if (s.length < 2) continue;
-    if (looksLikeNonIngredient(s)) continue;
-    // Recorta método de cocción ("pollo a la plancha" → "pollo"). Después
-    // re-comprobamos longitud y prefijo por si quedó vacío o raro.
-    s = stripCookingMethod(s);
-    if (s.length < 2 || looksLikeNonIngredient(s)) continue;
-    out.push({ name: s, category: "otros" });
+  for (const chunk of chunks) {
+    if (isInstruction(chunk)) continue;
+    if (looksLikeNonIngredient(chunk)) continue;
+
+    const alternatives = chunk.split(/\s+o\s+/i);
+    for (const alt of alternatives) {
+      let s = alt;
+      // Fracciones "1/2", "1/4" al principio.
+      s = s.replace(/^\s*\d+\s*\/\s*\d+\s*(?:de\s+)?/i, "");
+      // Cantidad numérica + unidad opcional + "de" opcional.
+      s = s.replace(
+        /^\s*\d+(?:[.,]\d+)?\s*(?:g|gr|gramos|ml|kg|l|cl|cucharadas?|cdas?)?\s*(?:de\s+)?/i,
+        "",
+      );
+      // Paréntesis al final (ej. "manzana (200 g)").
+      s = s.replace(/\s*\(.*?\)\s*$/g, "").trim();
+
+      if (s.length < 2 || s.length > 60) continue;
+      if (looksLikeNonIngredient(s)) continue;
+      if (isInstruction(s)) continue;
+      if (isCookingMethodOnly(s)) continue;
+
+      s = stripCookingMethod(s);
+      if (s.length < 2) continue;
+      if (looksLikeNonIngredient(s)) continue;
+      if (isCookingMethodOnly(s)) continue;
+
+      out.push({ name: s, category: "otros" });
+    }
   }
   return out;
 }
@@ -274,6 +345,20 @@ export default async function CompraPage() {
           ? ing.category
           : existing.category;
       byKey.set(key, { name: shorterName, category: betterCategory });
+    }
+  }
+
+  // Subsunción: si una key SUELTA es prefijo (con límite de palabra) de otra
+  // más larga, eliminamos la suelta. "pechuga" se va a favor de "pechuga de
+  // pollo"; "queso" a favor de "queso fresco". Solo aplicamos a keys de UNA
+  // sola palabra para no perder casos legítimos tipo "yogur natural" vs
+  // "yogur natural griego".
+  {
+    const keys = Array.from(byKey.keys());
+    for (const a of keys) {
+      if (a.includes(" ")) continue; // solo keys de 1 palabra
+      const subsumedBy = keys.find((b) => b !== a && b.startsWith(a + " "));
+      if (subsumedBy) byKey.delete(a);
     }
   }
 
