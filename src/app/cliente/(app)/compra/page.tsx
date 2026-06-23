@@ -50,14 +50,42 @@ function normalizeKey(name: string): string {
     .trim();
 }
 
+/** Tokens de descripción de cocción/acompañamiento. Si un fragmento empieza
+ *  por alguno de estos lo descartamos: viene de un split desafortunado por
+ *  comas/etc. y NO es un ingrediente real (ej. "a la plancha o al horno",
+ *  "al horno o en puré", "con verduras").
+ *  Las extracciones quedan en lowercase sin tildes antes de comparar. */
+const NON_INGREDIENT_PREFIXES = [
+  "a la ",
+  "al ",
+  "en ",
+  "con ",
+  "sin ",
+  "o ",
+  "y ",
+];
+
+function looksLikeNonIngredient(name: string): boolean {
+  const n = name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+  return NON_INGREDIENT_PREFIXES.some((p) => n.startsWith(p));
+}
+
 /** Parser de fallback para opciones de IA viejas que no tienen el array
- *  `ingredients` en BD. La IA siempre sigue el formato "120 g avena + 250 ml
- *  leche + 1 plátano". Partimos por "+" / "·" / ",", quitamos cantidades y
- *  unidades del principio, y nos quedamos con el nombre del alimento. */
+ *  `ingredients` en BD. La IA usa "+" como separador principal entre
+ *  alimentos (a veces "·"). Las comas dentro de un mismo fragmento son
+ *  descripción ("salmón a la plancha, al horno"), NO separador — por eso
+ *  NO partimos por coma.
+ *
+ *  Para cada fragmento: quitamos cantidad/unidad/fracción del principio y
+ *  paréntesis del final. Descartamos los que claramente no son ingredientes
+ *  (empiezan por preposición / conjunción) — vienen de splits raros. */
 function parseIngredientsFromText(text: string): IngredientShape[] {
   if (!text || !text.trim()) return [];
   const parts = text
-    .split(/\s*[+·,]\s*/)
+    .split(/\s*[+·]\s*/)
     .map((p) => p.trim())
     .filter(Boolean);
   const out: IngredientShape[] = [];
@@ -73,6 +101,7 @@ function parseIngredientsFromText(text: string): IngredientShape[] {
     // Paréntesis al final (ej. "manzana (200 g)").
     s = s.replace(/\s*\(.*?\)\s*$/g, "").trim();
     if (s.length < 2) continue;
+    if (looksLikeNonIngredient(s)) continue;
     out.push({ name: s, category: "otros" });
   }
   return out;
