@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
 import { FOOD_CATEGORY_OPTIONS } from "@/lib/nutrition";
 import { ComingSoon } from "@/components/coming-soon";
+import {
+  ShoppingChecklist,
+  type ShoppingGroup,
+} from "@/components/cliente/ShoppingChecklist";
 
 export const metadata = { title: "Tu compra · Al Fallo" };
 export const dynamic = "force-dynamic";
@@ -36,8 +40,7 @@ type Item = {
   ingredients: unknown;
 };
 
-/** Llave de aglomeración: nombre normalizado para de-duplicar "Avena",
- *  "avena", "AVENA " a la misma entrada. */
+/** Llave de aglomeración: nombre normalizado (lower + sin tildes + trim). */
 function normalizeKey(name: string): string {
   return name
     .toLowerCase()
@@ -47,10 +50,38 @@ function normalizeKey(name: string): string {
     .trim();
 }
 
-/** Devuelve los alimentos individuales de un MealItem. Items reales del
- *  banco → uno con sus datos. Items freestyle → la columna `ingredients`
- *  (la rellenan la IA y macroEstimator). Sin desglose disponible (legacy)
- *  los descartamos para no mostrar líneas con texto kilométrico. */
+/** Parser de fallback para opciones de IA viejas que no tienen el array
+ *  `ingredients` en BD. La IA siempre sigue el formato "120 g avena + 250 ml
+ *  leche + 1 plátano". Partimos por "+" / "·" / ",", quitamos cantidades y
+ *  unidades del principio, y nos quedamos con el nombre del alimento. */
+function parseIngredientsFromText(text: string): IngredientShape[] {
+  if (!text || !text.trim()) return [];
+  const parts = text
+    .split(/\s*[+·,]\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const out: IngredientShape[] = [];
+  for (const part of parts) {
+    let s = part;
+    // Fracciones "1/2", "1/4" al principio.
+    s = s.replace(/^\s*\d+\s*\/\s*\d+\s*(?:de\s+)?/i, "");
+    // Cantidad numérica + unidad opcional + "de" opcional.
+    s = s.replace(
+      /^\s*\d+(?:[.,]\d+)?\s*(?:g|gr|gramos|ml|kg|l|cl|cucharadas?|cdas?)?\s*(?:de\s+)?/i,
+      "",
+    );
+    // Paréntesis al final (ej. "manzana (200 g)").
+    s = s.replace(/\s*\(.*?\)\s*$/g, "").trim();
+    if (s.length < 2) continue;
+    out.push({ name: s, category: "otros" });
+  }
+  return out;
+}
+
+/** Devuelve los alimentos individuales de un MealItem. Orden de preferencia:
+ *  1. Item real del banco (foodId).
+ *  2. Array `ingredients` persistido por IA / macroEstimator nuevo.
+ *  3. Parser del nameSnapshot (fallback para planes antiguos sin desglose). */
 function ingredientsOf(item: Item): IngredientShape[] {
   if (item.foodId) {
     return [{ name: item.nameSnapshot, category: item.food?.category ?? "otros" }];
@@ -66,17 +97,14 @@ function ingredientsOf(item: Item): IngredientShape[] {
       const category = typeof rec.category === "string" ? rec.category : "otro";
       out.push({ name, category });
     }
-    return out;
+    if (out.length > 0) return out;
   }
-  return [];
+  return parseIngredientsFromText(item.nameSnapshot);
 }
 
 export default async function CompraPage() {
   const me = await requireOnboardedClient();
 
-  // Cargamos los items de todos los planes regulares (sin competición).
-  // Todas las opciones cuentan: si el cliente puede rotar entre ellas, el
-  // alimento debe estar en la lista.
   const plans = await prisma.nutritionPlan.findMany({
     where: { clientId: me.id, kind: { not: "competition" } },
     select: {
@@ -114,7 +142,7 @@ export default async function CompraPage() {
     );
   }
 
-  // De-duplicamos por nombre normalizado y agrupamos por categoría.
+  // De-duplicación por nombre normalizado, agrupación por categoría.
   const byKey = new Map<string, IngredientShape>();
   for (const item of allItems) {
     for (const ing of ingredientsOf(item)) {
@@ -133,11 +161,21 @@ export default async function CompraPage() {
   for (const list of byCategory.values()) {
     list.sort((a, b) => a.name.localeCompare(b.name, "es"));
   }
+
   const categories = Array.from(byCategory.keys()).sort((a, b) => {
     const ia = CATEGORY_ORDER.indexOf(a);
     const ib = CATEGORY_ORDER.indexOf(b);
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
   });
+
+  const groups: ShoppingGroup[] = categories.map((cat) => ({
+    categoryKey: cat,
+    categoryLabel: categoryLabel(cat),
+    items: byCategory.get(cat)!.map((ing) => ({
+      name: ing.name,
+      key: normalizeKey(ing.name),
+    })),
+  }));
 
   const totalItems = byKey.size;
 
@@ -156,26 +194,12 @@ export default async function CompraPage() {
           Tu compra
         </h1>
         <p className="mt-1 text-sm text-muted">
-          {totalItems} {totalItems === 1 ? "alimento" : "alimentos"} en tu plan.
+          {totalItems} {totalItems === 1 ? "alimento" : "alimentos"} en tu plan. Marca los que ya
+          tengas para no comprarlos otra vez.
         </p>
       </header>
 
-      <div className="space-y-4">
-        {categories.map((cat) => (
-          <section key={cat} className="rounded-2xl border border-border bg-surface p-5">
-            <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-primary">
-              {categoryLabel(cat)}
-            </h2>
-            <ul className="divide-y divide-border">
-              {byCategory.get(cat)!.map((it, i) => (
-                <li key={i} className="py-2.5 text-sm font-medium capitalize">
-                  {it.name}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
+      <ShoppingChecklist groups={groups} />
     </div>
   );
 }
