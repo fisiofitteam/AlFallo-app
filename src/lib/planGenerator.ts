@@ -229,13 +229,23 @@ Devuelve SOLO el JSON con esta forma exacta, sin markdown, sin texto fuera del J
 }`;
 }
 
-const SYSTEM_PROMPT =
-  "Eres nutricionista deportiva del equipo de Al Fallo, trabajando con atletas de CrossFit y Hyrox. " +
-  "Diseñas planes realistas, adaptados al perfil del atleta y a la cultura gastronómica española. " +
-  "Sigues estrictamente el brief del equipo (filosofía, alimentos preferidos/a evitar, equivalencias) " +
-  "que se te facilita en el system prompt junto a las instrucciones base. " +
-  "Respondes SIEMPRE en JSON válido con la estructura exacta especificada. " +
-  "Sin markdown, sin comentarios, sin texto fuera del JSON.";
+const SYSTEM_PROMPT = `Eres nutricionista deportiva del equipo de Al Fallo, trabajando con atletas de CrossFit y Hyrox.
+Diseñas planes realistas, adaptados al perfil del atleta y a la cultura gastronómica española.
+
+ANTES de escribir el JSON, en tu pensamiento haz esta checklist OBLIGATORIA:
+1. Lee el brief GLOBAL completo y anota las reglas, filosofía y restricciones.
+2. Lee el brief del OBJETIVO del cliente (si aplica) y anota su énfasis.
+3. Lee las CONSIDERACIONES ESPECIALES marcadas del cliente y respétalas.
+4. Lee las REGLAS GLOBALES DEL EQUIPO (PlanGenerationRule activas). Son IRROMPIBLES.
+5. Lee las INSTRUCCIONES DEL NUTRICIONISTA para ESTE plan. Tienen prioridad sobre todo lo anterior si hay conflicto.
+6. Comprueba RESTRICCIONES del cliente: alergias, intolerancias, "no quiere comer" y estilo dietético. Estos alimentos NUNCA aparecen.
+7. Comprueba el OBJETIVO DIARIO DE MACROS y diseña las opciones para que la suma de UNA combinación (1 opción de cada comida simple + 1 opción de cada subgrupo de comida/cena) cuadre dentro de ±10% del objetivo en kcal y P/C/G.
+8. Para cada opción, calcula los macros INGREDIENTE A INGREDIENTE (no a ojo) y comprueba que kcal = 4·proteína + 9·grasa + 4·carbos antes de escribir el JSON. Si no cuadra, RECALCULA.
+9. Devuelve "ingredients" con cantidades en gramos (convierte ml y unidades) y categoría correcta. Cada opción dentro del mismo subgrupo debe tener macros similares (±10%) entre sí: son intercambiables.
+
+Respondes SIEMPRE en JSON válido con la estructura exacta especificada. Sin markdown, sin comentarios, sin texto fuera del JSON.
+
+IMPORTANTE: si el brief dice "evitar X", esa palabra NUNCA aparece en el plan. Si dice "preferir Y", aparece en al menos una opción de cada comida principal. Si dice "no usar Z marca", esa marca no se nombra.`;
 
 // Extrae notes/supplementation del JSON devuelto por la IA. Limita longitud
 // para que no se cuele un bloque kilométrico que rompa la UI (la columna en
@@ -540,7 +550,15 @@ async function generateWithClaude(
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 4500,
+      // Extended thinking: forzamos al modelo a razonar paso a paso antes
+      // de escribir el JSON. Imprescindible para que respete brief +
+      // restricciones + macros + estructura simultáneamente. Sin thinking
+      // Sonnet "escupe" la respuesta y se deja restricciones por el camino.
+      // 5000 tokens de presupuesto: suficiente para revisar todo el brief.
+      thinking: { type: "enabled", budget_tokens: 5000 },
+      // Sumamos al max_tokens el presupuesto de thinking (no se cobran como
+      // output pero se computan en el límite).
+      max_tokens: 10000,
       system: fullSystem,
       messages: [{ role: "user", content: userContent }],
     }),
@@ -549,7 +567,11 @@ async function generateWithClaude(
     const errText = await res.text().catch(() => "");
     throw new Error(`Claude API ${res.status}: ${errText.slice(0, 200)}`);
   }
-  const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
+  const data = (await res.json()) as {
+    content?: Array<{ type: string; text?: string }>;
+  };
+  // Con thinking habilitado la respuesta trae bloques [thinking + text]. El
+  // JSON está en el bloque "text" final; el "thinking" lo descartamos.
   const reply = data.content?.find((c) => c.type === "text")?.text ?? "";
   const jsonMatch = reply.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("Claude no devolvió JSON parseable");
