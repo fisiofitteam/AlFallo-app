@@ -5,9 +5,16 @@ import { kcalFromMacros, type Macros } from "@/lib/nutrition";
  * Estimador de macros desde texto libre.
  *
  * Estrategia:
- *  1. Si hay ANTHROPIC_API_KEY configurada, llama a Claude Haiku (~$0.0002/llamada).
- *  2. Si Claude falla o no hay API key, usa el fallback determinista (FOOD_RULES)
- *     que mapea keywords ("pollo", "arroz") a macros por 100g — portado de Lovable.
+ *  1. Si hay ANTHROPIC_API_KEY configurada, llama a Claude Sonnet 4.6
+ *     (más preciso que Haiku para estimaciones nutricionales; coste mayor
+ *     pero diferencia notable en la calidad de los números).
+ *  2. Si Claude falla o no hay API key, usa el fallback determinista
+ *     (FOOD_RULES) que mapea keywords ("pollo", "arroz") a macros por 100g.
+ *
+ * Tras recibir la respuesta de la IA, validamos coherencia 4-9-4
+ * (kcal = 4*proteína + 9*grasa + 4*carbos). Si el modelo se inventa kcal
+ * que no cuadra con los macros, lo recalculamos por la fórmula clásica
+ * en vez de fiarnos del número devuelto.
  *
  * Devuelve siempre macros válidos y el campo `source` para que la UI pueda
  * indicar al nutri si la estimación es IA o aproximación local.
@@ -138,7 +145,8 @@ async function estimateMacrosClaude(text: string): Promise<MacroEstimateResult> 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("No ANTHROPIC_API_KEY");
 
-  const SYSTEM = `Eres un nutricionista experto. Estimas macros de comidas para atletas de CrossFit/Hyrox.
+  const SYSTEM = `Eres un nutricionista experto y meticuloso con los números. Estimas macros de comidas para atletas de CrossFit/Hyrox usando tablas nutricionales estándar (BEDCA, USDA).
+
 Devuelves SIEMPRE un JSON exacto con esta forma:
 {
   "protein": <gramos totales>,
@@ -150,8 +158,25 @@ Devuelves SIEMPRE un JSON exacto con esta forma:
   ]
 }
 Sin texto adicional. Sin markdown. Solo el JSON.
-Macros TOTALES de la comida descrita (no por 100g). Si la descripción no especifica cantidades, asume porciones normales de un atleta adulto.
-En "ingredients" desglosas cada alimento individual con su cantidad en gramos. Convierte ml a gramos (250 ml leche → 250 g) y unidades a gramos aproximados (1 huevo → 50 g, 1 plátano → 120 g). Categorías válidas: proteina | carbohidrato | grasa | verdura | lacteo | suplemento | otro.`;
+
+REGLAS DE PRECISIÓN (críticas):
+1. Calcula MENTALMENTE ingrediente a ingrediente, sumando al final. NO redondees a ojo el total.
+2. Las kcal DEBEN cuadrar con la fórmula 4·proteína + 9·grasa + 4·carbos. Si no cuadran, has hecho mal alguna cifra → recalcula.
+3. Convierte ml de líquidos a gramos (250 ml leche → 250 g) y unidades a gramos estándar (1 huevo M → 50 g, 1 plátano mediano → 120 g, 1 manzana → 200 g, 1 yogur natural → 125 g).
+4. Macros TOTALES de la comida descrita (no por 100 g). Si falta cantidad, asume ración estándar de atleta adulto.
+
+En "ingredients" desglosa cada alimento individual con su cantidad en gramos. Categorías válidas: proteina | carbohidrato | grasa | verdura | lacteo | suplemento | otro.
+
+Ejemplos de referencia rápidos (kcal/100 g):
+- avena: 380 (P13, C66, G7)
+- leche semi: 47 (P3.3, C5, G1.6)
+- whey: 380 (P75, C8, G6)
+- plátano: 89 (P1, C23, G0.3)
+- pollo pechuga: 110 (P23, C0, G1.5)
+- arroz cocido: 130 (P3, C28, G0.3)
+- huevo entero: 155 (P13, C1, G11)
+- aguacate: 160 (P2, C9, G15)
+- yogur natural: 60 (P4, C5, G3)`;
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -161,9 +186,11 @@ En "ingredients" desglosas cada alimento individual con su cantidad en gramos. C
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      // 100 tokens no llegan para macros + ingredients. Subimos a 400.
-      max_tokens: 400,
+      // Subido de Haiku a Sonnet 4.6: notablemente más preciso con números
+      // pequeños (macros). Latencia ~2-4 s y coste ~10x mayor que Haiku,
+      // pero merece la pena por la fiabilidad del cálculo.
+      model: "claude-sonnet-4-6",
+      max_tokens: 600,
       system: SYSTEM,
       messages: [{ role: "user", content: text }],
     }),
@@ -184,7 +211,26 @@ En "ingredients" desglosas cada alimento individual con su cantidad en gramos. C
   const protein = round1(Number(parsed.protein) || 0);
   const carbs = round1(Number(parsed.carbs) || 0);
   const fat = round1(Number(parsed.fat) || 0);
-  const kcal = Number(parsed.kcal) > 0 ? Math.round(Number(parsed.kcal)) : Math.round(kcalFromMacros(protein, carbs, fat));
+
+  // Validación de coherencia 4-9-4. Si el modelo devolvió kcal que no cuadra
+  // con los macros (a veces los suma mal o se inventa el total), forzamos
+  // el valor derivado de la fórmula. Margen 15% para tolerar redondeos
+  // razonables sin descartar respuestas válidas.
+  const derivedKcal = Math.round(kcalFromMacros(protein, carbs, fat));
+  const reportedKcal = Number(parsed.kcal) > 0 ? Math.round(Number(parsed.kcal)) : 0;
+  let kcal = derivedKcal;
+  if (reportedKcal > 0 && derivedKcal > 0) {
+    const ratio = reportedKcal / derivedKcal;
+    if (ratio >= 0.85 && ratio <= 1.15) {
+      // Cuadra dentro del margen: confiamos en el reportado del modelo
+      // (suele estar redondeado de forma más natural).
+      kcal = reportedKcal;
+    } else {
+      // Discrepancia grande: el modelo se equivocó en el total. Usamos
+      // el derivado de macros para mantener coherencia interna.
+      kcal = derivedKcal;
+    }
+  }
 
   // Sanitización de ingredients: filtramos lo inválido y limitamos a 12.
   const ingredients: EstimatedIngredient[] = [];

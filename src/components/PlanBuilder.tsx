@@ -946,10 +946,10 @@ function OptionRow({
   function saveTextDebounced(value: string) {
     onPatch({ text: value });
     if (textTimer.current) clearTimeout(textTimer.current);
-    // Debounce 1.5 s: si el texto pinta algo serio (>= 3 chars), reestimamos
-    // macros con IA y los pintamos. Si el campo está prácticamente vacío,
-    // guardamos solo el texto sin recalcular (para no llamar a la IA con
-    // textos sin sentido).
+    // Debounce 2.5 s: tras editar el texto reestimamos macros con Sonnet
+    // (~2-4 s de latencia). El margen evita disparos prematuros mientras
+    // el nutri sigue tecleando — antes con Haiku eran 1.5 s, ahora con
+    // Sonnet alargamos para reducir llamadas y dar tiempo a terminar.
     textTimer.current = setTimeout(() => {
       const trimmed = value.trim();
       if (trimmed.length < 3) {
@@ -981,7 +981,7 @@ function OptionRow({
           await updateOptionText(fd);
         }
       });
-    }, 1500);
+    }, 2500);
   }
 
   function saveMacrosDebounced(patch: Partial<PlanBuilderOption>) {
