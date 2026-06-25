@@ -8,6 +8,8 @@ export const metadata = { title: "Receta · Al Fallo" };
 export const dynamic = "force-dynamic";
 
 // Etiqueta humana del tipo de comida — coincide con el de la lista.
+// "snack" sin sufijo es legacy (cuando solo había una categoría snack);
+// se conserva el label en singular para no romper recetas antiguas.
 function mealTypeLabel(value: string | null | undefined): string {
   switch (value) {
     case "desayuno":
@@ -16,6 +18,10 @@ function mealTypeLabel(value: string | null | undefined): string {
       return "🍽 Comida";
     case "cena":
       return "🌙 Cena";
+    case "snack_dulce":
+      return "🍪 Snack dulce";
+    case "snack_salado":
+      return "🥨 Snack salado";
     case "snack":
       return "🥨 Snack";
     case "postre":

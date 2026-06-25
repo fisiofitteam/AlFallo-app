@@ -6,14 +6,18 @@ import { requireOnboardedClient } from "@/lib/client-session";
 export const metadata = { title: "Recetas · Al Fallo" };
 export const dynamic = "force-dynamic";
 
-// Tipos de comida del recetario (mismo orden que el panel del nutri).
+// Tipos de comida del recetario para el cliente, en plural. El orden de
+// este array define el orden de los desplegables en la pantalla. "snack"
+// (sin sufijo) se mantiene por compatibilidad con recetas antiguas: caen
+// dentro de "Snack salado" como cajón de sastre (más probable de lo dos).
 const MEAL_TYPES = [
-  { value: "desayuno", label: "Desayunos", emoji: "🌅" },
-  { value: "comida", label: "Comidas", emoji: "🍽" },
-  { value: "cena", label: "Cenas", emoji: "🌙" },
-  { value: "snack", label: "Snacks", emoji: "🥨" },
-  { value: "postre", label: "Postres", emoji: "🍰" },
-  { value: "", label: "Otras", emoji: "🍴" },
+  { values: ["snack_dulce"], label: "Snack dulce", emoji: "🍪" },
+  { values: ["snack_salado", "snack"], label: "Snack salado", emoji: "🥨" },
+  { values: ["desayuno"], label: "Desayunos", emoji: "🌅" },
+  { values: ["comida"], label: "Comidas", emoji: "🍽" },
+  { values: ["cena"], label: "Cenas", emoji: "🌙" },
+  { values: ["postre"], label: "Postre", emoji: "🍰" },
+  { values: [""], label: "Otras", emoji: "🍴" },
 ];
 
 export default async function RecetasPage() {
@@ -48,10 +52,14 @@ export default async function RecetasPage() {
     );
   }
 
-  // Agrupar por tipo de comida; "" cae al grupo "Otras".
+  // Agrupar por tipo de comida; cada grupo puede agrupar varios valores
+  // (snack_salado + snack legacy → ambos caen en "Snack salado"). Los
+  // valores nulos/vacíos van a "Otras".
   const grouped = MEAL_TYPES.map((g) => ({
-    ...g,
-    items: recipes.filter((r) => (r.mealType ?? "") === g.value),
+    label: g.label,
+    emoji: g.emoji,
+    key: g.values.join("|"),
+    items: recipes.filter((r) => g.values.includes(r.mealType ?? "")),
   })).filter((g) => g.items.length > 0);
 
   return (
@@ -76,7 +84,7 @@ export default async function RecetasPage() {
 
       <div className="space-y-6">
         {grouped.map((g) => (
-          <section key={g.value}>
+          <section key={g.key}>
             <h2 className="mb-2 flex items-center gap-1.5 text-base font-bold">
               <span>{g.emoji}</span>
               <span>{g.label}</span>

@@ -5,16 +5,22 @@ import { Plus, X, Pencil, Trash2, ChefHat, ChevronDown } from "lucide-react";
 import { createRecipe, updateRecipe, deleteRecipe } from "@/app/(panel)/biblioteca/recetas/actions";
 import { ImageUpload } from "@/components/ImageUpload";
 
+// Tipos de receta seleccionables por el nutri en /biblioteca/recetas.
+// "snack" (sin sufijo) sigue siendo válido por compatibilidad con recetas
+// antiguas — se mostrará bajo "Snack" en mealTypeLabel. Las nuevas se
+// clasifican como snack_dulce o snack_salado.
 export const MEAL_TYPES = [
   { value: "", label: "Sin tipo" },
   { value: "desayuno", label: "🌅 Desayuno" },
   { value: "comida", label: "🍽 Comida" },
   { value: "cena", label: "🌙 Cena" },
-  { value: "snack", label: "🥨 Snack" },
+  { value: "snack_dulce", label: "🍪 Snack dulce" },
+  { value: "snack_salado", label: "🥨 Snack salado" },
   { value: "postre", label: "🍰 Postre" },
 ];
 
 export function mealTypeLabel(value: string | null): string {
+  if (value === "snack") return "🥨 Snack"; // legacy
   return MEAL_TYPES.find((m) => m.value === (value ?? ""))?.label ?? "Sin tipo";
 }
 
