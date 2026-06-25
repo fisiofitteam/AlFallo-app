@@ -1,7 +1,11 @@
 import { CheckCircle2, Clock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
-import { CheckInWeekly, type CheckInActive } from "@/components/cliente/CheckInWeekly";
+import {
+  CheckInWeekly,
+  type CheckInActive,
+  type CustomMetricInput,
+} from "@/components/cliente/CheckInWeekly";
 
 export const metadata = { title: "Check-in · Al Fallo" };
 export const dynamic = "force-dynamic";
@@ -55,6 +59,28 @@ export default async function CheckInPage() {
     take: 12,
   });
 
+  // Métricas personalizadas ACTIVAS que el nutri ha definido para este
+  // cliente. Aparecen como inputs extra en el form del check-in.
+  const customMetricsRaw = await prisma.customMetric.findMany({
+    where: { clientId: me.id, active: true },
+    orderBy: { order: "asc" },
+  });
+  let activeValues: { metricId: string; value: number }[] = [];
+  if (activeRaw && customMetricsRaw.length > 0) {
+    const vals = await prisma.customMetricValue.findMany({
+      where: { checkInId: activeRaw.id },
+      select: { metricId: true, value: true },
+    });
+    activeValues = vals;
+  }
+  const customMetrics: CustomMetricInput[] = customMetricsRaw.map((m) => ({
+    id: m.id,
+    name: m.name,
+    unit: m.unit,
+    type: m.type,
+    value: activeValues.find((v) => v.metricId === m.id)?.value ?? null,
+  }));
+
   return (
     <div>
       <h1 className="text-2xl font-bold">Check-in semanal</h1>
@@ -62,7 +88,7 @@ export default async function CheckInPage() {
         Registra tu progreso de la semana para que tu nutricionista lo revise.
       </p>
 
-      <CheckInWeekly active={active} />
+      <CheckInWeekly active={active} customMetrics={customMetrics} />
 
       {/* Histórico de semanas anteriores. */}
       {previousCheckIns.length > 0 && (

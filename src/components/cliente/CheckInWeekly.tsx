@@ -13,6 +13,14 @@ const SCALE_1_5 = [
   { value: "5", label: "5 · Muy alta" },
 ];
 
+export type CustomMetricInput = {
+  id: string;
+  name: string;
+  unit: string | null;
+  type: string; // "number" | "scale"
+  value: number | null;
+};
+
 export type CheckInActive = {
   id: string;
   weightKg: number | null;
@@ -40,11 +48,17 @@ export type CheckInActive = {
  * Server-side ya rechaza doble submitCheckIn (ver lib/weeklyCheckin); esta
  * UI lo refuerza para que ni siquiera lo intente.
  */
-export function CheckInWeekly({ active }: { active: CheckInActive | null }) {
+export function CheckInWeekly({
+  active,
+  customMetrics,
+}: {
+  active: CheckInActive | null;
+  customMetrics: CustomMetricInput[];
+}) {
   const [editing, setEditing] = useState(false);
 
   if (!active) {
-    return <CheckInForm mode="new" initial={null} />;
+    return <CheckInForm mode="new" initial={null} customMetrics={customMetrics} />;
   }
 
   if (editing) {
@@ -52,6 +66,7 @@ export function CheckInWeekly({ active }: { active: CheckInActive | null }) {
       <CheckInForm
         mode="edit"
         initial={active}
+        customMetrics={customMetrics}
         onDone={() => setEditing(false)}
       />
     );
@@ -111,10 +126,12 @@ function KV({ label, value }: { label: string; value: string }) {
 function CheckInForm({
   mode,
   initial,
+  customMetrics,
   onDone,
 }: {
   mode: "new" | "edit";
   initial: CheckInActive | null;
+  customMetrics: CustomMetricInput[];
   onDone?: () => void;
 }) {
   const [pending, start] = useTransition();
@@ -200,6 +217,31 @@ function CheckInForm({
           defaultValue={initial?.energy != null ? String(initial.energy) : ""}
         />
       </Field>
+      {/* Métricas personalizadas que el nutri ha definido para este cliente. */}
+      {customMetrics.length > 0 ? (
+        <div className="space-y-3 rounded-xl border border-border bg-bg/40 p-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted">
+            Tus métricas personalizadas
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            {customMetrics.map((m) => (
+              <Field
+                key={m.id}
+                label={m.unit ? `${m.name} (${m.unit})` : m.name}
+                htmlFor={`metric_${m.id}`}
+              >
+                <TextInput
+                  id={`metric_${m.id}`}
+                  name={`metric_${m.id}`}
+                  inputMode="decimal"
+                  defaultValue={m.value ?? ""}
+                />
+              </Field>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <Field label="¿Cómo ha ido la semana?" htmlFor="notes" hint="Sensaciones, dificultades, dudas…">
         <TextArea id="notes" name="notes" defaultValue={initial?.notes ?? ""} />
       </Field>

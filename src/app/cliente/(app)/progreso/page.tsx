@@ -3,29 +3,36 @@ import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
 
 export const metadata = { title: "Mi progreso · Al Fallo" };
+export const dynamic = "force-dynamic";
 
-function WeightChart({ points }: { points: { date: Date; weight: number }[] }) {
+const CUSTOM_COLORS = ["#7c3aed", "#0ea5e9", "#16a34a", "#f59e0b", "#dc2626", "#0891b2"];
+
+type SeriesPoint = { date: Date; value: number };
+
+function MiniLineChart({ points, color }: { points: SeriesPoint[]; color: string }) {
   const W = 320;
   const H = 140;
   const pad = 8;
-  const weights = points.map((p) => p.weight);
-  const min = Math.min(...weights);
-  const max = Math.max(...weights);
+  const values = points.map((p) => p.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
   const range = max - min || 1;
   const stepX = points.length > 1 ? (W - pad * 2) / (points.length - 1) : 0;
 
   const coords = points.map((p, i) => {
     const x = pad + i * stepX;
-    const y = pad + (1 - (p.weight - min) / range) * (H - pad * 2);
+    const y = pad + (1 - (p.value - min) / range) * (H - pad * 2);
     return { x, y };
   });
-  const path = coords.map((c, i) => `${i === 0 ? "M" : "L"} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(" ");
+  const path = coords
+    .map((c, i) => `${i === 0 ? "M" : "L"} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`)
+    .join(" ");
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Evolución del peso">
-      <path d={path} fill="none" stroke="#e6197e" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img">
+      <path d={path} fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
       {coords.map((c, i) => (
-        <circle key={i} cx={c.x} cy={c.y} r={3} fill="#e6197e" />
+        <circle key={i} cx={c.x} cy={c.y} r={3} fill={color} />
       ))}
     </svg>
   );
@@ -51,13 +58,37 @@ export default async function ProgressPage() {
     }),
   ]);
 
-  const points = [
-    ...checkIns.map((c) => ({ date: c.date, weight: c.weightKg as number })),
-    ...legacyLogs.map((l) => ({ date: l.date, weight: l.weightKg as number })),
+  const points: SeriesPoint[] = [
+    ...checkIns.map((c) => ({ date: c.date, value: c.weightKg as number })),
+    ...legacyLogs.map((l) => ({ date: l.date, value: l.weightKg as number })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
   const last = points.at(-1);
   const first = points.at(0);
-  const diff = last && first ? last.weight - first.weight : 0;
+  const diff = last && first ? last.value - first.value : 0;
+
+  // Métricas personalizadas activas + sus valores.
+  const customMetrics = await prisma.customMetric.findMany({
+    where: { clientId: me.id, active: true },
+    orderBy: { order: "asc" },
+  });
+  const customValues =
+    customMetrics.length > 0
+      ? await prisma.customMetricValue.findMany({
+          where: { metricId: { in: customMetrics.map((m) => m.id) } },
+          include: { checkIn: { select: { date: true } } },
+        })
+      : [];
+  const customSeries = customMetrics
+    .map((m) => ({
+      id: m.id,
+      name: m.name,
+      unit: m.unit,
+      points: customValues
+        .filter((v) => v.metricId === m.id)
+        .sort((a, b) => a.checkIn.date.getTime() - b.checkIn.date.getTime())
+        .map((v) => ({ date: v.checkIn.date, value: v.value })) as SeriesPoint[],
+    }))
+    .filter((m) => m.points.length >= 2);
 
   return (
     <div>
@@ -74,13 +105,13 @@ export default async function ProgressPage() {
         <>
           <div className="mt-5 rounded-2xl border border-border bg-surface p-5">
             <div className="mb-3 flex items-baseline gap-3">
-              <span className="text-3xl font-bold">{last!.weight} kg</span>
+              <span className="text-3xl font-bold">{last!.value} kg</span>
               <span className={`text-sm font-medium ${diff <= 0 ? "text-[#1fa971]" : "text-[#e07b1a]"}`}>
                 {diff > 0 ? "+" : ""}
                 {Math.round(diff * 10) / 10} kg
               </span>
             </div>
-            <WeightChart points={points} />
+            <MiniLineChart points={points} color="#e6197e" />
           </div>
 
           <div className="mt-4 overflow-hidden rounded-2xl border border-border">
@@ -95,7 +126,7 @@ export default async function ProgressPage() {
                 {[...points].reverse().map((p, i) => (
                   <tr key={i} className="border-t border-border">
                     <td className="px-4 py-2.5">{p.date.toLocaleDateString("es-ES")}</td>
-                    <td className="px-4 py-2.5 text-right">{p.weight} kg</td>
+                    <td className="px-4 py-2.5 text-right">{p.value} kg</td>
                   </tr>
                 ))}
               </tbody>
@@ -103,6 +134,43 @@ export default async function ProgressPage() {
           </div>
         </>
       )}
+
+      {/* Gráficas de métricas personalizadas. Solo pintamos las que tienen
+          al menos 2 lecturas — con un solo punto no hay gráfica útil. */}
+      {customSeries.length > 0 ? (
+        <div className="mt-6 space-y-4">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-muted">
+            Tus métricas
+          </h2>
+          {customSeries.map((m, i) => {
+            const lastV = m.points.at(-1)!;
+            const firstV = m.points.at(0)!;
+            const d = lastV.value - firstV.value;
+            const color = CUSTOM_COLORS[i % CUSTOM_COLORS.length];
+            return (
+              <div key={m.id} className="rounded-2xl border border-border bg-surface p-5">
+                <div className="mb-3 flex items-baseline gap-3">
+                  <span className="text-lg font-bold">{m.name}</span>
+                  <span className="text-2xl font-bold" style={{ color }}>
+                    {lastV.value}
+                    {m.unit ? ` ${m.unit}` : ""}
+                  </span>
+                  <span
+                    className={`text-sm font-medium ${
+                      d <= 0 ? "text-[#1fa971]" : "text-[#e07b1a]"
+                    }`}
+                  >
+                    {d > 0 ? "+" : ""}
+                    {Math.round(d * 10) / 10}
+                    {m.unit ? ` ${m.unit}` : ""}
+                  </span>
+                </div>
+                <MiniLineChart points={m.points} color={color} />
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

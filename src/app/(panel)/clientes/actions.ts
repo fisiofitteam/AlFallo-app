@@ -198,3 +198,81 @@ export async function updateNutritionProfile(formData: FormData) {
 
   revalidatePath(`/clientes/${clientId}`);
 }
+
+// ─── Métricas personalizadas por cliente ───────────────────────────────────
+
+/** Crea una métrica personalizada nueva para el cliente. Aparecerá como input
+ *  extra en el check-in del atleta y como gráfica en Evolución. */
+export async function addCustomMetric(formData: FormData) {
+  const prof = await requireClientAccess();
+  const clientId = String(formData.get("clientId"));
+  await loadClientForEdit(clientId, prof);
+
+  const name = parseStr(formData.get("name"));
+  if (!name) return;
+  const unit = parseStr(formData.get("unit"));
+  const type = parseStr(formData.get("type")) === "scale" ? "scale" : "number";
+
+  // Insertamos al final por orden.
+  const last = await prisma.customMetric.aggregate({
+    where: { clientId },
+    _max: { order: true },
+  });
+  await prisma.customMetric.create({
+    data: {
+      clientId,
+      name,
+      unit,
+      type,
+      order: (last._max.order ?? 0) + 10,
+    },
+  });
+  revalidatePath(`/clientes/${clientId}`);
+}
+
+/** Edita una métrica existente (nombre, unidad o tipo). */
+export async function updateCustomMetric(formData: FormData) {
+  const prof = await requireClientAccess();
+  const id = String(formData.get("id"));
+  const m = await prisma.customMetric.findUnique({ where: { id } });
+  if (!m) return;
+  await loadClientForEdit(m.clientId, prof);
+
+  const name = parseStr(formData.get("name"));
+  if (!name) return;
+  const unit = parseStr(formData.get("unit"));
+  const type = parseStr(formData.get("type")) === "scale" ? "scale" : "number";
+
+  await prisma.customMetric.update({
+    where: { id },
+    data: { name, unit, type },
+  });
+  revalidatePath(`/clientes/${m.clientId}`);
+}
+
+/** Activa o desactiva una métrica. Las desactivadas no aparecen en el
+ *  check-in nuevo, pero los valores históricos se conservan. */
+export async function toggleCustomMetric(formData: FormData) {
+  const prof = await requireClientAccess();
+  const id = String(formData.get("id"));
+  const m = await prisma.customMetric.findUnique({ where: { id } });
+  if (!m) return;
+  await loadClientForEdit(m.clientId, prof);
+  await prisma.customMetric.update({
+    where: { id },
+    data: { active: !m.active },
+  });
+  revalidatePath(`/clientes/${m.clientId}`);
+}
+
+/** Borra una métrica con sus valores asociados. Para conservar histórico,
+ *  usa toggleCustomMetric en su lugar. */
+export async function deleteCustomMetric(formData: FormData) {
+  const prof = await requireClientAccess();
+  const id = String(formData.get("id"));
+  const m = await prisma.customMetric.findUnique({ where: { id } });
+  if (!m) return;
+  await loadClientForEdit(m.clientId, prof);
+  await prisma.customMetric.delete({ where: { id } });
+  revalidatePath(`/clientes/${m.clientId}`);
+}

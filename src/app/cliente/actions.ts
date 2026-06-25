@@ -149,7 +149,7 @@ export async function submitCheckIn(formData: FormData) {
     return;
   }
 
-  await prisma.checkIn.create({
+  const checkIn = await prisma.checkIn.create({
     data: {
       clientId: client.id,
       weightKg: parseNumber(formData.get("weightKg")),
@@ -162,6 +162,10 @@ export async function submitCheckIn(formData: FormData) {
       notes: parseStr(formData.get("notes")),
     },
   });
+
+  // Métricas personalizadas: los inputs vienen con name="metric_<metricId>".
+  // Persistimos solo las activas y con valor numérico finito.
+  await persistCustomMetricValues(client.id, checkIn.id, formData);
 
   revalidatePath("/cliente/checkin");
   revalidatePath("/cliente");
@@ -196,5 +200,40 @@ export async function updateCheckIn(formData: FormData) {
     },
   });
 
+  await persistCustomMetricValues(client.id, id, formData);
+
   revalidatePath("/cliente/checkin");
+}
+
+/** Upsert de valores de métricas personalizadas para un check-in concreto.
+ *  Lee inputs con prefijo `metric_<metricId>` del FormData, filtra solo las
+ *  métricas ACTIVAS de ese cliente y guarda los valores numéricos. Si el
+ *  valor está vacío o no es un número, borra la entrada (para que el cliente
+ *  pueda "dejar en blanco" una métrica si se equivocó al rellenarla). */
+async function persistCustomMetricValues(
+  clientId: string,
+  checkInId: string,
+  formData: FormData,
+) {
+  const metrics = await prisma.customMetric.findMany({
+    where: { clientId, active: true },
+    select: { id: true },
+  });
+  for (const m of metrics) {
+    const raw = formData.get(`metric_${m.id}`);
+    const val = parseNumber(raw);
+    if (val == null) {
+      // Vacío → eliminamos cualquier valor previo de esa métrica en este
+      // check-in (para borrar errores al editar).
+      await prisma.customMetricValue.deleteMany({
+        where: { metricId: m.id, checkInId },
+      });
+      continue;
+    }
+    await prisma.customMetricValue.upsert({
+      where: { metricId_checkInId: { metricId: m.id, checkInId } },
+      create: { metricId: m.id, checkInId, value: val },
+      update: { value: val },
+    });
+  }
 }

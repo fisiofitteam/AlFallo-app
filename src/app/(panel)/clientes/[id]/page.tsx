@@ -148,6 +148,34 @@ export default async function ClientDetailPage({
     .filter((c) => c.bodyFatPct != null)
     .map((c) => ({ label: shortDate(c.date), value: c.bodyFatPct as number }));
 
+  // Métricas personalizadas + sus valores en los check-ins, agrupados por
+  // métrica para pintar una gráfica por cada una.
+  const customMetrics = await prisma.customMetric.findMany({
+    where: { clientId: client.id },
+    orderBy: { order: "asc" },
+  });
+  const customValues =
+    customMetrics.length > 0
+      ? await prisma.customMetricValue.findMany({
+          where: { metricId: { in: customMetrics.map((m) => m.id) } },
+          include: { checkIn: { select: { date: true } } },
+        })
+      : [];
+  const customSeries = customMetrics.map((m) => ({
+    id: m.id,
+    name: m.name,
+    unit: m.unit,
+    type: m.type,
+    active: m.active,
+    points: customValues
+      .filter((v) => v.metricId === m.id)
+      .sort((a, b) => a.checkIn.date.getTime() - b.checkIn.date.getTime())
+      .map((v) => ({
+        label: shortDate(v.checkIn.date),
+        value: Math.round(v.value * 10) / 10,
+      })) as ChartPoint[],
+  }));
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
       {/* Back link + cabecera del cliente */}
@@ -301,7 +329,13 @@ export default async function ClientDetailPage({
           ) : active === "macros" ? (
             <MacroTargetsForm clientId={client.id} targets={client.macroTargets} />
           ) : active === "evolucion" ? (
-            <EvolucionTab weight={weightSeries} waist={waistSeries} bodyFat={bodyFatSeries} />
+            <EvolucionTab
+              clientId={client.id}
+              weight={weightSeries}
+              waist={waistSeries}
+              bodyFat={bodyFatSeries}
+              customMetrics={customSeries}
+            />
           ) : active === "checkins" ? (
             <CheckInsTab checkIns={client.checkIns} />
           ) : active === "acceso" ? (

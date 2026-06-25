@@ -111,6 +111,7 @@ model Client {
   sessions         ClientSession[]
   dailyLogs        DailyLog[]
   checkIns         CheckIn[]
+  customMetrics    CustomMetric[]
   convertedLeads   Lead[]
   sales            Sale[]
   scheduledCalls   ScheduledCall[]
@@ -148,9 +149,48 @@ model CheckIn {
 
   client     Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   reviewedBy Professional? @relation("CheckInReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  customValues CustomMetricValue[]
 
   @@index([clientId])
   @@index([status])
+}
+
+// Métrica personalizada que el nutricionista define por cliente. Aparece
+// como input extra en el check-in semanal del atleta y se pinta como
+// gráfica en Evolución / Mi progreso. Ejemplos: "Cuello (cm)", "Sueño (h)",
+// "Estrés (1-10)", "Pasos diarios".
+model CustomMetric {
+  id        String   @id @default(cuid())
+  clientId  String
+  name      String   // "Cuello", "Sueño nocturno", ...
+  unit      String?  // "cm", "h", "1-10", "" cuando es libre
+  // Tipo del input: "number" (decimal libre) | "scale" (1-5 / 1-10 según unit)
+  type      String   @default("number")
+  order     Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  values CustomMetricValue[]
+
+  @@index([clientId, active, order])
+}
+
+model CustomMetricValue {
+  id        String   @id @default(cuid())
+  metricId  String
+  checkInId String
+  value     Float
+  createdAt DateTime @default(now())
+
+  metric  CustomMetric @relation(fields: [metricId], references: [id], onDelete: Cascade)
+  checkIn CheckIn      @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+
+  // Una sola lectura por métrica y check-in.
+  @@unique([metricId, checkInId])
+  @@index([metricId])
+  @@index([checkInId])
 }
 
 // ─── Módulo de Contenido (planificación de Instagram) ───
