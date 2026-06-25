@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, ChefHat } from "lucide-react";
+import { ArrowLeft, ChefHat, ChevronDown } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
 
@@ -82,27 +82,36 @@ export default async function RecetasPage() {
         </p>
       </header>
 
-      <div className="space-y-6">
+      <div className="space-y-3">
         {grouped.map((g) => (
-          <section key={g.key}>
-            <h2 className="mb-2 flex items-center gap-1.5 text-base font-bold">
-              <span>{g.emoji}</span>
-              <span>{g.label}</span>
-              <span className="text-xs text-muted">({g.items.length})</span>
-            </h2>
-            <div className="grid grid-cols-2 gap-3">
+          // <details> nativo: el cliente despliega/colapsa el grupo. Cerrados
+          // por defecto para una primera impresión limpia y rápida de escanear.
+          <details
+            key={g.key}
+            className="group overflow-hidden rounded-2xl border border-border bg-surface"
+          >
+            <summary className="flex cursor-pointer list-none items-center gap-2 p-4 transition hover:bg-bg/40">
+              <span className="text-lg">{g.emoji}</span>
+              <span className="flex-1 text-base font-bold">{g.label}</span>
+              <span className="text-xs text-muted">{g.items.length}</span>
+              <ChevronDown
+                size={18}
+                className="text-muted transition group-open:rotate-180"
+              />
+            </summary>
+            <div className="grid grid-cols-2 gap-3 border-t border-border p-4">
               {g.items.map((r) => (
                 <Link
                   key={r.id}
                   href={`/cliente/recetas/${r.id}`}
-                  className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-surface transition hover:border-primary"
+                  className="group/card flex flex-col overflow-hidden rounded-2xl border border-border bg-bg transition hover:border-primary"
                 >
                   {r.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={r.imageUrl}
                       alt={r.title}
-                      className="aspect-square w-full object-cover transition group-hover:opacity-95"
+                      className="aspect-square w-full object-cover transition group-hover/card:opacity-95"
                     />
                   ) : (
                     <div className="flex aspect-square w-full items-center justify-center bg-primary-soft text-primary">
@@ -118,7 +127,7 @@ export default async function RecetasPage() {
                 </Link>
               ))}
             </div>
-          </section>
+          </details>
         ))}
       </div>
     </div>

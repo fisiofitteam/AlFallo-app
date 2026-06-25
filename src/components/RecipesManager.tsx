@@ -41,9 +41,15 @@ export function RecipesManager({ recipes }: { recipes: RecipeItem[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // Agrupamos por tipo de comida. "Sin tipo" cae en un grupo al final.
+  // Para retro-compatibilidad: las recetas con mealType="snack" (sin
+  // sufijo, creadas antes del split) entran dentro del grupo "Snack salado".
   const grouped = MEAL_TYPES.map((mt) => ({
     type: mt,
-    items: recipes.filter((r) => (r.mealType ?? "") === mt.value),
+    items: recipes.filter((r) => {
+      const t = r.mealType ?? "";
+      if (mt.value === "snack_salado" && t === "snack") return true;
+      return t === mt.value;
+    }),
   })).filter((g) => g.items.length > 0);
 
   return (
@@ -74,14 +80,24 @@ export function RecipesManager({ recipes }: { recipes: RecipeItem[] }) {
           <p className="mt-1 text-sm text-muted">Pulsa "Nueva receta" para empezar.</p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-3">
           {grouped.map((g) => (
-            <section key={g.type.value}>
-              <h2 className="mb-3 flex items-baseline gap-2 text-base font-bold">
-                <span>{g.type.label}</span>
-                <span className="text-xs text-muted">({g.items.length})</span>
-              </h2>
-              <ul className="space-y-2">
+            // <details> nativo por tipo. Las recetas internas (RecipeCard)
+            // ya son otro <details>; el anidamiento funciona sin problemas.
+            // Cerrados por defecto: el nutri suele saber qué grupo busca.
+            <details
+              key={g.type.value}
+              className="group/section overflow-hidden rounded-2xl border border-border bg-surface"
+            >
+              <summary className="flex cursor-pointer list-none items-center gap-2 p-4 transition hover:bg-bg/40">
+                <ChevronDown
+                  size={16}
+                  className="flex-shrink-0 text-muted transition group-open/section:rotate-180"
+                />
+                <span className="flex-1 text-base font-bold">{g.type.label}</span>
+                <span className="text-xs text-muted">{g.items.length}</span>
+              </summary>
+              <ul className="space-y-2 border-t border-border p-3">
                 {g.items.map((r) =>
                   editingId === r.id ? (
                     <li key={r.id}>
@@ -96,7 +112,7 @@ export function RecipesManager({ recipes }: { recipes: RecipeItem[] }) {
                   ),
                 )}
               </ul>
-            </section>
+            </details>
           ))}
         </div>
       )}
