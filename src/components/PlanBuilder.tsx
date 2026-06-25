@@ -946,42 +946,42 @@ function OptionRow({
   function saveTextDebounced(value: string) {
     onPatch({ text: value });
     if (textTimer.current) clearTimeout(textTimer.current);
-    // Debounce 2.5 s: tras editar el texto reestimamos macros con Sonnet
-    // (~2-4 s de latencia). El margen evita disparos prematuros mientras
-    // el nutri sigue tecleando — antes con Haiku eran 1.5 s, ahora con
-    // Sonnet alargamos para reducir llamadas y dar tiempo a terminar.
+    // Debounce 800 ms para persistir el texto. NO reestimamos macros con
+    // IA automáticamente — antes lo hacíamos y daba sensación de "cambios
+    // aleatorios" cada vez que el nutri tocaba una cantidad. Los macros
+    // ahora son ESTABLES y solo cambian con:
+    //   1) edición manual en los inputs kcal/P/C/G de la opción.
+    //   2) click en el botón "Recalcular con IA" de la opción.
     textTimer.current = setTimeout(() => {
-      const trimmed = value.trim();
-      if (trimmed.length < 3) {
-        const fd = new FormData();
-        fd.set("planId", planId);
-        fd.set("itemId", option.id);
-        fd.set("text", value);
-        startSaving(async () => {
-          await updateOptionText(fd);
-        });
-        return;
-      }
+      const fd = new FormData();
+      fd.set("planId", planId);
+      fd.set("itemId", option.id);
+      fd.set("text", value);
       startSaving(async () => {
-        try {
-          const next = await updateOptionTextAndEstimate(planId, option.id, value);
-          // Aplicamos los macros estimados al estado local del builder.
-          onPatch({
-            kcal: next.kcal,
-            protein: next.protein,
-            carbs: next.carbs,
-            fat: next.fat,
-          });
-        } catch {
-          // Si fallara, persistimos al menos el texto.
-          const fd = new FormData();
-          fd.set("planId", planId);
-          fd.set("itemId", option.id);
-          fd.set("text", value);
-          await updateOptionText(fd);
-        }
+        await updateOptionText(fd);
       });
-    }, 2500);
+    }, 800);
+  }
+
+  /** Recalcula los macros de esta opción con la IA (Sonnet 4.6 + validación
+   *  4-9-4). Lo dispara el nutri explícitamente con el botón 🔄. Reemplaza
+   *  los valores kcal/P/C/G por la nueva estimación. */
+  function recalcMacrosWithAI() {
+    const text = option.text.trim();
+    if (text.length < 3) return;
+    startSaving(async () => {
+      try {
+        const next = await updateOptionTextAndEstimate(planId, option.id, text);
+        onPatch({
+          kcal: next.kcal,
+          protein: next.protein,
+          carbs: next.carbs,
+          fat: next.fat,
+        });
+      } catch {
+        // silencioso: si falla, el texto ya está guardado por saveTextDebounced.
+      }
+    });
   }
 
   function saveMacrosDebounced(patch: Partial<PlanBuilderOption>) {
@@ -1052,9 +1052,18 @@ function OptionRow({
           </label>
           <button
             type="button"
+            onClick={recalcMacrosWithAI}
+            disabled={savingPending}
+            title="Recalcular macros con IA a partir del texto actual"
+            className="ml-auto rounded-md p-1 text-muted hover:bg-surface hover:text-primary disabled:opacity-50"
+          >
+            <Sparkles size={11} />
+          </button>
+          <button
+            type="button"
             onClick={remove}
             title="Borrar opción"
-            className="ml-auto rounded-md p-1 text-muted hover:bg-surface hover:text-red-600"
+            className="rounded-md p-1 text-muted hover:bg-surface hover:text-red-600"
           >
             <Trash2 size={11} />
           </button>
@@ -1113,9 +1122,18 @@ function OptionRow({
 
         <button
           type="button"
+          onClick={recalcMacrosWithAI}
+          disabled={savingPending}
+          title="Recalcular macros con IA a partir del texto actual"
+          className="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-[11px] font-medium text-muted hover:border-primary hover:text-primary disabled:opacity-50"
+        >
+          <Sparkles size={11} /> Recalcular macros
+        </button>
+        <button
+          type="button"
           onClick={remove}
           title="Borrar opción"
-          className="ml-auto rounded-md p-1.5 text-muted hover:bg-bg hover:text-red-600"
+          className="rounded-md p-1.5 text-muted hover:bg-bg hover:text-red-600"
         >
           <Trash2 size={13} />
         </button>
