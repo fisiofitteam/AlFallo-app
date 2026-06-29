@@ -569,10 +569,11 @@ async function generateWithClaude(
   ) {
     const body: Record<string, unknown> = {
       model: "claude-sonnet-4-6",
-      // Subido a 16000 — un plan completo con notes + supplementation +
-      // 5 comidas × hasta 11 opciones × ingredients suele rondar los
-      // 6-10K tokens. Con 8K se trunca y el JSON queda sin cerrar.
-      max_tokens: 16000,
+      // Subido a 32000 tras detectar stop_reason=max_tokens con 16000. Un
+      // plan completo con 5 comidas, hasta 11 opciones en comida/cena, cada
+      // una con su array ingredients[] desglosado + notes + supplementation
+      // consume fácil 10-20K tokens. Sonnet 4.6 acepta hasta 64K output.
+      max_tokens: 32000,
       system,
       messages,
     };
