@@ -156,8 +156,17 @@ RESTRICCIONES (RESPÉTALAS ESTRICTAMENTE)
 - Condiciones médicas: ${ctx.medicalConditions ?? "—"}
 - Medicación: ${ctx.medication ?? "—"}
 
-OBJETIVOS DIARIOS DE MACROS (día de entreno)
-${ctx.kcalTraining ?? "?"} kcal · ${ctx.proteinTraining ?? "?"} g P · ${ctx.carbsTraining ?? "?"} g C · ${ctx.fatTraining ?? "?"} g G
+⚠️ OBJETIVO DIARIO DE MACROS (CRÍTICO — el plan se diseña EN TORNO a estos números, no al revés)
+KCAL: ${ctx.kcalTraining ?? "?"}
+PROTEÍNA: ${ctx.proteinTraining ?? "?"} g
+CARBOS: ${ctx.carbsTraining ?? "?"} g
+GRASA: ${ctx.fatTraining ?? "?"} g
+
+REGLA NO NEGOCIABLE sobre macros:
+- La SUMA de una combinación del día (1 opción del desayuno + 1 de media_mañana + 1 de cada subgrupo en comida y cena + 1 de merienda) DEBE quedar dentro de ±5% de cada uno de los cuatro objetivos de arriba.
+- Si no cuadra, AJUSTA las cantidades en gramos hasta que cuadre. NO redondees ni "aproximes" sin más.
+- Tras escribir cada opción, recalcula sus macros con 4·P + 9·G + 4·C y verifica que la suma del día cuadra. Si no, reescribe la opción con cantidades distintas.
+- NUNCA inventes objetivos distintos a los anteriores. NUNCA escribas un plan que sume menos del 95% ni más del 105% del kcal objetivo.
 
 INSTRUCCIONES
 - Devuelve EXACTAMENTE 1 día (name "Día tipo", dayType "entreno").

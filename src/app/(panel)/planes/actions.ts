@@ -487,51 +487,75 @@ async function runDraftGeneration(opts: {
   });
   if (!client) return null;
 
-  // 1) Calculamos los objetivos con HB. Para PAUTA NUTRICIONAL: usamos el
-  //    goal del cliente y persistimos en MacroTargets (cliente lo ve como
-  //    sus macros base). Para PLAN DE COMPETICIÓN: NO persistimos (los
-  //    macros del cliente no cambian), solo los usamos transitoriamente.
-  const { getMacroConfig } = await import("@/lib/macroConfig");
-  const { computeTargets } = await import("@/lib/harrisBenedict");
-  const config = await getMacroConfig();
-  const targets = computeTargets(
-    {
-      sex: client.profile?.sex ?? null,
-      birthDate: client.profile?.birthDate ?? null,
-      heightCm: client.profile?.heightCm ?? null,
-      weightKg: client.profile?.weightKg ?? null,
-      weeklyFrequency: client.profile?.weeklyFrequency ?? null,
-      goal: isCompetition ? "rendimiento" : (client.profile?.goal ?? null),
-    },
-    config,
-  );
-  if (targets && !isCompetition) {
-    // Solo macros únicas (entreno). Las columnas *Rest del schema quedan a
-    // null porque ya no diferenciamos día de descanso/mixto.
-    await prisma.macroTargets.upsert({
-      where: { clientId: client.id },
-      create: {
-        clientId: client.id,
-        kcalTraining: targets.kcal,
-        proteinTraining: targets.protein,
-        carbsTraining: targets.carbs,
-        fatTraining: targets.fat,
-        kcalRest: null,
-        proteinRest: null,
-        carbsRest: null,
-        fatRest: null,
+  // 1) Macros target del cliente.
+  //    Prioridad: si el nutri YA ha puesto macros en la ficha del cliente
+  //    (pestaña "Macros objetivo"), los RESPETAMOS y los usamos tal cual.
+  //    Solo si el cliente NO tiene macros guardados, calculamos HB y los
+  //    persistimos como punto de partida. Antes recalculábamos HB en cada
+  //    generación y sobreescribía los ajustes manuales → era el bug que
+  //    hacía que la IA pareciera ignorar los macros del cliente.
+  //    En plan de competición NO tocamos macroTargets persistidos.
+  const existingTargets = client.macroTargets;
+  const hasManualTargets =
+    existingTargets != null && existingTargets.kcalTraining != null;
+
+  let effectiveTargets: { kcal: number; protein: number; carbs: number; fat: number } | null =
+    null;
+
+  if (hasManualTargets) {
+    effectiveTargets = {
+      kcal: existingTargets!.kcalTraining as number,
+      protein: existingTargets!.proteinTraining ?? 0,
+      carbs: existingTargets!.carbsTraining ?? 0,
+      fat: existingTargets!.fatTraining ?? 0,
+    };
+  } else {
+    const { getMacroConfig } = await import("@/lib/macroConfig");
+    const { computeTargets } = await import("@/lib/harrisBenedict");
+    const config = await getMacroConfig();
+    const hb = computeTargets(
+      {
+        sex: client.profile?.sex ?? null,
+        birthDate: client.profile?.birthDate ?? null,
+        heightCm: client.profile?.heightCm ?? null,
+        weightKg: client.profile?.weightKg ?? null,
+        weeklyFrequency: client.profile?.weeklyFrequency ?? null,
+        goal: isCompetition ? "rendimiento" : (client.profile?.goal ?? null),
       },
-      update: {
-        kcalTraining: targets.kcal,
-        proteinTraining: targets.protein,
-        carbsTraining: targets.carbs,
-        fatTraining: targets.fat,
-        kcalRest: null,
-        proteinRest: null,
-        carbsRest: null,
-        fatRest: null,
-      },
-    });
+      config,
+    );
+    if (hb) {
+      effectiveTargets = {
+        kcal: hb.kcal,
+        protein: hb.protein,
+        carbs: hb.carbs,
+        fat: hb.fat,
+      };
+      // Persistimos solo si NO es competición (en competición no tocamos los
+      // macros base del cliente, son macros del evento puntual).
+      if (!isCompetition) {
+        await prisma.macroTargets.upsert({
+          where: { clientId: client.id },
+          create: {
+            clientId: client.id,
+            kcalTraining: hb.kcal,
+            proteinTraining: hb.protein,
+            carbsTraining: hb.carbs,
+            fatTraining: hb.fat,
+            kcalRest: null,
+            proteinRest: null,
+            carbsRest: null,
+            fatRest: null,
+          },
+          update: {
+            kcalTraining: hb.kcal,
+            proteinTraining: hb.protein,
+            carbsTraining: hb.carbs,
+            fatTraining: hb.fat,
+          },
+        });
+      }
+    }
   }
 
   // Persistimos kind + contexto en el plan para tener trazabilidad.
@@ -575,10 +599,10 @@ async function runDraftGeneration(opts: {
     dislikes: client.profile?.dislikes ?? [],
     medicalConditions: client.profile?.medicalConditions ?? null,
     medication: client.profile?.medication ?? null,
-    kcalTraining: targets?.kcal ?? client.macroTargets?.kcalTraining ?? null,
-    proteinTraining: targets?.protein ?? client.macroTargets?.proteinTraining ?? null,
-    carbsTraining: targets?.carbs ?? client.macroTargets?.carbsTraining ?? null,
-    fatTraining: targets?.fat ?? client.macroTargets?.fatTraining ?? null,
+    kcalTraining: effectiveTargets?.kcal ?? null,
+    proteinTraining: effectiveTargets?.protein ?? null,
+    carbsTraining: effectiveTargets?.carbs ?? null,
+    fatTraining: effectiveTargets?.fat ?? null,
     specialConsiderationIds: effectiveConsiderationIds,
     competitionContext: isCompetition ? competitionContext : null,
     competitionName: isCompetition ? competitionName : null,
@@ -595,9 +619,7 @@ async function runDraftGeneration(opts: {
 
   const payload: DraftPayload = {
     draft,
-    targets: targets
-      ? { kcal: targets.kcal, protein: targets.protein, carbs: targets.carbs, fat: targets.fat }
-      : null,
+    targets: effectiveTargets,
     contextSnapshot: {
       clientId: client.id,
       clientName: client.fullName,
