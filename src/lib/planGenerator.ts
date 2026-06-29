@@ -196,10 +196,10 @@ ADEMÁS, en la raíz del JSON devuelves dos campos de texto que se muestran al a
 ⚠️ ANTES DE ESCRIBIR EL JSON — RECORDATORIO FINAL DE MACROS:
 Vuelve a leer los objetivos al principio (KCAL/PROTEÍNA/CARBOS/GRASA). Suma mentalmente la combinación canónica del día (desayuno opción 1 + media_mañana opción 1 + comida intro+grasas[0]+carbos[0]+proteina[0]+postre + merienda opción 1 + cena intro+grasas[0]+carbos[0]+proteina[0]+postre). Esa suma DEBE estar a ±5% en los CUATRO macros. Si no cuadra, ajusta cantidades en gramos AHORA antes de escribir el JSON.
 
-Devuelve SOLO el JSON con esta forma (ESQUEMA — los números entre <…> los calculas tú según los macros objetivo del cliente, NO copies los del ejemplo de abajo literal):
+Devuelve SOLO el JSON con esta forma exacta (sin markdown, sin texto fuera del JSON). Los NÚMEROS del ejemplo son SOLO ilustración de formato: calcula los tuyos a partir de los macros objetivo del cliente, NO los copies tal cual:
 {
-  "notes": "<observaciones generales del plan, texto plano con \\n>",
-  "supplementation": "<lista corta de suplementos, texto plano con \\n>",
+  "notes": "Pauta breve de hidratación, horarios, etc.",
+  "supplementation": "- Producto: dosis · cuándo …",
   "days": [
     {
       "name": "Día tipo",
@@ -559,58 +559,84 @@ async function generateWithClaude(
       ? [...documentBlocks, { type: "text", text: buildUserPrompt(ctx) }]
       : buildUserPrompt(ctx);
 
-  // Helper interno: una sola llamada a Claude. Devuelve el JSON parseado.
-  // Probamos con Opus 4.7 primero (modelo top), pero si no está disponible
-  // cae a Sonnet 4.6. Antes solo usábamos Opus a pelo y si fallaba todo el
-  // catch externo devolvía el fallback hardcoded — el bug que daba siempre
-  // 2588 kcal por todos los clientes era exactamente eso.
+  // Helper interno: una sola llamada a Claude. Sonnet 4.6 SIN extended
+  // thinking — la combinación Opus 4.7 + thinking que intentamos antes
+  // fallaba silenciosamente y caía al fallback hardcoded. Sonnet sin
+  // thinking es el modo PROBADO que sí responde.
   async function callClaude(
     system: string,
     messages: Array<{ role: "user" | "assistant"; content: unknown }>,
-    enableThinking: boolean,
   ) {
-    const tryModel = async (model: string) => {
-      const body: Record<string, unknown> = {
-        model,
-        max_tokens: 10000,
-        system,
-        messages,
-      };
-      if (enableThinking) {
-        body.thinking = { type: "enabled", budget_tokens: 6000 };
-      }
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey as string,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const errText = await r.text().catch(() => "");
-        throw new Error(`${model} → ${r.status}: ${errText.slice(0, 200)}`);
-      }
-      const json = (await r.json()) as { content?: Array<{ type: string; text?: string }> };
-      const text = json.content?.find((c) => c.type === "text")?.text ?? "";
-      const m = text.match(/\{[\s\S]*\}/);
-      if (!m) throw new Error(`${model} no devolvió JSON parseable`);
-      return { rawText: text, parsed: JSON.parse(m[0]) as unknown };
+    const body: Record<string, unknown> = {
+      model: "claude-sonnet-4-6",
+      // Subido a 16000 — un plan completo con notes + supplementation +
+      // 5 comidas × hasta 11 opciones × ingredients suele rondar los
+      // 6-10K tokens. Con 8K se trunca y el JSON queda sin cerrar.
+      max_tokens: 16000,
+      system,
+      messages,
     };
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey as string,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const errText = await r.text().catch(() => "");
+      throw new Error(`Sonnet 4.6 → ${r.status}: ${errText.slice(0, 200)}`);
+    }
+    const json = (await r.json()) as {
+      content?: Array<{ type: string; text?: string }>;
+      stop_reason?: string;
+    };
+    const text = json.content?.find((c) => c.type === "text")?.text ?? "";
 
-    try {
-      return await tryModel("claude-opus-4-7");
-    } catch (opusErr) {
-      console.warn(
-        `[plan-gen] Opus 4.7 falló (${(opusErr as Error).message}). Probando Sonnet 4.6 como fallback.`,
+    // Quitamos posibles fences ```json … ``` antes de extraer el JSON.
+    let cleaned = text
+      .replace(/^\s*```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/i, "")
+      .trim();
+
+    // Buscamos el JSON. Si Sonnet añade texto antes de la primera "{",
+    // lo descartamos. Igual con basura después de la última "}".
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start < 0 || end < 0 || end <= start) {
+      // Log de la respuesta cruda para diagnosticar en Vercel.
+      console.error(
+        "[plan-gen] Sonnet respondió pero sin JSON parseable. stop_reason:",
+        json.stop_reason,
+        "respuesta (primeros 500 chars):",
+        text.slice(0, 500),
       );
-      return await tryModel("claude-sonnet-4-6");
+      throw new Error(
+        `Sonnet no devolvió JSON parseable (stop_reason=${json.stop_reason ?? "?"})`,
+      );
+    }
+    const jsonText = cleaned.slice(start, end + 1);
+    try {
+      return { rawText: text, parsed: JSON.parse(jsonText) as unknown };
+    } catch (parseErr) {
+      console.error(
+        "[plan-gen] JSON.parse falló:",
+        (parseErr as Error).message,
+        "stop_reason:",
+        json.stop_reason,
+        "json extraído (primeros 800 chars):",
+        jsonText.slice(0, 800),
+      );
+      throw new Error(
+        `Sonnet devolvió JSON inválido (${(parseErr as Error).message.slice(0, 100)})`,
+      );
     }
   }
 
   // 1) Primera llamada con extended thinking.
-  let parsed = (await callClaude(fullSystem, [{ role: "user", content: userContent }], true)).parsed;
+  let parsed = (await callClaude(fullSystem, [{ role: "user", content: userContent }])).parsed;
   let days = clampPlan(parsed);
   if (days.length === 0) throw new Error("Plan generado vacío");
 
@@ -659,7 +685,6 @@ Devuelve el JSON entero corregido (con notes, supplementation y days). Sin markd
       const retry = await callClaude(
         fullSystem,
         [{ role: "user", content: correction }],
-        false, // sin thinking — queremos respuesta directa y rápida.
       );
       const retryDays = clampPlan(retry.parsed);
       if (retryDays.length > 0) {
