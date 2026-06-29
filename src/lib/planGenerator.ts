@@ -560,44 +560,53 @@ async function generateWithClaude(
       : buildUserPrompt(ctx);
 
   // Helper interno: una sola llamada a Claude. Devuelve el JSON parseado.
-  // Usamos Opus 4.7 (modelo más capaz de Anthropic) en lugar de Sonnet —
-  // Sonnet ignoraba los macros target a propósito y devolvía siempre los
-  // mismos números. Opus es ~5x más caro pero respeta restricciones.
+  // Probamos con Opus 4.7 primero (modelo top), pero si no está disponible
+  // cae a Sonnet 4.6. Antes solo usábamos Opus a pelo y si fallaba todo el
+  // catch externo devolvía el fallback hardcoded — el bug que daba siempre
+  // 2588 kcal por todos los clientes era exactamente eso.
   async function callClaude(
     system: string,
     messages: Array<{ role: "user" | "assistant"; content: unknown }>,
     enableThinking: boolean,
   ) {
-    const body: Record<string, unknown> = {
-      model: "claude-opus-4-7",
-      max_tokens: 10000,
-      system,
-      messages,
+    const tryModel = async (model: string) => {
+      const body: Record<string, unknown> = {
+        model,
+        max_tokens: 10000,
+        system,
+        messages,
+      };
+      if (enableThinking) {
+        body.thinking = { type: "enabled", budget_tokens: 6000 };
+      }
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey as string,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const errText = await r.text().catch(() => "");
+        throw new Error(`${model} → ${r.status}: ${errText.slice(0, 200)}`);
+      }
+      const json = (await r.json()) as { content?: Array<{ type: string; text?: string }> };
+      const text = json.content?.find((c) => c.type === "text")?.text ?? "";
+      const m = text.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error(`${model} no devolvió JSON parseable`);
+      return { rawText: text, parsed: JSON.parse(m[0]) as unknown };
     };
-    if (enableThinking) {
-      // Extended thinking solo en el PRIMER intento (razonamiento amplio).
-      // En el retry de corrección no lo activamos: queremos respuesta
-      // directa con cantidades ajustadas.
-      body.thinking = { type: "enabled", budget_tokens: 6000 };
+
+    try {
+      return await tryModel("claude-opus-4-7");
+    } catch (opusErr) {
+      console.warn(
+        `[plan-gen] Opus 4.7 falló (${(opusErr as Error).message}). Probando Sonnet 4.6 como fallback.`,
+      );
+      return await tryModel("claude-sonnet-4-6");
     }
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey as string,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) {
-      const errText = await r.text().catch(() => "");
-      throw new Error(`Claude API ${r.status}: ${errText.slice(0, 200)}`);
-    }
-    const json = (await r.json()) as { content?: Array<{ type: string; text?: string }> };
-    const text = json.content?.find((c) => c.type === "text")?.text ?? "";
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error("Claude no devolvió JSON parseable");
-    return { rawText: text, parsed: JSON.parse(m[0]) as unknown };
   }
 
   // 1) Primera llamada con extended thinking.
@@ -711,12 +720,22 @@ export async function generatePlanDraft(ctx: PlanContext): Promise<GeneratedPlan
         supplementation: supplementation ?? undefined,
       };
     } catch (e) {
-      console.warn("[planGenerator] Claude failed, using fallback:", (e as Error).message);
+      const msg = (e as Error).message;
+      console.error("[planGenerator] Claude FAILED, devolviendo fallback:", msg);
+      return {
+        days: fallbackPlan(),
+        source: "fallback",
+        // Aviso CLARO en las observaciones del plan para que el nutri no
+        // se confunda y piense que esto es lo que la IA propuso. Antes
+        // este texto era genérico; ahora incluye el error específico.
+        notes: `⚠️ PLAN GENÉRICO (NO generado con IA). La llamada a la IA falló con: ${msg}. Revisa REPLICATE/ANTHROPIC API keys y los logs en Vercel. Mientras tanto este plan es una plantilla por defecto que debes ajustar manualmente.`,
+      };
     }
   }
   return {
     days: fallbackPlan(),
     source: "fallback",
-    notes: "Plantilla genérica (sin IA). Edítala para adaptarla al cliente.",
+    notes:
+      "⚠️ PLAN GENÉRICO. Falta ANTHROPIC_API_KEY en el servidor. Hasta que se configure no se puede generar con IA — esto es una plantilla por defecto.",
   };
 }
