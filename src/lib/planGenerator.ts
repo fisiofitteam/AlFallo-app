@@ -244,12 +244,17 @@ ANTES de escribir el JSON, en tu pensamiento haz esta checklist OBLIGATORIA:
 8. Para cada opción, calcula los macros INGREDIENTE A INGREDIENTE (no a ojo) y comprueba que kcal = 4·proteína + 9·grasa + 4·carbos antes de escribir el JSON. Si no cuadra, RECALCULA.
 9. Devuelve "ingredients" con cantidades en gramos (convierte ml y unidades) y categoría correcta. Cada opción dentro del mismo subgrupo debe tener macros similares (±10%) entre sí: son intercambiables.
 
-⛔ FORMATO DE RESPUESTA — CRÍTICO:
-- Respondes SOLO con el JSON, NADA más. Cero razonamiento visible.
-- NO escribas pensamientos, cálculos, listas previas, anotaciones, notas, ni explicaciones antes del JSON.
-- NO escribas markdown (sin \`\`\` ni nada parecido).
-- Tu mensaje de respuesta DEBE empezar EXACTAMENTE por "{" (te lo facilitamos como prefill) y terminar por "}".
-- Haz TODOS los cálculos internamente y devuélvelos directamente como los números finales del JSON.
+⛔⛔⛔ FORMATO DE RESPUESTA — REGLAS ABSOLUTAS QUE NO PUEDES INFRINGIR:
+
+1. El PRIMER carácter de tu respuesta DEBE ser "{". No "Voy a", no "Aquí tienes", no "Permíteme", no "I'll", no comillas, no espacios — literalmente "{".
+2. El ÚLTIMO carácter de tu respuesta DEBE ser "}".
+3. Entre el primer "{" y el último "}" SOLO va JSON válido. Nada más.
+4. CERO razonamiento visible. CERO cálculos paso a paso visibles. CERO notas explicativas. CERO encabezados tipo "MEAL DISTRIBUTION PLAN" o "MACROS TARGET" o "Let me work through". CERO listas previas de planificación.
+5. Haz toda la matemática internamente sin escribirla. Devuelve solo los números finales en los campos del JSON.
+6. NO uses markdown. NO uses \`\`\`. NO uses negritas.
+7. Si dudas, recuerda: tu primer carácter es "{" y el último es "}". No hay nada entre tu cursor y el JSON.
+
+Cualquier carácter antes del "{" o después del "}" hace que el sistema descarte la respuesta. No malgastes tokens razonando — RAZONA INTERNAMENTE y emite JSON.
 
 IMPORTANTE sobre restricciones: si el brief dice "evitar X", esa palabra NUNCA aparece en el plan. Si dice "preferir Y", aparece en al menos una opción de cada comida principal. Si dice "no usar Z marca", esa marca no se nombra.`;
 
@@ -633,15 +638,15 @@ async function generateWithClaude(
       // que NO incluya el array ingredients[] (era ~50 % del output).
       // La lista de la compra del cliente sigue funcionando con el parser
       // regex del texto en /cliente/compra como fallback.
-      max_tokens: 12000,
+      // 16000 para tener margen: aunque el modelo razone un poco, debe llegar
+      // al JSON. Output esperado real ~5-8K tokens.
+      max_tokens: 16000,
       system,
-      // PREFILL: añadimos un mensaje de assistant que termina en "{" para
-      // forzar a Sonnet a continuar el JSON desde ahí. Sin esto, el modelo
-      // "razona en voz alta" durante miles de caracteres (cálculos paso a
-      // paso, autocorrecciones) y se queda sin max_tokens antes de llegar
-      // al JSON. Con el prefill, la respuesta arranca directamente con el
-      // contenido del JSON. Truco oficial de Anthropic.
-      messages: [...messages, { role: "assistant", content: "{" }],
+      // Sonnet 4.6 ya NO soporta prefill del mensaje assistant ("This model
+      // does not support assistant message prefill. The conversation must
+      // end with a user message."). En su lugar reforzamos la instrucción
+      // en el system prompt para que vaya directo al JSON.
+      messages,
     };
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -660,11 +665,7 @@ async function generateWithClaude(
       content?: Array<{ type: string; text?: string }>;
       stop_reason?: string;
     };
-    // El response empieza directamente con el contenido tras la "{" del
-    // prefill — la "{" inicial NO viene en la respuesta. La reconstituimos
-    // anteponiéndola para tener JSON parseable.
-    const rawText = json.content?.find((c) => c.type === "text")?.text ?? "";
-    const text = "{" + rawText;
+    const text = json.content?.find((c) => c.type === "text")?.text ?? "";
 
     // Quitamos posibles fences ```json … ``` antes de extraer el JSON.
     let cleaned = text
