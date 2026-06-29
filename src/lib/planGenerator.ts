@@ -187,7 +187,7 @@ INSTRUCCIONES
   El atleta combinará 1 opción de cada subgrupo. Por eso los macros de cada opción dentro de un subgrupo deben ser SIMILARES entre sí (intercambiables), y la SUMA "intro + grasa elegida + carbo elegido + proteína elegida + postre" debe acercarse a las kcal/macros que tocan en esa comida (la comida y la cena suman juntas ~50-55 % del total diario).
 - Aplica las equivalencias y porciones del brief para que las cantidades sean coherentes con cómo medimos en el equipo.
 - Adapta a la cultura gastronómica española.
-- En CADA opción, además del texto y los macros totales, devuelves un array "ingredients" con los alimentos individuales desglosados. Cada ingrediente tiene { name, quantityG, category }. Convierte ml y unidades a gramos aproximados (250 ml leche → 250 g, 1 plátano → 120 g, 1 huevo → 50 g). Esto alimenta la lista de la compra del cliente. Categorías válidas: proteina | carbohidrato | grasa | verdura | lacteo | suplemento | otro.
+- Para cada opción devuelves SOLO: text + kcal + protein + carbs + fat (+ subType en comida/cena). Sin array "ingredients" — para que la respuesta sea más compacta y rápida.
 
 ADEMÁS, en la raíz del JSON devuelves dos campos de texto que se muestran al atleta tal cual:
 - "notes" (Observaciones generales del plan): 4-8 frases concretas con pautas que aplican a TODO el plan: hidratación, horarios alrededor del entreno, qué hacer si come fuera, manejo del fin de semana, descanso, señales para ajustar. Sé específico para ESTE atleta (objetivo, nivel, preferencias) — nada genérico tipo "come sano". Sigue el tono del brief del equipo.
@@ -210,13 +210,7 @@ Devuelve SOLO el JSON con esta forma exacta (sin markdown, sin texto fuera del J
           "options": [
             {
               "text": "120 g avena + 250 ml leche + 30 g whey + 1 plátano",
-              "kcal": 480, "protein": 35, "carbs": 65, "fat": 9,
-              "ingredients": [
-                { "name": "avena", "quantityG": 120, "category": "carbohidrato" },
-                { "name": "leche semi", "quantityG": 250, "category": "lacteo" },
-                { "name": "whey", "quantityG": 30, "category": "suplemento" },
-                { "name": "plátano", "quantityG": 120, "category": "carbohidrato" }
-              ]
+              "kcal": 480, "protein": 35, "carbs": 65, "fat": 9
             }
           ]
         },
@@ -226,18 +220,12 @@ Devuelve SOLO el JSON con esta forma exacta (sin markdown, sin texto fuera del J
             {
               "subType": "proteina",
               "text": "155 g pechuga de pollo",
-              "kcal": 163, "protein": 36, "carbs": 0, "fat": 2,
-              "ingredients": [
-                { "name": "pechuga de pollo", "quantityG": 155, "category": "proteina" }
-              ]
+              "kcal": 163, "protein": 36, "carbs": 0, "fat": 2
             },
             {
               "subType": "carbos",
               "text": "120 g arroz integral cocido",
-              "kcal": 430, "protein": 8, "carbs": 92, "fat": 3,
-              "ingredients": [
-                { "name": "arroz integral", "quantityG": 120, "category": "carbohidrato" }
-              ]
+              "kcal": 430, "protein": 8, "carbs": 92, "fat": 3
             }
           ]
         }
@@ -569,11 +557,12 @@ async function generateWithClaude(
   ) {
     const body: Record<string, unknown> = {
       model: "claude-sonnet-4-6",
-      // Subido a 32000 tras detectar stop_reason=max_tokens con 16000. Un
-      // plan completo con 5 comidas, hasta 11 opciones en comida/cena, cada
-      // una con su array ingredients[] desglosado + notes + supplementation
-      // consume fácil 10-20K tokens. Sonnet 4.6 acepta hasta 64K output.
-      max_tokens: 32000,
+      // Bajado a 12000 para que la respuesta de Sonnet termine en <60 s
+      // (cap de Vercel Hobby). Para conseguirlo, también pedimos al prompt
+      // que NO incluya el array ingredients[] (era ~50 % del output).
+      // La lista de la compra del cliente sigue funcionando con el parser
+      // regex del texto en /cliente/compra como fallback.
+      max_tokens: 12000,
       system,
       messages,
     };
