@@ -367,6 +367,12 @@ function AddPlanModal({
   const [goalOverride, setGoalOverride] = useState("");
   const [considerationId, setConsiderationId] = useState("");
   const [templateId, setTemplateId] = useState("");
+  // Override de macros SOLO para este plan. Si los cuatro tienen valor,
+  // ganan sobre los macros oficiales del cliente. Parciales se ignoran.
+  const [kcalOverride, setKcalOverride] = useState("");
+  const [proteinOverride, setProteinOverride] = useState("");
+  const [carbsOverride, setCarbsOverride] = useState("");
+  const [fatOverride, setFatOverride] = useState("");
   const [autoGenerate, setAutoGenerate] = useState(true);
   const [pending, start] = useTransition();
 
@@ -401,6 +407,19 @@ function AddPlanModal({
       if (autoGenerate) fd.set("autoGenerate", "true");
       if (goalOverride) fd.set("goalOverride", goalOverride);
       if (considerationId) fd.set("specialConsiderationOverrideId", considerationId);
+      // Macros override: solo si los 4 están rellenos (parciales no tienen
+      // sentido; backend filtra igualmente con parseNumber + check).
+      if (
+        kcalOverride.trim() &&
+        proteinOverride.trim() &&
+        carbsOverride.trim() &&
+        fatOverride.trim()
+      ) {
+        fd.set("kcalOverride", kcalOverride);
+        fd.set("proteinOverride", proteinOverride);
+        fd.set("carbsOverride", carbsOverride);
+        fd.set("fatOverride", fatOverride);
+      }
     }
     start(async () => {
       // createPlan ya no redirige: devuelve { planId, clientId, draftId, payload }.
@@ -567,6 +586,61 @@ function AddPlanModal({
                     ))}
                   </select>
                 </label>
+              </div>
+
+              {/* Override de macros SOLO para este plan. Si rellenas los 4
+                  valores, ganan sobre los macros oficiales de la ficha del
+                  cliente. Si lo dejas todo en blanco, se usan los de ficha
+                  (que es lo normal). Útil para pedir un plan puntual con
+                  macros distintos sin tocar el cliente global. */}
+              <div className="rounded-lg border border-dashed border-border bg-bg/40 p-3">
+                <p className="text-sm font-semibold">Macros solo para este plan</p>
+                <p className="text-xs text-muted">
+                  Opcional. Si rellenas los cuatro, ganan sobre la ficha del cliente. En blanco se
+                  usan los de su ficha.
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <label className="block text-xs">
+                    <span className="font-semibold text-muted">Kcal</span>
+                    <input
+                      value={kcalOverride}
+                      onChange={(e) => setKcalOverride(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="2100"
+                      className="mt-1 w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
+                    />
+                  </label>
+                  <label className="block text-xs">
+                    <span className="font-semibold text-muted">Prot (g)</span>
+                    <input
+                      value={proteinOverride}
+                      onChange={(e) => setProteinOverride(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="160"
+                      className="mt-1 w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
+                    />
+                  </label>
+                  <label className="block text-xs">
+                    <span className="font-semibold text-muted">Carbos (g)</span>
+                    <input
+                      value={carbsOverride}
+                      onChange={(e) => setCarbsOverride(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="210"
+                      className="mt-1 w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
+                    />
+                  </label>
+                  <label className="block text-xs">
+                    <span className="font-semibold text-muted">Grasa (g)</span>
+                    <input
+                      value={fatOverride}
+                      onChange={(e) => setFatOverride(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="70"
+                      className="mt-1 w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
+                    />
+                  </label>
+                </div>
               </div>
 
               <label className="block">

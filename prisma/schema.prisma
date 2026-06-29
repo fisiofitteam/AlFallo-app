@@ -726,6 +726,14 @@ model NutritionPlan {
   // Si no está vacío, sustituye al array de consideraciones del cliente
   // SOLO para este plan. Vacío = se aplican las del cliente.
   specialConsiderationOverrideIds String[] @default([])
+  // Macros objetivo SOLO para este plan. Si hay valor, gana sobre los de
+  // la ficha del cliente (que serían los oficiales). Vacío = usar los de
+  // la ficha. Útil cuando el nutri quiere puntualmente 2100 kcal sin
+  // alterar el cliente global. Los cuatro a la vez o ninguno.
+  kcalOverride    Float?
+  proteinOverride Float?
+  carbsOverride   Float?
+  fatOverride     Float?
 
   client    Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   createdBy Professional? @relation(fields: [createdById], references: [id], onDelete: SetNull)

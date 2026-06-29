@@ -58,6 +58,13 @@ export async function createPlan(formData: FormData) {
       instructions: parseStr(formData.get("instructions")),
       goalOverride: parseStr(formData.get("goalOverride")),
       specialConsiderationOverrideIds: overrideIds,
+      // Override de macros SOLO para este plan. Si vienen los cuatro a la
+      // vez, ganan sobre la ficha del cliente. Si vienen parciales/ninguno,
+      // se ignoran y se usan los de la ficha.
+      kcalOverride: parseNumber(formData.get("kcalOverride")),
+      proteinOverride: parseNumber(formData.get("proteinOverride")),
+      carbsOverride: parseNumber(formData.get("carbsOverride")),
+      fatOverride: parseNumber(formData.get("fatOverride")),
       kind: isCompetition ? "competition" : "regular",
       // Los campos legacy competitionName/competitionContext (input de IA)
       // ya no se usan en el nuevo flujo. Quedan a null.
@@ -488,13 +495,17 @@ async function runDraftGeneration(opts: {
   if (!client) return null;
 
   // 1) Macros target del cliente.
-  //    Prioridad: si el nutri YA ha puesto macros en la ficha del cliente
-  //    (pestaña "Macros objetivo"), los RESPETAMOS y los usamos tal cual.
-  //    Solo si el cliente NO tiene macros guardados, calculamos HB y los
-  //    persistimos como punto de partida. Antes recalculábamos HB en cada
-  //    generación y sobreescribía los ajustes manuales → era el bug que
-  //    hacía que la IA pareciera ignorar los macros del cliente.
+  //    Prioridad:
+  //      a) Override por plan (kcalOverride etc.) → gana si están los 4.
+  //      b) Ficha del cliente (macroTargets.kcalTraining) → si está set.
+  //      c) HB → solo si no hay nada y existen datos antropométricos.
   //    En plan de competición NO tocamos macroTargets persistidos.
+  const planHasOverrides =
+    plan.kcalOverride != null &&
+    plan.proteinOverride != null &&
+    plan.carbsOverride != null &&
+    plan.fatOverride != null;
+
   const existingTargets = client.macroTargets;
   const hasManualTargets =
     existingTargets != null && existingTargets.kcalTraining != null;
@@ -502,7 +513,14 @@ async function runDraftGeneration(opts: {
   let effectiveTargets: { kcal: number; protein: number; carbs: number; fat: number } | null =
     null;
 
-  if (hasManualTargets) {
+  if (planHasOverrides) {
+    effectiveTargets = {
+      kcal: plan.kcalOverride as number,
+      protein: plan.proteinOverride as number,
+      carbs: plan.carbsOverride as number,
+      fat: plan.fatOverride as number,
+    };
+  } else if (hasManualTargets) {
     effectiveTargets = {
       kcal: existingTargets!.kcalTraining as number,
       protein: existingTargets!.proteinTraining ?? 0,
