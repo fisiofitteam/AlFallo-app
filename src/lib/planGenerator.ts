@@ -136,16 +136,11 @@ function buildUserPrompt(ctx: PlanContext): string {
   const list = (xs: string[]) => (xs.length ? xs.join(", ") : "—");
   return `Diseña UN DÍA TIPO de plan nutricional para este atleta.
 
-╔══════════════════════════════════════════════════════════════════╗
-║  ⚠️ OBJETIVO DIARIO DE MACROS — ESTO ES LO PRIMERO QUE LEES Y    ║
-║  LO PRIMERO QUE TIENES QUE CUMPLIR. El plan se diseña EN TORNO   ║
-║  a estos números, no al revés.                                   ║
-╠══════════════════════════════════════════════════════════════════╣
-║  KCAL:      ${String(ctx.kcalTraining ?? "?").padEnd(8)}                                          ║
-║  PROTEÍNA:  ${String((ctx.proteinTraining ?? "?") + " g").padEnd(8)}                                         ║
-║  CARBOS:    ${String((ctx.carbsTraining ?? "?") + " g").padEnd(8)}                                         ║
-║  GRASA:     ${String((ctx.fatTraining ?? "?") + " g").padEnd(8)}                                         ║
-╚══════════════════════════════════════════════════════════════════╝
+OBJETIVO DIARIO DE MACROS (lee esto primero, el plan se diseña EN TORNO a estos números):
+- KCAL: ${ctx.kcalTraining ?? "?"}
+- PROTEINA: ${ctx.proteinTraining ?? "?"} g
+- CARBOS: ${ctx.carbsTraining ?? "?"} g
+- GRASA: ${ctx.fatTraining ?? "?"} g
 
 REGLA NO NEGOCIABLE sobre macros:
 - La SUMA de UNA combinación del día (1 opción del desayuno + 1 de media_mañana + 1 de cada subgrupo en comida y cena + 1 de merienda) DEBE quedar dentro de ±5% en CADA uno de los cuatro objetivos de arriba.
@@ -193,7 +188,7 @@ ADEMÁS, en la raíz del JSON devuelves dos campos de texto que se muestran al a
 - "notes" (Observaciones generales del plan): 4-8 frases concretas con pautas que aplican a TODO el plan: hidratación, horarios alrededor del entreno, qué hacer si come fuera, manejo del fin de semana, descanso, señales para ajustar. Sé específico para ESTE atleta (objetivo, nivel, preferencias) — nada genérico tipo "come sano". Sigue el tono del brief del equipo.
 - "supplementation" (Suplementación propuesta): lista corta (3-6 ítems) con producto + dosis + cuándo tomarlo, adaptada al objetivo, al horario de entreno y a lo que ya está tomando el atleta (lo tienes en RESTRICCIONES → Suplementos). Si el brief o las consideraciones especiales mencionan suplementos concretos, prioriza esos. Si no hace falta suplementar nada, devuelve un texto breve explicando por qué.
 
-⚠️ ANTES DE ESCRIBIR EL JSON — RECORDATORIO FINAL DE MACROS:
+ANTES DE ESCRIBIR EL JSON — RECORDATORIO FINAL DE MACROS:
 Vuelve a leer los objetivos al principio (KCAL/PROTEÍNA/CARBOS/GRASA). Suma mentalmente la combinación canónica del día (desayuno opción 1 + media_mañana opción 1 + comida intro+grasas[0]+carbos[0]+proteina[0]+postre + merienda opción 1 + cena intro+grasas[0]+carbos[0]+proteina[0]+postre). Esa suma DEBE estar a ±5% en los CUATRO macros. Si no cuadra, ajusta cantidades en gramos AHORA antes de escribir el JSON.
 
 Devuelve SOLO el JSON con esta forma exacta (sin markdown, sin texto fuera del JSON). Los NÚMEROS del ejemplo son SOLO ilustración de formato: calcula los tuyos a partir de los macros objetivo del cliente, NO los copies tal cual:
@@ -669,13 +664,13 @@ async function generateWithClaude(
     if (start < 0 || end < 0 || end <= start) {
       // Log de la respuesta cruda para diagnosticar en Vercel.
       console.error(
-        "[plan-gen] Sonnet respondió pero sin JSON parseable. stop_reason:",
-        json.stop_reason,
-        "respuesta (primeros 500 chars):",
-        text.slice(0, 500),
+        `[plan-gen] Sonnet respondió pero NO HAY '{' o '}' en la respuesta.\n` +
+          `stop_reason: ${json.stop_reason ?? "(no devuelto)"}\n` +
+          `content blocks devueltos: ${JSON.stringify(json.content?.map((c) => c.type) ?? [])}\n` +
+          `Texto crudo COMPLETO (primeros 2000 chars):\n${text.slice(0, 2000)}`,
       );
       throw new Error(
-        `Sonnet no devolvió JSON parseable (stop_reason=${json.stop_reason ?? "?"})`,
+        `Sonnet no devolvió JSON parseable (stop_reason=${json.stop_reason ?? "?"}, len=${text.length}, blocks=${json.content?.length ?? 0})`,
       );
     }
     const jsonText = cleaned.slice(start, end + 1);
