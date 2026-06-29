@@ -623,30 +623,78 @@ async function generateWithClaude(
       ? [...documentBlocks, { type: "text", text: buildUserPrompt(ctx) }]
       : buildUserPrompt(ctx);
 
-  // Helper interno: una sola llamada a Claude. Sonnet 4.6 SIN extended
-  // thinking — la combinación Opus 4.7 + thinking que intentamos antes
-  // fallaba silenciosamente y caía al fallback hardcoded. Sonnet sin
-  // thinking es el modo PROBADO que sí responde.
+  // Tool calling con tool_choice forzado: la única forma robusta de que
+  // Sonnet 4.6 produzca output estructurado SIN razonar en voz alta. Cuando
+  // forzamos a llamar `submit_plan`, el modelo está obligado a emitir input
+  // estructurado en formato JSON directamente — no puede escribir texto
+  // libre antes. Resuelve el problema crónico de stop_reason=max_tokens.
+  const planTool = {
+    name: "submit_plan",
+    description:
+      "Entrega el plan nutricional generado siguiendo TODAS las instrucciones del system prompt.",
+    input_schema: {
+      type: "object",
+      required: ["notes", "supplementation", "days"],
+      properties: {
+        notes: { type: "string", description: "Observaciones generales del plan." },
+        supplementation: { type: "string", description: "Suplementación propuesta." },
+        days: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["name", "dayType", "meals"],
+            properties: {
+              name: { type: "string" },
+              dayType: { type: "string" },
+              meals: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["name", "options"],
+                  properties: {
+                    name: { type: "string" },
+                    options: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        required: ["text", "kcal", "protein", "carbs", "fat"],
+                        properties: {
+                          text: { type: "string" },
+                          kcal: { type: "number" },
+                          protein: { type: "number" },
+                          carbs: { type: "number" },
+                          fat: { type: "number" },
+                          subType: {
+                            type: "string",
+                            description:
+                              "Solo en comida/cena: intro|grasas|carbos|proteina|postre.",
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+
   async function callClaude(
     system: string,
     messages: Array<{ role: "user" | "assistant"; content: unknown }>,
   ) {
     const body: Record<string, unknown> = {
       model: "claude-sonnet-4-6",
-      // Bajado a 12000 para que la respuesta de Sonnet termine en <60 s
-      // (cap de Vercel Hobby). Para conseguirlo, también pedimos al prompt
-      // que NO incluya el array ingredients[] (era ~50 % del output).
-      // La lista de la compra del cliente sigue funcionando con el parser
-      // regex del texto en /cliente/compra como fallback.
-      // 16000 para tener margen: aunque el modelo razone un poco, debe llegar
-      // al JSON. Output esperado real ~5-8K tokens.
       max_tokens: 16000,
       system,
-      // Sonnet 4.6 ya NO soporta prefill del mensaje assistant ("This model
-      // does not support assistant message prefill. The conversation must
-      // end with a user message."). En su lugar reforzamos la instrucción
-      // en el system prompt para que vaya directo al JSON.
       messages,
+      tools: [planTool],
+      // tool_choice forzado: el modelo DEBE llamar submit_plan, no puede
+      // responder por texto. Esto elimina el razonamiento en voz alta.
+      tool_choice: { type: "tool", name: "submit_plan" },
     };
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -662,68 +710,32 @@ async function generateWithClaude(
       throw new Error(`Sonnet 4.6 → ${r.status}: ${errText.slice(0, 200)}`);
     }
     const json = (await r.json()) as {
-      content?: Array<{ type: string; text?: string }>;
+      content?: Array<{
+        type: string;
+        text?: string;
+        name?: string;
+        input?: unknown;
+      }>;
       stop_reason?: string;
     };
-    const text = json.content?.find((c) => c.type === "text")?.text ?? "";
-
-    // Quitamos posibles fences ```json … ``` antes de extraer el JSON.
-    let cleaned = text
-      .replace(/^\s*```(?:json)?\s*/i, "")
-      .replace(/\s*```\s*$/i, "")
-      .trim();
-
-    // Buscamos el JSON. Si Sonnet añade texto antes de la primera "{",
-    // lo descartamos. Igual con basura después de la última "}".
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start < 0 || end < 0 || end <= start) {
-      // Log de la respuesta cruda para diagnosticar en Vercel.
+    // Buscamos el bloque tool_use con la llamada a submit_plan. Su `input`
+    // ya es un objeto JS — sin parsear texto ni nada.
+    const tool = json.content?.find(
+      (c) => c.type === "tool_use" && c.name === "submit_plan",
+    );
+    if (!tool || !tool.input) {
+      const textBlock = json.content?.find((c) => c.type === "text")?.text ?? "";
       console.error(
-        `[plan-gen] Sonnet respondió pero NO HAY '{' o '}' en la respuesta.\n` +
-          `stop_reason: ${json.stop_reason ?? "(no devuelto)"}\n` +
-          `content blocks devueltos: ${JSON.stringify(json.content?.map((c) => c.type) ?? [])}\n` +
-          `Texto crudo COMPLETO (primeros 2000 chars):\n${text.slice(0, 2000)}`,
+        `[plan-gen] Sonnet no llamó a submit_plan.\n` +
+          `stop_reason: ${json.stop_reason ?? "(no)"}\n` +
+          `content blocks: ${JSON.stringify(json.content?.map((c) => c.type) ?? [])}\n` +
+          `texto (primeros 1000 chars): ${textBlock.slice(0, 1000)}`,
       );
       throw new Error(
-        `Sonnet no devolvió JSON parseable (stop_reason=${json.stop_reason ?? "?"}, len=${text.length}, blocks=${json.content?.length ?? 0})`,
+        `Sonnet no llamó a submit_plan (stop_reason=${json.stop_reason ?? "?"})`,
       );
     }
-    const jsonText = cleaned.slice(start, end + 1);
-    try {
-      return { rawText: text, parsed: JSON.parse(jsonText) as unknown };
-    } catch (parseErr) {
-      // Si stop_reason fue max_tokens, el JSON está truncado. Intentamos
-      // repararlo: contar llaves/corchetes abiertos sin cerrar y cerrarlos
-      // al final. Mejor un plan parcial que el fallback hardcoded.
-      if (json.stop_reason === "max_tokens" || json.stop_reason === "length") {
-        const repaired = tryRepairTruncatedJson(jsonText);
-        if (repaired) {
-          try {
-            console.warn(
-              "[plan-gen] JSON truncado por max_tokens, reparado y parseado.",
-            );
-            return { rawText: text, parsed: JSON.parse(repaired) as unknown };
-          } catch (repairErr) {
-            console.error(
-              "[plan-gen] Reparación JSON falló:",
-              (repairErr as Error).message,
-            );
-          }
-        }
-      }
-      console.error(
-        "[plan-gen] JSON.parse falló:",
-        (parseErr as Error).message,
-        "stop_reason:",
-        json.stop_reason,
-        "json extraído (primeros 800 chars):",
-        jsonText.slice(0, 800),
-      );
-      throw new Error(
-        `Sonnet devolvió JSON inválido (${(parseErr as Error).message.slice(0, 100)})`,
-      );
-    }
+    return { rawText: "", parsed: tool.input as unknown };
   }
 
   // 1) Primera llamada con extended thinking.
