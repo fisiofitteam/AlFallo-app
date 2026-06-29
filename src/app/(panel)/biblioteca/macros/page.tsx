@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { Calculator, RotateCcw, Activity, Target, PieChart } from "lucide-react";
 import { requireProfessional } from "@/lib/session";
-import { isManager } from "@/lib/roles";
+import { CLIENT_ACCESS_ROLES } from "@/lib/clients";
 import { getMacroConfig } from "@/lib/macroConfig";
 import { saveMacroConfigAction, resetMacroConfigAction } from "./actions";
 
@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 
 export default async function MacrosTab() {
   const prof = await requireProfessional();
-  if (!isManager(prof.role)) {
+  if (!CLIENT_ACCESS_ROLES.includes(prof.role)) {
     return (
       <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-        Solo CEO y Head Coach pueden configurar el cálculo de macros.
+        Solo el equipo de nutrición puede configurar el cálculo de macros.
       </p>
     );
   }

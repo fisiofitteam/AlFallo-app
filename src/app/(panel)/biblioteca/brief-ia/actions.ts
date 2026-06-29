@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
-import { isManager } from "@/lib/roles";
-import { parseStr } from "@/lib/clients";
+import { CLIENT_ACCESS_ROLES, parseStr } from "@/lib/clients";
 import {
   BRIEF_SCOPES,
   saveBrief,
@@ -13,9 +12,12 @@ import {
   type BriefScope,
 } from "@/lib/aiBrief";
 
+// Biblioteca abierta a CEO, head_coach y nutricionistas. La función mantiene
+// el nombre "requireManager" por compatibilidad con los call-sites previos
+// — antes restringía a managers, ahora a todo el equipo que toca clientes.
 async function requireManager() {
   const prof = await requireProfessional();
-  if (!isManager(prof.role)) redirect("/biblioteca");
+  if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/biblioteca");
   return prof;
 }
 

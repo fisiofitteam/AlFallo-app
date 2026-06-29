@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireProfessional } from "@/lib/session";
-import { isManager } from "@/lib/roles";
+import { CLIENT_ACCESS_ROLES } from "@/lib/clients";
 import {
   getOnboardingFormConfig,
   resetOnboardingFormConfig,
@@ -14,9 +14,10 @@ import {
   type OnboardingFormConfigShape,
 } from "@/lib/onboarding-form";
 
+// Acceso para todo el equipo de nutrición (ceo, head_coach, nutricionista).
 async function requireManager() {
   const prof = await requireProfessional();
-  if (!isManager(prof.role)) redirect("/biblioteca");
+  if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/biblioteca");
   return prof;
 }
 

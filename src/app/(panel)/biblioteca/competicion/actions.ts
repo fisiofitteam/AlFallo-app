@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
-import { isManager } from "@/lib/roles";
+import { CLIENT_ACCESS_ROLES } from "@/lib/clients";
 import {
   type TemplateStructure,
   type TemplateDay,
@@ -14,11 +14,10 @@ import {
   isTemplateStructure,
 } from "@/lib/competitionTemplates";
 
-// Solo CEO y Head Coach gestionan plantillas (mismo criterio que el brief
-// de la IA: son piezas estratégicas, no operativas).
+// Acceso para todo el equipo de nutrición (ceo, head_coach, nutricionista).
 async function requireManager() {
   const prof = await requireProfessional();
-  if (!isManager(prof.role)) redirect("/");
+  if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/");
   return prof;
 }
 

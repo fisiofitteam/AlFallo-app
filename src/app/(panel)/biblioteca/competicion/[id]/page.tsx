@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, Trophy } from "lucide-react";
 import { requireProfessional } from "@/lib/session";
-import { isManager } from "@/lib/roles";
+import { CLIENT_ACCESS_ROLES } from "@/lib/clients";
 import { getCompetitionTemplate } from "@/lib/competitionTemplates";
 import { CompetitionTemplateEditor } from "@/components/CompetitionTemplateEditor";
 
@@ -15,7 +15,7 @@ export default async function CompetitionTemplateEditPage({
   params: { id: string };
 }) {
   const prof = await requireProfessional();
-  if (!isManager(prof.role)) redirect("/biblioteca");
+  if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/biblioteca");
 
   const tpl = await getCompetitionTemplate(params.id);
   if (!tpl) redirect("/biblioteca/competicion");

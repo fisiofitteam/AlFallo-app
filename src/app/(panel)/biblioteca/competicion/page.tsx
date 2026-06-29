@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Plus, Pencil, Trophy, Trash2 } from "lucide-react";
 import { requireProfessional } from "@/lib/session";
-import { isManager } from "@/lib/roles";
+import { CLIENT_ACCESS_ROLES } from "@/lib/clients";
 import { getAllCompetitionTemplates } from "@/lib/competitionTemplates";
 import { createCompetitionTemplate, deleteCompetitionTemplate } from "./actions";
 
@@ -17,7 +17,7 @@ function countDaysAndMeals(structure: { days: { meals: unknown[] }[] }) {
 
 export default async function CompetitionTemplatesPage() {
   const prof = await requireProfessional();
-  if (!isManager(prof.role)) redirect("/biblioteca");
+  if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/biblioteca");
 
   const templates = await getAllCompetitionTemplates();
 

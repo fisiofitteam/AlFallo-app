@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
+import { CLIENT_ACCESS_ROLES } from "@/lib/clients";
 import {
   normalizeAgendaCopy,
   normalizeAgendaGraciasCopy,
@@ -11,9 +12,11 @@ import {
   type AgendaGraciasCopy,
 } from "@/lib/landing-content";
 
+// Acceso para todo el equipo de nutrición (ceo, head_coach, nutricionista).
+// Conservamos el nombre del helper por compat.
 async function requireCeoOrHeadCoach() {
   const prof = await requireProfessional();
-  if (prof.role !== "ceo" && prof.role !== "head_coach") redirect("/");
+  if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/");
   return prof;
 }
 

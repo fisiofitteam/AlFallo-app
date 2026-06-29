@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ExternalLink, RotateCcw } from "lucide-react";
 import { requireProfessional } from "@/lib/session";
+import { CLIENT_ACCESS_ROLES } from "@/lib/clients";
 import { getAgendaLandingCopy, getAgendaGraciasCopy } from "@/lib/landing-config";
 import { Field, TextArea, TextInput } from "@/components/form-ui";
 import { resetLandingCopy, saveAgendaGraciasCopy, saveAgendaLandingCopy } from "./actions";
@@ -11,12 +12,11 @@ export const dynamic = "force-dynamic";
 
 export default async function LandingsEditorPage() {
   const prof = await requireProfessional();
-  // Solo CEO + head_coach pueden editar el copy. El resto del equipo verá
-  // un mensaje informativo en lugar de un redirect feo.
-  if (prof.role !== "ceo" && prof.role !== "head_coach") {
+  // Acceso para todo el equipo de nutrición. El resto verá un mensaje.
+  if (!CLIENT_ACCESS_ROLES.includes(prof.role)) {
     return (
       <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-        Solo CEO y Head Coach pueden editar el copy de las landings.
+        Solo el equipo de nutrición puede editar el copy de las landings.
       </p>
     );
   }
