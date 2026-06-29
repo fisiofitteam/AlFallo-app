@@ -283,6 +283,12 @@ export default async function ClientDetailPage({
                     initialNotes={activePlanData.plan.notes}
                     initialSupplementation={activePlanData.plan.supplementation}
                     initialTargets={activePlanData.targets}
+                    initialOverride={{
+                      kcal: activePlanData.plan.kcalOverride,
+                      protein: activePlanData.plan.proteinOverride,
+                      carbs: activePlanData.plan.carbsOverride,
+                      fat: activePlanData.plan.fatOverride,
+                    }}
                   />
                 ) : (
                   <WeeklyMenuView days={buildWeeklyMenu(activePlanData.days)} />

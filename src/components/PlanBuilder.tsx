@@ -22,6 +22,7 @@ import {
   renameMeal,
   moveMeal,
   updatePlanCopy,
+  updatePlanMacroOverride,
   type DraftPayload,
 } from "@/app/(panel)/planes/actions";
 import { MEAL_TYPE_OPTIONS } from "@/lib/nutrition";
@@ -103,6 +104,7 @@ export function PlanBuilder({
   initialTargets,
   initialNotes,
   initialSupplementation,
+  initialOverride,
   embedded = false,
 }: {
   planId: string;
@@ -116,6 +118,13 @@ export function PlanBuilder({
   initialTargets: PlanBuilderTargets;
   initialNotes: string | null;
   initialSupplementation: string | null;
+  /** Override de macros guardado en el plan (los 4 a null si no se usa). */
+  initialOverride?: {
+    kcal: number | null;
+    protein: number | null;
+    carbs: number | null;
+    fat: number | null;
+  };
   embedded?: boolean;
 }) {
   const [days, setDays] = useState<PlanBuilderDay[]>(initialDays);
@@ -277,6 +286,14 @@ export function PlanBuilder({
             ) : null}
           </header>
         </>
+      ) : null}
+
+      {/* Editor de macros target para ESTE plan. Si tiene override
+          guardado, los inputs vienen rellenos; si no, vienen en blanco y
+          el plan usa los macros oficiales del cliente. Cambios → action
+          updatePlanMacroOverride. Solo aplica a pauta nutricional. */}
+      {planKind !== "competition" ? (
+        <MacroOverrideEditor planId={planId} initial={initialOverride ?? null} />
       ) : null}
 
       {/* Resumen macros del día activo */}
@@ -1196,5 +1213,162 @@ function MacroInput({
         className="w-16 rounded-md border border-border bg-bg px-2 py-1 text-right text-sm text-text outline-none focus:border-primary"
       />
     </label>
+  );
+}
+
+// ── Editor del override de macros del plan ──────────────────────────────
+// Permite al nutri sobrescribir los macros target SOLO para este plan, sin
+// tocar la ficha del cliente. Si lo deja todo en blanco se respetan los
+// macros oficiales del cliente.
+
+function MacroOverrideEditor({
+  planId,
+  initial,
+}: {
+  planId: string;
+  initial: {
+    kcal: number | null;
+    protein: number | null;
+    carbs: number | null;
+    fat: number | null;
+  } | null;
+}) {
+  const [kcal, setKcal] = useState<string>(initial?.kcal != null ? String(initial.kcal) : "");
+  const [protein, setProtein] = useState<string>(
+    initial?.protein != null ? String(initial.protein) : "",
+  );
+  const [carbs, setCarbs] = useState<string>(initial?.carbs != null ? String(initial.carbs) : "");
+  const [fat, setFat] = useState<string>(initial?.fat != null ? String(initial.fat) : "");
+  const [pending, start] = useTransition();
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const hasOverride = !!(kcal && protein && carbs && fat);
+
+  function save() {
+    const fd = new FormData();
+    fd.set("planId", planId);
+    fd.set("kcalOverride", kcal);
+    fd.set("proteinOverride", protein);
+    fd.set("carbsOverride", carbs);
+    fd.set("fatOverride", fat);
+    start(async () => {
+      setError(null);
+      const r = await updatePlanMacroOverride(fd);
+      if (r && "error" in r && r.error) {
+        setError(r.error);
+        return;
+      }
+      setSavedAt(Date.now());
+    });
+  }
+
+  function clearAll() {
+    setKcal("");
+    setProtein("");
+    setCarbs("");
+    setFat("");
+    const fd = new FormData();
+    fd.set("planId", planId);
+    // (sin valores → action interpreta "todos en blanco" y borra el override)
+    start(async () => {
+      setError(null);
+      await updatePlanMacroOverride(fd);
+      setSavedAt(Date.now());
+    });
+  }
+
+  return (
+    <section className="mb-4 rounded-2xl border border-border bg-surface p-4">
+      <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <p className="text-sm font-bold">Macros objetivo para este plan</p>
+          <p className="text-xs text-muted">
+            {hasOverride
+              ? "Override activo. La IA usará estos macros al generar/regenerar."
+              : "Sin override. Se usan los macros oficiales del cliente (Macros objetivo en la ficha)."}
+          </p>
+        </div>
+        {savedAt ? (
+          <span className="text-[11px] text-emerald-700">
+            Guardado{" "}
+            {new Date(savedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        ) : null}
+      </header>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <label className="block text-xs">
+          <span className="font-semibold text-muted">Kcal</span>
+          <input
+            value={kcal}
+            onChange={(e) => setKcal(e.target.value)}
+            inputMode="numeric"
+            placeholder="2100"
+            className="mt-1 w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
+          />
+        </label>
+        <label className="block text-xs">
+          <span className="font-semibold text-muted">Prot (g)</span>
+          <input
+            value={protein}
+            onChange={(e) => setProtein(e.target.value)}
+            inputMode="numeric"
+            placeholder="160"
+            className="mt-1 w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
+          />
+        </label>
+        <label className="block text-xs">
+          <span className="font-semibold text-muted">Carbos (g)</span>
+          <input
+            value={carbs}
+            onChange={(e) => setCarbs(e.target.value)}
+            inputMode="numeric"
+            placeholder="210"
+            className="mt-1 w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
+          />
+        </label>
+        <label className="block text-xs">
+          <span className="font-semibold text-muted">Grasa (g)</span>
+          <input
+            value={fat}
+            onChange={(e) => setFat(e.target.value)}
+            inputMode="numeric"
+            placeholder="70"
+            className="mt-1 w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
+          />
+        </label>
+      </div>
+
+      {error ? (
+        <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={pending || !(kcal && protein && carbs && fat)}
+          className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg hover:opacity-90 disabled:opacity-50"
+        >
+          {pending ? <Loader2 size={11} className="animate-spin" /> : null}
+          Guardar override
+        </button>
+        {hasOverride || (initial && (initial.kcal != null || initial.protein != null)) ? (
+          <button
+            type="button"
+            onClick={clearAll}
+            disabled={pending}
+            className="rounded-lg border border-border bg-bg px-3 py-1.5 text-xs font-medium text-muted hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+            title="Quitar override y volver a usar los macros oficiales del cliente"
+          >
+            Quitar override
+          </button>
+        ) : null}
+        <p className="ml-auto text-[11px] italic text-muted">
+          Estos macros se le pasan tal cual a la IA al generar el plan.
+        </p>
+      </div>
+    </section>
   );
 }

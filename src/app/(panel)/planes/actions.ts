@@ -160,6 +160,43 @@ export async function updatePlanDescription(formData: FormData) {
   revalidatePath(`/clientes/${plan.clientId}`);
 }
 
+/** Editar el override de macros de un plan existente. Si los 4 vienen con
+ *  valor, se persisten y se usarán en la próxima generación. Si los 4 vienen
+ *  en blanco, se LIMPIAN (vuelven a null) y el plan pasa a usar los macros
+ *  oficiales de la ficha. Mixtos se ignoran (todo o nada).
+ *  Devuelve el estado final por si la UI quiere reflejarlo. */
+export async function updatePlanMacroOverride(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  const plan = await loadPlanForEdit(planId, prof);
+
+  const kcal = parseNumber(formData.get("kcalOverride"));
+  const protein = parseNumber(formData.get("proteinOverride"));
+  const carbs = parseNumber(formData.get("carbsOverride"));
+  const fat = parseNumber(formData.get("fatOverride"));
+
+  const allFilled = kcal != null && protein != null && carbs != null && fat != null;
+  const allEmpty = kcal == null && protein == null && carbs == null && fat == null;
+
+  if (!allFilled && !allEmpty) {
+    // Parcial → ignoramos (todo o nada). Devolvemos sin tocar BD.
+    return { ok: false as const, error: "Rellena los cuatro o déjalos todos en blanco." };
+  }
+
+  await prisma.nutritionPlan.update({
+    where: { id: planId },
+    data: {
+      kcalOverride: allEmpty ? null : kcal,
+      proteinOverride: allEmpty ? null : protein,
+      carbsOverride: allEmpty ? null : carbs,
+      fatOverride: allEmpty ? null : fat,
+    },
+  });
+  revalidatePath(`/clientes/${plan.clientId}`);
+  revalidatePath(`/planes/${planId}`);
+  return { ok: true as const };
+}
+
 export async function addDay(formData: FormData) {
   const prof = await requireAccess();
   const planId = String(formData.get("planId"));

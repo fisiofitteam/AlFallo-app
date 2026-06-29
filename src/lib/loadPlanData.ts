@@ -11,7 +11,15 @@ export type LoadedPlan = {
     client: { fullName: string };
     notes: string | null;
     supplementation: string | null;
+    // Overrides crudos por plan (si están set ganan sobre la ficha del
+    // cliente). Permiten editar el target específico de este plan.
+    kcalOverride: number | null;
+    proteinOverride: number | null;
+    carbsOverride: number | null;
+    fatOverride: number | null;
   };
+  /** Target efectivo contra el que se comparan los macros del plan. Si hay
+   *  overrides del plan ganan; si no, los de la ficha del cliente. */
   targets: PlanBuilderTargets;
   days: PlanBuilderDay[];
 };
@@ -40,12 +48,26 @@ export async function loadPlanForBuilder(planId: string): Promise<LoadedPlan | n
   });
   if (!plan) return null;
 
-  const targets: PlanBuilderTargets = {
-    kcal: plan.client.macroTargets?.kcalTraining ?? null,
-    protein: plan.client.macroTargets?.proteinTraining ?? null,
-    carbs: plan.client.macroTargets?.carbsTraining ?? null,
-    fat: plan.client.macroTargets?.fatTraining ?? null,
-  };
+  // Override del plan > macros de la ficha del cliente. Si los 4 overrides
+  // están set, son los targets que se enseñan en el SummaryCard del plan.
+  const hasOverride =
+    plan.kcalOverride != null &&
+    plan.proteinOverride != null &&
+    plan.carbsOverride != null &&
+    plan.fatOverride != null;
+  const targets: PlanBuilderTargets = hasOverride
+    ? {
+        kcal: plan.kcalOverride,
+        protein: plan.proteinOverride,
+        carbs: plan.carbsOverride,
+        fat: plan.fatOverride,
+      }
+    : {
+        kcal: plan.client.macroTargets?.kcalTraining ?? null,
+        protein: plan.client.macroTargets?.proteinTraining ?? null,
+        carbs: plan.client.macroTargets?.carbsTraining ?? null,
+        fat: plan.client.macroTargets?.fatTraining ?? null,
+      };
 
   const days: PlanBuilderDay[] = plan.days.map((d) => ({
     id: d.id,
@@ -79,6 +101,10 @@ export async function loadPlanForBuilder(planId: string): Promise<LoadedPlan | n
       client: { fullName: plan.client.fullName },
       notes: plan.notes,
       supplementation: plan.supplementation,
+      kcalOverride: plan.kcalOverride,
+      proteinOverride: plan.proteinOverride,
+      carbsOverride: plan.carbsOverride,
+      fatOverride: plan.fatOverride,
     },
     targets,
     days,

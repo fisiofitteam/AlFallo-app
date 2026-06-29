@@ -36,6 +36,12 @@ export default async function PlanPage({ params }: { params: { planId: string } 
       initialNotes={loaded.plan.notes}
       initialSupplementation={loaded.plan.supplementation}
       initialTargets={loaded.targets}
+      initialOverride={{
+        kcal: loaded.plan.kcalOverride,
+        protein: loaded.plan.proteinOverride,
+        carbs: loaded.plan.carbsOverride,
+        fat: loaded.plan.fatOverride,
+      }}
     />
   );
 }
