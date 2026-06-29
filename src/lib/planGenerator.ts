@@ -559,45 +559,145 @@ async function generateWithClaude(
       ? [...documentBlocks, { type: "text", text: buildUserPrompt(ctx) }]
       : buildUserPrompt(ctx);
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      // Extended thinking: forzamos al modelo a razonar paso a paso antes
-      // de escribir el JSON. Imprescindible para que respete brief +
-      // restricciones + macros + estructura simultáneamente. Sin thinking
-      // Sonnet "escupe" la respuesta y se deja restricciones por el camino.
-      // 5000 tokens de presupuesto: suficiente para revisar todo el brief.
-      thinking: { type: "enabled", budget_tokens: 5000 },
-      // Sumamos al max_tokens el presupuesto de thinking (no se cobran como
-      // output pero se computan en el límite).
+  // Helper interno: una sola llamada a Claude. Devuelve el JSON parseado.
+  // Usamos Opus 4.7 (modelo más capaz de Anthropic) en lugar de Sonnet —
+  // Sonnet ignoraba los macros target a propósito y devolvía siempre los
+  // mismos números. Opus es ~5x más caro pero respeta restricciones.
+  async function callClaude(
+    system: string,
+    messages: Array<{ role: "user" | "assistant"; content: unknown }>,
+    enableThinking: boolean,
+  ) {
+    const body: Record<string, unknown> = {
+      model: "claude-opus-4-7",
       max_tokens: 10000,
-      system: fullSystem,
-      messages: [{ role: "user", content: userContent }],
-    }),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`Claude API ${res.status}: ${errText.slice(0, 200)}`);
+      system,
+      messages,
+    };
+    if (enableThinking) {
+      // Extended thinking solo en el PRIMER intento (razonamiento amplio).
+      // En el retry de corrección no lo activamos: queremos respuesta
+      // directa con cantidades ajustadas.
+      body.thinking = { type: "enabled", budget_tokens: 6000 };
+    }
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey as string,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const errText = await r.text().catch(() => "");
+      throw new Error(`Claude API ${r.status}: ${errText.slice(0, 200)}`);
+    }
+    const json = (await r.json()) as { content?: Array<{ type: string; text?: string }> };
+    const text = json.content?.find((c) => c.type === "text")?.text ?? "";
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("Claude no devolvió JSON parseable");
+    return { rawText: text, parsed: JSON.parse(m[0]) as unknown };
   }
-  const data = (await res.json()) as {
-    content?: Array<{ type: string; text?: string }>;
-  };
-  // Con thinking habilitado la respuesta trae bloques [thinking + text]. El
-  // JSON está en el bloque "text" final; el "thinking" lo descartamos.
-  const reply = data.content?.find((c) => c.type === "text")?.text ?? "";
-  const jsonMatch = reply.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("Claude no devolvió JSON parseable");
-  const parsed = JSON.parse(jsonMatch[0]);
-  const days = clampPlan(parsed);
+
+  // 1) Primera llamada con extended thinking.
+  let parsed = (await callClaude(fullSystem, [{ role: "user", content: userContent }], true)).parsed;
+  let days = clampPlan(parsed);
   if (days.length === 0) throw new Error("Plan generado vacío");
+
+  // 2) Validación post-generación: si tenemos targets concretos y la suma
+  //    canónica del día se desvía >12% en alguno, segunda llamada con un
+  //    prompt focalizado pidiéndole AJUSTAR cantidades.
+  if (
+    ctx.kcalTraining != null &&
+    ctx.proteinTraining != null &&
+    ctx.carbsTraining != null &&
+    ctx.fatTraining != null
+  ) {
+    const target = {
+      kcal: ctx.kcalTraining,
+      protein: ctx.proteinTraining,
+      carbs: ctx.carbsTraining,
+      fat: ctx.fatTraining,
+    };
+    const sum = sumCanonicalDay(days);
+    const deviation = (a: number, b: number) => (b > 0 ? Math.abs(a - b) / b : 0);
+    const offBy12 =
+      deviation(sum.kcal, target.kcal) > 0.12 ||
+      deviation(sum.protein, target.protein) > 0.12 ||
+      deviation(sum.carbs, target.carbs) > 0.12 ||
+      deviation(sum.fat, target.fat) > 0.12;
+
+    if (offBy12) {
+      console.log(
+        `[plan-gen] La primera respuesta se desvía (${sum.kcal}/${sum.protein}/${sum.carbs}/${sum.fat} vs target ${target.kcal}/${target.protein}/${target.carbs}/${target.fat}). Lanzando retry de corrección.`,
+      );
+      // Mensaje cortísimo y específico al modelo: tu plan se sale; reescríbelo
+      // ajustando SOLO cantidades en gramos, manteniendo los alimentos.
+      const correction = `Tu plan anterior sumó ${sum.kcal} kcal · P${sum.protein} · C${sum.carbs} · G${sum.fat} para la combinación canónica del día.
+
+PERO EL OBJETIVO ERA: ${target.kcal} kcal · P${target.protein} · C${target.carbs} · G${target.fat}.
+
+La desviación es inaceptable. Reescribe el plan COMPLETO ajustando ÚNICAMENTE las cantidades en gramos de cada ingrediente para que la combinación canónica del día (1 opción del desayuno + 1 de media_mañana + 1 de cada subgrupo de comida + 1 de merienda + 1 de cada subgrupo de cena) sume el objetivo dentro de ±5%.
+
+Mantén los mismos alimentos y la misma estructura. Solo cambian los gramos.
+
+Tu plan anterior en formato JSON:
+${JSON.stringify({ days }, null, 0).slice(0, 4000)}
+
+Devuelve el JSON entero corregido (con notes, supplementation y days). Sin markdown.`;
+
+      const retry = await callClaude(
+        fullSystem,
+        [{ role: "user", content: correction }],
+        false, // sin thinking — queremos respuesta directa y rápida.
+      );
+      const retryDays = clampPlan(retry.parsed);
+      if (retryDays.length > 0) {
+        parsed = retry.parsed;
+        days = retryDays;
+      }
+    }
+  }
+
   const { notes, supplementation } = extractPlanCopy(parsed);
   return { days, notes, supplementation };
+}
+
+/** Suma macros de la "combinación canónica" del día tipo: 1 opción de cada
+ *  comida simple + 1 opción de cada subgrupo en comida/cena. Esto representa
+ *  lo que el atleta come EN UN DÍA y debe cuadrar con el objetivo. */
+function sumCanonicalDay(days: GeneratedDay[]): {
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+} {
+  let kcal = 0,
+    protein = 0,
+    carbs = 0,
+    fat = 0;
+  const day = days[0];
+  if (!day) return { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  for (const meal of day.meals) {
+    const seen = new Set<string>();
+    for (const o of meal.options) {
+      const key = o.subType ?? "_flat";
+      if (seen.has(key)) continue;
+      seen.add(key);
+      kcal += o.kcal;
+      protein += o.protein;
+      carbs += o.carbs;
+      fat += o.fat;
+      if (!o.subType) break;
+    }
+  }
+  return {
+    kcal: Math.round(kcal),
+    protein: Math.round(protein),
+    carbs: Math.round(carbs),
+    fat: Math.round(fat),
+  };
 }
 
 export async function generatePlanDraft(ctx: PlanContext): Promise<GeneratedPlan> {
