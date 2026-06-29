@@ -177,12 +177,12 @@ RESTRICCIONES (RESPÉTALAS ESTRICTAMENTE)
 INSTRUCCIONES
 - Devuelve EXACTAMENTE 1 día (name "Día tipo", dayType "entreno").
 - 5 comidas en este orden: desayuno, media_manana, comida, merienda, cena.
-- Para "desayuno", "media_manana" y "merienda": 3 OPCIONES intercambiables; cada opción es UN MENÚ COMPLETO con alimentos y cantidades en gramos. Las 3 opciones con macros similares entre sí (±10%). No uses "subType" en estas.
+- Para "desayuno", "media_manana" y "merienda": 2 OPCIONES intercambiables; cada opción es UN MENÚ COMPLETO con alimentos y cantidades en gramos. Las 2 opciones con macros similares entre sí (±10%). No uses "subType" en estas.
 - Para "comida" y "cena": en lugar de opciones planas, devuelve opciones agrupadas por "subType" (campo obligatorio) con la siguiente distribución (CANTIDADES EXACTAS, no más):
     * intro    → 1 opción  (verduras / ensalada / gazpacho / entrante ligero)
-    * grasas   → 3 opciones (cada una un ALIMENTO graso suelto: hummus, aguacate, queso, frutos secos, AOVE…)
-    * carbos   → 3 opciones (cada una un ALIMENTO con la ración: arroz, pasta, quinoa, legumbres, patata…)
-    * proteina → 3 opciones (cada una una proteína con la ración: pollo, ternera, pescado azul, pescado blanco, tofu…)
+    * grasas   → 2 opciones (cada una un ALIMENTO graso suelto: hummus, aguacate, queso, frutos secos, AOVE…)
+    * carbos   → 2 opciones (cada una un ALIMENTO con la ración: arroz, pasta, quinoa, legumbres, patata…)
+    * proteina → 2 opciones (cada una una proteína con la ración: pollo, ternera, pescado azul, pescado blanco, tofu…)
     * postre   → 1 opción (fruta de temporada normalmente)
   El atleta combinará 1 opción de cada subgrupo. Por eso los macros de cada opción dentro de un subgrupo deben ser SIMILARES entre sí (intercambiables), y la SUMA "intro + grasa elegida + carbo elegido + proteína elegida + postre" debe acercarse a las kcal/macros que tocan en esa comida (la comida y la cena suman juntas ~50-55 % del total diario).
 - Aplica las equivalencias y porciones del brief para que las cantidades sean coherentes con cómo medimos en el equipo.
@@ -427,6 +427,77 @@ function fallbackPlan(): GeneratedDay[] {
   ];
 }
 
+/**
+ * Intenta reparar un JSON truncado a la mitad (stop_reason=max_tokens en
+ * Claude). Estrategia simple:
+ *   1. Si el último carácter es una coma, la quitamos.
+ *   2. Si estamos dentro de un string (cuenta de comillas sin escapar es
+ *      impar), cerramos la comilla.
+ *   3. Contamos llaves y corchetes abiertos sin cerrar y los cerramos al
+ *      final en el orden inverso al que se abrieron.
+ *
+ * No es JSON5 ni un parser completo, pero rescata la mayoría de truncados
+ * típicos de respuestas LLM. Si no consigue arreglar nada útil devuelve null.
+ */
+function tryRepairTruncatedJson(s: string): string | null {
+  let work = s.trim();
+  // Si termina con coma + espacios, quitamos la coma (típico al cortar
+  // entre items de array).
+  work = work.replace(/,\s*$/, "");
+
+  // ¿Estamos a mitad de una string? Contar comillas no escapadas. Si es
+  // impar, cerramos.
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < work.length; i++) {
+    const c = work[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (c === "\\") {
+      escape = true;
+      continue;
+    }
+    if (c === '"') inString = !inString;
+  }
+  if (inString) work += '"';
+
+  // Contar balance de { } y [ ] (ignorando los que estén dentro de strings).
+  const stack: string[] = [];
+  inString = false;
+  escape = false;
+  for (let i = 0; i < work.length; i++) {
+    const c = work[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (c === "\\") {
+      escape = true;
+      continue;
+    }
+    if (c === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (c === "{" || c === "[") stack.push(c);
+    else if (c === "}") {
+      if (stack[stack.length - 1] === "{") stack.pop();
+    } else if (c === "]") {
+      if (stack[stack.length - 1] === "[") stack.pop();
+    }
+  }
+  // Cerramos lo que quedó abierto, en orden inverso.
+  while (stack.length > 0) {
+    const open = stack.pop()!;
+    work = work.replace(/,\s*$/, ""); // quita coma trailing antes de cerrar
+    work += open === "{" ? "}" : "]";
+  }
+  return work;
+}
+
 async function generateWithClaude(
   ctx: PlanContext,
 ): Promise<{ days: GeneratedDay[]; notes: string | null; supplementation: string | null }> {
@@ -611,6 +682,25 @@ async function generateWithClaude(
     try {
       return { rawText: text, parsed: JSON.parse(jsonText) as unknown };
     } catch (parseErr) {
+      // Si stop_reason fue max_tokens, el JSON está truncado. Intentamos
+      // repararlo: contar llaves/corchetes abiertos sin cerrar y cerrarlos
+      // al final. Mejor un plan parcial que el fallback hardcoded.
+      if (json.stop_reason === "max_tokens" || json.stop_reason === "length") {
+        const repaired = tryRepairTruncatedJson(jsonText);
+        if (repaired) {
+          try {
+            console.warn(
+              "[plan-gen] JSON truncado por max_tokens, reparado y parseado.",
+            );
+            return { rawText: text, parsed: JSON.parse(repaired) as unknown };
+          } catch (repairErr) {
+            console.error(
+              "[plan-gen] Reparación JSON falló:",
+              (repairErr as Error).message,
+            );
+          }
+        }
+      }
       console.error(
         "[plan-gen] JSON.parse falló:",
         (parseErr as Error).message,
