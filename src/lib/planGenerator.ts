@@ -196,10 +196,10 @@ ADEMÁS, en la raíz del JSON devuelves dos campos de texto que se muestran al a
 ⚠️ ANTES DE ESCRIBIR EL JSON — RECORDATORIO FINAL DE MACROS:
 Vuelve a leer los objetivos al principio (KCAL/PROTEÍNA/CARBOS/GRASA). Suma mentalmente la combinación canónica del día (desayuno opción 1 + media_mañana opción 1 + comida intro+grasas[0]+carbos[0]+proteina[0]+postre + merienda opción 1 + cena intro+grasas[0]+carbos[0]+proteina[0]+postre). Esa suma DEBE estar a ±5% en los CUATRO macros. Si no cuadra, ajusta cantidades en gramos AHORA antes de escribir el JSON.
 
-Devuelve SOLO el JSON con esta forma exacta, sin markdown, sin texto fuera del JSON:
+Devuelve SOLO el JSON con esta forma (ESQUEMA — los números entre <…> los calculas tú según los macros objetivo del cliente, NO copies los del ejemplo de abajo literal):
 {
-  "notes": "Hidrátate con 35 ml/kg/día … (texto plano, salto de línea con \\n permitido)",
-  "supplementation": "- Creatina monohidrato: 5 g/día …\\n- Omega-3: …",
+  "notes": "<observaciones generales del plan, texto plano con \\n>",
+  "supplementation": "<lista corta de suplementos, texto plano con \\n>",
   "days": [
     {
       "name": "Día tipo",

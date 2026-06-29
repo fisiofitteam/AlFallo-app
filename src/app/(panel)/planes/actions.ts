@@ -557,6 +557,10 @@ async function runDraftGeneration(opts: {
       carbs: plan.carbsOverride as number,
       fat: plan.fatOverride as number,
     };
+    console.log(
+      `[plan-gen] ${client.fullName} (${client.id}) — usando OVERRIDE del plan:`,
+      effectiveTargets,
+    );
   } else if (hasManualTargets) {
     effectiveTargets = {
       kcal: existingTargets!.kcalTraining as number,
@@ -564,6 +568,10 @@ async function runDraftGeneration(opts: {
       carbs: existingTargets!.carbsTraining ?? 0,
       fat: existingTargets!.fatTraining ?? 0,
     };
+    console.log(
+      `[plan-gen] ${client.fullName} (${client.id}) — usando MACROS DE LA FICHA:`,
+      effectiveTargets,
+    );
   } else {
     const { getMacroConfig } = await import("@/lib/macroConfig");
     const { computeTargets } = await import("@/lib/harrisBenedict");
@@ -586,6 +594,10 @@ async function runDraftGeneration(opts: {
         carbs: hb.carbs,
         fat: hb.fat,
       };
+      console.log(
+        `[plan-gen] ${client.fullName} (${client.id}) — calculado HB (primera vez):`,
+        effectiveTargets,
+      );
       // Persistimos solo si NO es competición (en competición no tocamos los
       // macros base del cliente, son macros del evento puntual).
       if (!isCompetition) {
@@ -610,6 +622,10 @@ async function runDraftGeneration(opts: {
           },
         });
       }
+    } else {
+      console.log(
+        `[plan-gen] ${client.fullName} (${client.id}) — NO HAY TARGETS (cliente sin peso/altura). El prompt tendrá '?' como objetivo.`,
+      );
     }
   }
 
@@ -664,6 +680,29 @@ async function runDraftGeneration(opts: {
     userInstructions: plan.instructions ?? null,
     attemptInstruction: opts.attemptInstruction ?? null,
   });
+
+  // Log de qué macros TERMINÓ devolviendo la IA: sumamos la primera opción
+  // de cada comida + primera de cada subgrupo (combinación canónica) y lo
+  // comparamos con effectiveTargets. Sirve para detectar si la IA respetó.
+  if (effectiveTargets && draft.days[0]) {
+    let kcal = 0, p = 0, c = 0, f = 0;
+    for (const meal of draft.days[0].meals) {
+      const seen = new Set<string>();
+      for (const o of meal.options) {
+        const key = o.subType ?? "_flat";
+        if (seen.has(key)) continue;
+        seen.add(key);
+        kcal += o.kcal;
+        p += o.protein;
+        c += o.carbs;
+        f += o.fat;
+        if (!o.subType) break;
+      }
+    }
+    console.log(
+      `[plan-gen] ${client.fullName} (${client.id}) — IA devolvió: ${Math.round(kcal)} kcal · P${Math.round(p)} · C${Math.round(c)} · G${Math.round(f)}  (objetivo: ${effectiveTargets.kcal}/${effectiveTargets.protein}/${effectiveTargets.carbs}/${effectiveTargets.fat})`,
+    );
+  }
 
   // 3) Persistimos el borrador en BD. Limpiamos primero cualquier draft
   //    previo en estado "preview" del mismo plan para no acumular basura
