@@ -1,5 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
+// Esta página dispara la generación de plan con IA (Claude Sonnet con
+// max_tokens=32k). Una llamada puede tardar 60-180 s. Subimos el timeout
+// de Vercel a 300 s (cap en plan Pro). Default es 60 s y daba
+// "client-side exception" al cortar la conexión sin respuesta válida.
+export const maxDuration = 300;
 import {
   ArrowLeft,
   UtensilsCrossed, ClipboardList, Target, CalendarDays,

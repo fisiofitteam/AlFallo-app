@@ -178,11 +178,11 @@ INSTRUCCIONES
 - Devuelve EXACTAMENTE 1 día (name "Día tipo", dayType "entreno").
 - 5 comidas en este orden: desayuno, media_manana, comida, merienda, cena.
 - Para "desayuno", "media_manana" y "merienda": 3 OPCIONES intercambiables; cada opción es UN MENÚ COMPLETO con alimentos y cantidades en gramos. Las 3 opciones con macros similares entre sí (±10%). No uses "subType" en estas.
-- Para "comida" y "cena": en lugar de opciones planas, devuelve opciones agrupadas por "subType" (campo obligatorio) con la siguiente distribución:
+- Para "comida" y "cena": en lugar de opciones planas, devuelve opciones agrupadas por "subType" (campo obligatorio) con la siguiente distribución (CANTIDADES EXACTAS, no más):
     * intro    → 1 opción  (verduras / ensalada / gazpacho / entrante ligero)
-    * grasas   → 3-4 opciones (cada una un ALIMENTO graso suelto a elegir: hummus, aguacate, queso, frutos secos, AOVE en cantidad…)
-    * carbos   → 4-5 opciones (cada una un ALIMENTO con la ración: 120 g arroz integral cocido, 120 g pasta, 120 g quinoa, 150 g legumbres, 180 g patata…)
-    * proteina → 4-5 opciones (cada una una proteína con la ración: 155 g pollo, 170 g ternera, 200 g pescado azul, 210 g pescado blanco, tofu…)
+    * grasas   → 3 opciones (cada una un ALIMENTO graso suelto: hummus, aguacate, queso, frutos secos, AOVE…)
+    * carbos   → 3 opciones (cada una un ALIMENTO con la ración: arroz, pasta, quinoa, legumbres, patata…)
+    * proteina → 3 opciones (cada una una proteína con la ración: pollo, ternera, pescado azul, pescado blanco, tofu…)
     * postre   → 1 opción (fruta de temporada normalmente)
   El atleta combinará 1 opción de cada subgrupo. Por eso los macros de cada opción dentro de un subgrupo deben ser SIMILARES entre sí (intercambiables), y la SUMA "intro + grasa elegida + carbo elegido + proteína elegida + postre" debe acercarse a las kcal/macros que tocan en esa comida (la comida y la cena suman juntas ~50-55 % del total diario).
 - Aplica las equivalencias y porciones del brief para que las cantidades sean coherentes con cómo medimos en el equipo.

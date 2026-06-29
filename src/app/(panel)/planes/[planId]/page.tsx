@@ -7,6 +7,9 @@ import { loadPlanForBuilder } from "@/lib/loadPlanData";
 
 export const metadata = { title: "Plan nutricional · Al Fallo" };
 export const dynamic = "force-dynamic";
+// Mismo motivo que /clientes/[id]/page.tsx: generación con IA puede tardar
+// 60-180 s con max_tokens 32k. Subimos timeout a 300 s.
+export const maxDuration = 300;
 
 export default async function PlanPage({ params }: { params: { planId: string } }) {
   const prof = await requireProfessional();
