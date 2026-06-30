@@ -144,3 +144,18 @@ function clampNum(v: unknown): number {
   if (!Number.isFinite(n) || n < 0) return 0;
   return Math.round(n * 10) / 10;
 }
+
+/** Estima macros desde texto libre. Lo llama el editor de plantilla cuando
+ *  el nutri escribe el contenido de una opción y queremos los kcal/P/C/G
+ *  rellenados solos. No persiste nada — el guardado es manual con el botón
+ *  "Guardar plantilla" del editor. */
+export async function estimateMacrosForTemplateOption(
+  text: string,
+): Promise<{ kcal: number; protein: number; carbs: number; fat: number }> {
+  await requireAccess();
+  const trimmed = text.trim();
+  if (trimmed.length < 3) return { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  const { estimateMacros } = await import("@/lib/macroEstimator");
+  const m = await estimateMacros(trimmed.slice(0, 1000));
+  return { kcal: m.kcal, protein: m.protein, carbs: m.carbs, fat: m.fat };
+}

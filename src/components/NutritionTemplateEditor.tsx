@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Save, Plus, Trash2 } from "lucide-react";
+import { Check, Loader2, Save, Plus, Trash2, Sparkles } from "lucide-react";
 import {
   TEMPLATE_SEXES,
   TEMPLATE_GOALS,
@@ -15,7 +15,10 @@ import {
   type TemplateSex,
   type TemplateGoal,
 } from "@/lib/nutritionTemplateShape";
-import { saveNutritionTemplate } from "@/app/(panel)/biblioteca/plantillas/actions";
+import {
+  estimateMacrosForTemplateOption,
+  saveNutritionTemplate,
+} from "@/app/(panel)/biblioteca/plantillas/actions";
 
 /**
  * Editor de plantilla nutricional. Estructura FIJA:
@@ -330,24 +333,117 @@ function OptionRow({
   onChange: (patch: Partial<TemplateOption>) => void;
   onRemove: () => void;
 }) {
+  // Auto-estimación de macros al editar el texto. Debounce 1200 ms para no
+  // bombardear la API con un teclazo por letra. Mientras la IA está
+  // calculando mostramos un spinner pequeño con tooltip al lado del texto.
+  // Si el nutri toca los inputs numéricos manualmente, ganan (los pisamos
+  // solo al siguiente cambio de texto).
+  const [estimating, setEstimating] = useState(false);
+  const [estimateError, setEstimateError] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guardamos el último texto que pidió estimación para descartar respuestas
+  // antiguas (race condition: si el nutri sigue tecleando, la primera
+  // respuesta no debería pisar al texto/macros actuales).
+  const lastReqText = useRef<string>(option.text);
+
+  // Cancelar timer pendiente al desmontar (la opción puede borrarse).
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
+
+  function handleTextChange(next: string) {
+    onChange({ text: next });
+    if (timer.current) clearTimeout(timer.current);
+    setEstimateError(false);
+    const trimmed = next.trim();
+    if (trimmed.length < 3) return;
+    timer.current = setTimeout(async () => {
+      lastReqText.current = trimmed;
+      setEstimating(true);
+      try {
+        const macros = await estimateMacrosForTemplateOption(trimmed);
+        // Descarta respuesta obsoleta si el texto ya no es el que pedimos.
+        if (lastReqText.current !== trimmed) return;
+        onChange({
+          kcal: macros.kcal,
+          protein: macros.protein,
+          carbs: macros.carbs,
+          fat: macros.fat,
+        });
+      } catch {
+        setEstimateError(true);
+      } finally {
+        setEstimating(false);
+      }
+    }, 1200);
+  }
+
+  // Forzar estimación inmediata (botón ✨). Útil cuando el nutri quiere
+  // recalcular sin esperar al debounce, o tras editar los macros a mano y
+  // arrepentirse.
+  function recalcNow() {
+    if (timer.current) clearTimeout(timer.current);
+    const trimmed = option.text.trim();
+    if (trimmed.length < 3) return;
+    lastReqText.current = trimmed;
+    setEstimateError(false);
+    setEstimating(true);
+    estimateMacrosForTemplateOption(trimmed)
+      .then((macros) => {
+        if (lastReqText.current !== trimmed) return;
+        onChange({
+          kcal: macros.kcal,
+          protein: macros.protein,
+          carbs: macros.carbs,
+          fat: macros.fat,
+        });
+      })
+      .catch(() => setEstimateError(true))
+      .finally(() => setEstimating(false));
+  }
+
   return (
     <li className="rounded-lg border border-border bg-surface p-2">
       <div className="flex items-start gap-2">
-        <textarea
-          value={option.text}
-          onChange={(e) => onChange({ text: e.target.value })}
-          rows={2}
-          placeholder="Ej. 120 g avena + 250 ml leche + 30 g whey + 1 plátano"
-          className="flex-1 rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
-        />
-        <button
-          type="button"
-          onClick={onRemove}
-          title="Eliminar opción"
-          className="rounded-lg border border-border bg-bg p-1.5 text-muted hover:border-red-300 hover:text-red-600"
-        >
-          <Trash2 size={13} />
-        </button>
+        <div className="flex-1">
+          <textarea
+            value={option.text}
+            onChange={(e) => handleTextChange(e.target.value)}
+            rows={2}
+            placeholder="Ej. 120 g avena + 250 ml leche + 30 g whey + 1 plátano"
+            className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
+          />
+          {estimateError ? (
+            <p className="mt-1 text-[10px] text-red-600">
+              No se pudieron estimar los macros — escríbelos a mano o reintenta con ✨.
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-col items-center gap-1">
+          <button
+            type="button"
+            onClick={recalcNow}
+            disabled={estimating || option.text.trim().length < 3}
+            title="Recalcular macros con IA ahora"
+            className="rounded-lg border border-border bg-bg p-1.5 text-muted hover:border-primary hover:text-primary disabled:opacity-50"
+          >
+            {estimating ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Sparkles size={13} />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            title="Eliminar opción"
+            className="rounded-lg border border-border bg-bg p-1.5 text-muted hover:border-red-300 hover:text-red-600"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
       </div>
       <div className="mt-2 grid grid-cols-4 gap-2">
         <NumInput label="Kcal" value={option.kcal} onChange={(v) => onChange({ kcal: v })} />
