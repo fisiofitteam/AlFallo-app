@@ -69,6 +69,8 @@ model Professional {
 
   // Plantillas de competición creadas por este profesional.
   competitionTemplatesCreated CompetitionPlanTemplate[] @relation("CompetitionTemplateCreator")
+  // Plantillas nutricionales (regulares) creadas por este profesional.
+  nutritionTemplatesCreated NutritionTemplate[] @relation("NutritionTemplateCreator")
 
   @@index([role])
 }
@@ -1406,4 +1408,28 @@ model CompetitionPlanTemplate {
   createdBy       Professional? @relation("CompetitionTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// Plantilla nutricional reutilizable. Reemplaza el flujo de "generar plan
+// con IA desde brief". Se clasifican por sexo + objetivo del cliente y al
+// añadir un plan el nutri elige una plantilla → se copia al plan editable.
+//
+// structure: { days: [{ name, dayType, meals: [{ name, options: [{ text,
+// kcal, protein, carbs, fat, subType? }] }] }] }  (mismo shape que
+// CompetitionPlanTemplate.structure y que el editor del plan).
+model NutritionTemplate {
+  id              String   @id @default(cuid())
+  sex             String   // "hombre" | "mujer"
+  goal            String   // "recomposicion" | "perdida-grasa" | "ganancia-musculo"
+  name            String
+  description     String?
+  notes           String?
+  supplementation String?
+  structure       Json     @default("{\"days\":[]}")
+  createdById     String?
+  createdBy       Professional? @relation("NutritionTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([sex, goal])
 }

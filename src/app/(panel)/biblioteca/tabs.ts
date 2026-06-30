@@ -10,6 +10,7 @@ export type LibraryTab = {
 export const LIBRARY_TABS: LibraryTab[] = [
   { href: "/biblioteca/alimentos", label: "Alimentos", emoji: "🥦" },
   { href: "/biblioteca/recetas", label: "Recetas", emoji: "🍳" },
+  { href: "/biblioteca/plantillas", label: "Plantillas nutricionales", emoji: "📋" },
   { href: "/biblioteca/videos", label: "Vídeos", emoji: "🎥" },
   { href: "/biblioteca/onboarding", label: "Formulario inicial", emoji: "📋" },
   { href: "/biblioteca/brief-ia", label: "Brief IA", emoji: "🤖" },
