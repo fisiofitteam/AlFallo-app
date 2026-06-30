@@ -527,7 +527,7 @@ async function runDraftGeneration(opts: {
 
   const client = await prisma.client.findUnique({
     where: { id: plan.clientId },
-    include: { profile: true, macroTargets: true },
+    include: { profile: true },
   });
   if (!client) return null;
 

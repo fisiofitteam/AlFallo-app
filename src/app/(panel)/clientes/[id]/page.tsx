@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 export const maxDuration = 300;
 import {
   ArrowLeft,
-  UtensilsCrossed, ClipboardList, Target, CalendarDays,
+  UtensilsCrossed, ClipboardList, CalendarDays,
   TrendingUp, NotebookPen, KeyRound, Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -25,7 +25,6 @@ import {
 import { TextInput } from "@/components/form-ui";
 import type { ChartPoint } from "@/components/line-chart";
 import { FichaForm } from "./ficha-form";
-import { MacroTargetsForm } from "./macro-targets-form";
 import { CheckInsTab } from "./checkins-tab";
 import { EvolucionTab } from "./evolucion-tab";
 import { reassignNutritionist, setClientPassword, updateClientStatus } from "../actions";
@@ -49,7 +48,6 @@ type SectionKey =
   | "plan"
   | "semanal"
   | "ficha"
-  | "macros"
   | "evolucion"
   | "checkins"
   | "acceso"
@@ -59,7 +57,6 @@ const SECTIONS: { key: SectionKey; label: string; description: string; icon: Luc
   { key: "plan", label: "Plan nutricional", description: "Comidas, opciones y macros", icon: UtensilsCrossed },
   { key: "semanal", label: "Plan semanal", description: "L-D con opción asignada por día", icon: CalendarDays },
   { key: "ficha", label: "Ficha nutricional", description: "Anamnesis y datos personales", icon: ClipboardList },
-  { key: "macros", label: "Macros objetivo", description: "Kcal y macros diarios", icon: Target },
   { key: "evolucion", label: "Evolución", description: "Peso, cintura y % grasa", icon: TrendingUp },
   { key: "checkins", label: "Check-ins", description: "Cuestionarios semanales", icon: NotebookPen },
   { key: "acceso", label: "Acceso a la app", description: "Credenciales del cliente", icon: KeyRound },
@@ -84,7 +81,6 @@ export default async function ClientDetailPage({
     where: { id: params.id },
     include: {
       profile: true,
-      macroTargets: true,
       nutritionist: { select: { fullName: true } },
       plans: { orderBy: { createdAt: "desc" }, include: { _count: { select: { days: true } } } },
       checkIns: { orderBy: { date: "desc" } },
@@ -338,8 +334,6 @@ export default async function ClientDetailPage({
               specialConsiderations={specialConsiderations}
               selectedConsiderationIds={selectedConsiderationIds}
             />
-          ) : active === "macros" ? (
-            <MacroTargetsForm clientId={client.id} targets={client.macroTargets} />
           ) : active === "evolucion" ? (
             <EvolucionTab
               clientId={client.id}

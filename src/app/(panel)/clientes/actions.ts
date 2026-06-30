@@ -121,34 +121,10 @@ export async function reviewCheckIn(formData: FormData) {
   revalidatePath(`/clientes/${checkIn.clientId}`);
 }
 
-// Guarda los objetivos diarios de macros del cliente. Las columnas *Rest
-// quedan en BD por compatibilidad pero ya no se usan; las dejamos a null
-// para evitar arrastrar datos antiguos que distorsionan informes.
-export async function updateMacroTargets(formData: FormData) {
-  const prof = await requireClientAccess();
-  const clientId = String(formData.get("clientId"));
-  await loadClientForEdit(clientId, prof);
-
-  const data = {
-    kcalTraining: parseNumber(formData.get("kcalTraining")),
-    proteinTraining: parseNumber(formData.get("proteinTraining")),
-    carbsTraining: parseNumber(formData.get("carbsTraining")),
-    fatTraining: parseNumber(formData.get("fatTraining")),
-    kcalRest: null,
-    proteinRest: null,
-    carbsRest: null,
-    fatRest: null,
-    notes: parseStr(formData.get("notes")),
-  };
-
-  await prisma.macroTargets.upsert({
-    where: { clientId },
-    create: { clientId, ...data },
-    update: data,
-  });
-
-  revalidatePath(`/clientes/${clientId}`);
-}
+// (Eliminada: updateMacroTargets. La pestaña "Macros objetivo" se ha
+//  quitado de la ficha del cliente. Los macros los pone el nutri en el
+//  override del plan, o los calcula la IA desde el brief. La tabla
+//  MacroTargets sigue en BD por si hay datos históricos.)
 
 export async function updateNutritionProfile(formData: FormData) {
   const prof = await requireClientAccess();

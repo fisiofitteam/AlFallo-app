@@ -34,7 +34,7 @@ export async function loadPlanForBuilder(planId: string): Promise<LoadedPlan | n
   const plan = await prisma.nutritionPlan.findUnique({
     where: { id: planId },
     include: {
-      client: { include: { macroTargets: true } },
+      client: true,
       days: {
         orderBy: { order: "asc" },
         include: {
@@ -48,8 +48,8 @@ export async function loadPlanForBuilder(planId: string): Promise<LoadedPlan | n
   });
   if (!plan) return null;
 
-  // Override del plan > macros de la ficha del cliente. Si los 4 overrides
-  // están set, son los targets que se enseñan en el SummaryCard del plan.
+  // Override del plan. Si los 4 están set, son los targets que se muestran
+  // en el SummaryCard. Si no, todo null y la UI dice "los calcula la IA".
   const hasOverride =
     plan.kcalOverride != null &&
     plan.proteinOverride != null &&
@@ -62,12 +62,7 @@ export async function loadPlanForBuilder(planId: string): Promise<LoadedPlan | n
         carbs: plan.carbsOverride,
         fat: plan.fatOverride,
       }
-    : {
-        kcal: plan.client.macroTargets?.kcalTraining ?? null,
-        protein: plan.client.macroTargets?.proteinTraining ?? null,
-        carbs: plan.client.macroTargets?.carbsTraining ?? null,
-        fat: plan.client.macroTargets?.fatTraining ?? null,
-      };
+    : { kcal: null, protein: null, carbs: null, fat: null };
 
   const days: PlanBuilderDay[] = plan.days.map((d) => ({
     id: d.id,
