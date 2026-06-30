@@ -134,20 +134,44 @@ function ageFromBirthDate(d: Date | null): number | null {
 function buildUserPrompt(ctx: PlanContext): string {
   const age = ageFromBirthDate(ctx.birthDate);
   const list = (xs: string[]) => (xs.length ? xs.join(", ") : "—");
-  return `Diseña UN DÍA TIPO de plan nutricional para este atleta.
 
-OBJETIVO DIARIO DE MACROS (lee esto primero, el plan se diseña EN TORNO a estos números):
-- KCAL: ${ctx.kcalTraining ?? "?"}
-- PROTEINA: ${ctx.proteinTraining ?? "?"} g
-- CARBOS: ${ctx.carbsTraining ?? "?"} g
-- GRASA: ${ctx.fatTraining ?? "?"} g
+  const hasTargets =
+    ctx.kcalTraining != null &&
+    ctx.proteinTraining != null &&
+    ctx.carbsTraining != null &&
+    ctx.fatTraining != null;
+
+  // Dos modos según haya o no override del nutri para este plan:
+  //  · hasTargets → el nutri ha fijado los 4 macros. El plan se DISEÑA en
+  //    torno a esos números exactos. Ya no hay flexibilidad.
+  //  · !hasTargets → no hay override. La IA calcula los macros leyendo el
+  //    BRIEF GLOBAL del equipo (metodología de cálculo + filosofía). No
+  //    usamos Harris-Benedict ni porcentajes hardcoded — el brief manda.
+  const macrosBlock = hasTargets
+    ? `OBJETIVO DIARIO DE MACROS (FIJADO POR EL NUTRI — NO LO CAMBIES BAJO NINGÚN CONCEPTO):
+- KCAL: ${ctx.kcalTraining}
+- PROTEINA: ${ctx.proteinTraining} g
+- CARBOS: ${ctx.carbsTraining} g
+- GRASA: ${ctx.fatTraining} g
 
 REGLA NO NEGOCIABLE sobre macros:
 - La SUMA de UNA combinación del día (1 opción del desayuno + 1 de media_mañana + 1 de cada subgrupo en comida y cena + 1 de merienda) DEBE quedar dentro de ±5% en CADA uno de los cuatro objetivos de arriba.
 - Si no cuadra, AJUSTA las cantidades en gramos hasta que cuadre. NO redondees ni "aproximes" sin más.
 - Tras escribir cada opción, recalcula sus macros con 4·P + 9·G + 4·C y verifica que la suma del día cuadra. Si no, reescribe la opción con cantidades distintas.
-- NUNCA inventes objetivos distintos a los anteriores. NUNCA escribas un plan que sume menos del 95% ni más del 105% del kcal objetivo.
-- Si los objetivos vienen como "?" (no fijados), pide al nutri que los fije; mientras tanto usa una estimación razonable.
+- NUNCA inventes objetivos distintos a los anteriores. NUNCA escribas un plan que sume menos del 95% ni más del 105% del kcal objetivo.`
+    : `OBJETIVO DIARIO DE MACROS — CALCÚLALO TÚ desde el BRIEF GLOBAL:
+- El nutri NO ha fijado los macros para este plan. Tu trabajo es calcular kcal, proteína, carbos y grasa siguiendo la metodología que el equipo describe en el BRIEF GLOBAL (incluido en este prompt, arriba del system).
+- Cruza la metodología del brief con el perfil de ESTE atleta (sexo, edad, peso, altura, frecuencia, nivel, objetivo, peso objetivo). Aplica las reglas, multiplicadores y rangos que pone el brief.
+- NO uses Harris-Benedict ni porcentajes genéricos. Solo lo que dice el brief.
+- Una vez decidido, escribe los 4 macros en el campo "notes" del JSON (primera línea: "Macros objetivo: X kcal · P g · C g · G g") para que el nutri vea con qué números has trabajado.
+
+REGLA NO NEGOCIABLE sobre macros:
+- La SUMA de UNA combinación del día (1 opción del desayuno + 1 de media_mañana + 1 de cada subgrupo en comida y cena + 1 de merienda) DEBE quedar dentro de ±5% de los macros que TÚ has calculado.
+- Tras escribir cada opción, recalcula sus macros con 4·P + 9·G + 4·C y verifica que la suma del día cuadra. Si no, reescribe la opción con cantidades distintas.`;
+
+  return `Diseña UN DÍA TIPO de plan nutricional para este atleta.
+
+${macrosBlock}
 
 CLIENTE
 Nombre: ${ctx.clientName}
@@ -189,7 +213,7 @@ ADEMÁS, en la raíz del JSON devuelves dos campos de texto que se muestran al a
 - "supplementation" (Suplementación propuesta): lista corta (3-6 ítems) con producto + dosis + cuándo tomarlo, adaptada al objetivo, al horario de entreno y a lo que ya está tomando el atleta (lo tienes en RESTRICCIONES → Suplementos). Si el brief o las consideraciones especiales mencionan suplementos concretos, prioriza esos. Si no hace falta suplementar nada, devuelve un texto breve explicando por qué.
 
 ANTES DE ESCRIBIR EL JSON — RECORDATORIO FINAL DE MACROS:
-Vuelve a leer los objetivos al principio (KCAL/PROTEÍNA/CARBOS/GRASA). Suma mentalmente la combinación canónica del día (desayuno opción 1 + media_mañana opción 1 + comida intro+grasas[0]+carbos[0]+proteina[0]+postre + merienda opción 1 + cena intro+grasas[0]+carbos[0]+proteina[0]+postre). Esa suma DEBE estar a ±5% en los CUATRO macros. Si no cuadra, ajusta cantidades en gramos AHORA antes de escribir el JSON.
+Vuelve a leer los objetivos al principio (KCAL/PROTEÍNA/CARBOS/GRASA — ya estén FIJADOS por el nutri o CALCULADOS por ti desde el brief). Suma mentalmente la combinación canónica del día (desayuno opción 1 + media_mañana opción 1 + comida intro+grasas[0]+carbos[0]+proteina[0]+postre + merienda opción 1 + cena intro+grasas[0]+carbos[0]+proteina[0]+postre). Esa suma DEBE estar a ±5% en los CUATRO macros. Si no cuadra, ajusta cantidades en gramos AHORA antes de escribir el JSON.
 
 Devuelve SOLO el JSON con esta forma exacta (sin markdown, sin texto fuera del JSON). Los NÚMEROS del ejemplo son SOLO ilustración de formato: calcula los tuyos a partir de los macros objetivo del cliente, NO los copies tal cual:
 {

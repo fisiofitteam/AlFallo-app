@@ -532,20 +532,19 @@ async function runDraftGeneration(opts: {
   if (!client) return null;
 
   // 1) Macros target del cliente.
-  //    Prioridad:
+  //    REGLA NUEVA: nada de Harris-Benedict ni de porcentajes de macroConfig.
+  //    Las únicas dos fuentes válidas son:
   //      a) Override por plan (kcalOverride etc.) → gana si están los 4.
-  //      b) Ficha del cliente (macroTargets.kcalTraining) → si está set.
-  //      c) HB → solo si no hay nada y existen datos antropométricos.
-  //    En plan de competición NO tocamos macroTargets persistidos.
+  //      b) Si no hay override → effectiveTargets = null. La IA calcula
+  //         los macros leyendo el BRIEF GLOBAL del equipo + el perfil del
+  //         cliente. Es lo que el nutri ha pedido explícitamente.
+  //    Ya NO se usa macroTargets de la ficha del cliente para alimentar la
+  //    IA — el brief manda.
   const planHasOverrides =
     plan.kcalOverride != null &&
     plan.proteinOverride != null &&
     plan.carbsOverride != null &&
     plan.fatOverride != null;
-
-  const existingTargets = client.macroTargets;
-  const hasManualTargets =
-    existingTargets != null && existingTargets.kcalTraining != null;
 
   let effectiveTargets: { kcal: number; protein: number; carbs: number; fat: number } | null =
     null;
@@ -561,72 +560,10 @@ async function runDraftGeneration(opts: {
       `[plan-gen] ${client.fullName} (${client.id}) — usando OVERRIDE del plan:`,
       effectiveTargets,
     );
-  } else if (hasManualTargets) {
-    effectiveTargets = {
-      kcal: existingTargets!.kcalTraining as number,
-      protein: existingTargets!.proteinTraining ?? 0,
-      carbs: existingTargets!.carbsTraining ?? 0,
-      fat: existingTargets!.fatTraining ?? 0,
-    };
-    console.log(
-      `[plan-gen] ${client.fullName} (${client.id}) — usando MACROS DE LA FICHA:`,
-      effectiveTargets,
-    );
   } else {
-    const { getMacroConfig } = await import("@/lib/macroConfig");
-    const { computeTargets } = await import("@/lib/harrisBenedict");
-    const config = await getMacroConfig();
-    const hb = computeTargets(
-      {
-        sex: client.profile?.sex ?? null,
-        birthDate: client.profile?.birthDate ?? null,
-        heightCm: client.profile?.heightCm ?? null,
-        weightKg: client.profile?.weightKg ?? null,
-        weeklyFrequency: client.profile?.weeklyFrequency ?? null,
-        goal: isCompetition ? "rendimiento" : (client.profile?.goal ?? null),
-      },
-      config,
+    console.log(
+      `[plan-gen] ${client.fullName} (${client.id}) — sin override del plan. La IA calculará los macros desde el BRIEF GLOBAL.`,
     );
-    if (hb) {
-      effectiveTargets = {
-        kcal: hb.kcal,
-        protein: hb.protein,
-        carbs: hb.carbs,
-        fat: hb.fat,
-      };
-      console.log(
-        `[plan-gen] ${client.fullName} (${client.id}) — calculado HB (primera vez):`,
-        effectiveTargets,
-      );
-      // Persistimos solo si NO es competición (en competición no tocamos los
-      // macros base del cliente, son macros del evento puntual).
-      if (!isCompetition) {
-        await prisma.macroTargets.upsert({
-          where: { clientId: client.id },
-          create: {
-            clientId: client.id,
-            kcalTraining: hb.kcal,
-            proteinTraining: hb.protein,
-            carbsTraining: hb.carbs,
-            fatTraining: hb.fat,
-            kcalRest: null,
-            proteinRest: null,
-            carbsRest: null,
-            fatRest: null,
-          },
-          update: {
-            kcalTraining: hb.kcal,
-            proteinTraining: hb.protein,
-            carbsTraining: hb.carbs,
-            fatTraining: hb.fat,
-          },
-        });
-      }
-    } else {
-      console.log(
-        `[plan-gen] ${client.fullName} (${client.id}) — NO HAY TARGETS (cliente sin peso/altura). El prompt tendrá '?' como objetivo.`,
-      );
-    }
   }
 
   // Persistimos kind + contexto en el plan para tener trazabilidad.
