@@ -528,13 +528,29 @@ async function generateWithClaude(
     attachments.map(async (a) => ({ doc: a, content: await fetchAttachmentContent(a) })),
   );
 
-  const textBlocks: string[] = [];
+  // OPTIMIZACIÓN DE COSTE — separamos el system prompt en dos partes para
+  // aprovechar el prompt caching de Anthropic:
+  //  · stableBlocks: SYSTEM_PROMPT + brief + reglas globales + feedback.
+  //    Son los tokens que MÁS pesan y se repiten en cada llamada. Los
+  //    marcamos como cacheables (cache_control: ephemeral); cuestan 10%
+  //    en llamadas siguientes dentro de 5 min.
+  //  · dynamicBlocks: consideraciones del cliente, instrucciones del nutri,
+  //    ajuste de la generación, contexto de competición. Cambian por cliente
+  //    / plan / intento → no se cachean; van al user message.
+  const stableBlocks: string[] = [];
+  const dynamicBlocks: string[] = [];
+
   type DocumentBlock = {
     type: "document";
     source: { type: "base64"; media_type: "application/pdf"; data: string };
     title?: string;
   };
   const documentBlocks: DocumentBlock[] = [];
+
+  // Truncado defensivo: si algún adjunto de texto es kilométrico se queda en
+  // ~8K chars (~2K tokens). Evita prompts inflados sin control.
+  const trunc = (s: string, max = 8000) =>
+    s.length > max ? s.slice(0, max) + `\n…[truncado a ${max} chars]` : s;
 
   for (const r of resolved) {
     if (!r.content) continue;
@@ -545,18 +561,18 @@ async function generateWithClaude(
         title: `${r.doc.label} · ${r.doc.name}`,
       });
     } else {
-      textBlocks.push(`\n\n[ADJUNTO · ${r.doc.label} · ${r.doc.name}]\n${r.content.text}`);
+      // Adjuntos de texto del brief → estables (los mismos en cada llamada).
+      stableBlocks.push(`\n\n[ADJUNTO · ${r.doc.label} · ${r.doc.name}]\n${trunc(r.content.text)}`);
     }
   }
 
-  // Consideraciones especiales: descripción + dieta de ejemplo (si la hay).
+  // Consideraciones especiales: dependen del cliente, no se cachean.
   const specials = await getSpecialConsiderationsByIds(ctx.specialConsiderationIds ?? []);
   if (specials.length > 0) {
     const lines: string[] = ["\n\n=== CONSIDERACIONES ESPECIALES DEL CLIENTE ==="];
     for (const c of specials) {
       lines.push(`\n[${c.title.toUpperCase()}]`);
       if (c.description.trim()) lines.push(c.description.trim());
-      // Si tiene adjunto, lo añadimos como bloque document (PDF) o como texto.
       if (c.examplePlanUrl && c.examplePlanName) {
         const kind = attachmentKind(c.examplePlanName);
         const content = await fetchAttachmentContent({
@@ -572,56 +588,54 @@ async function generateWithClaude(
             title: `Consideración · ${c.title} · ${c.examplePlanName}`,
           });
         } else if (content && (content.kind === "spreadsheet" || content.kind === "csv" || content.kind === "text")) {
-          lines.push(`\n[DIETA DE EJEMPLO · ${c.examplePlanName}]\n${content.text}`);
+          lines.push(`\n[DIETA DE EJEMPLO · ${c.examplePlanName}]\n${trunc(content.text)}`);
         }
       }
     }
-    textBlocks.push(lines.join("\n"));
+    dynamicBlocks.push(lines.join("\n"));
   }
 
-  // Reglas globales + aprendizajes recientes (PlanGenerationRule +
-  // razones de PlanGenerationFeedback). Se inyectan antes que las
-  // instrucciones específicas del plan para que sean siempre tenidas en
-  // cuenta — son cómo aprende la IA del equipo.
+  // Reglas globales + aprendizajes — son estables (mismos en cada llamada
+  // hasta que el equipo edite reglas/feedback). Perfecto para cachear.
   const { buildLearningPromptBlocks } = await import("@/lib/planFeedback");
   const learningBlocks = await buildLearningPromptBlocks();
-  for (const block of learningBlocks) textBlocks.push(block);
+  for (const block of learningBlocks) stableBlocks.push(block);
 
-  // Instrucciones del nutri al añadir el plan: van como bloque dedicado al
-  // final del system prompt, antes (sobre) el contexto de competición. Así
-  // tienen prioridad alta sobre los briefs y consideraciones.
+  // Instrucciones del nutri para ESTE plan — dinámicas por plan.
   if (ctx.userInstructions && ctx.userInstructions.trim()) {
-    textBlocks.push(
+    dynamicBlocks.push(
       `\n\n=== INSTRUCCIONES DEL NUTRICIONISTA PARA ESTE PLAN ===\n${ctx.userInstructions.trim()}\n\nEstas instrucciones son prioritarias: si entran en conflicto con el brief general, sigue lo que diga el nutri aquí.`,
     );
   }
 
-  // Ajuste del intento actual: el nutri viene del modal de revisión y la IA
-  // tiene que corregir el draft anterior siguiendo esta indicación.
+  // Ajuste de este intento (regeneración) — dinámico.
   if (ctx.attemptInstruction && ctx.attemptInstruction.trim()) {
-    textBlocks.push(
+    dynamicBlocks.push(
       `\n\n=== AJUSTE PARA ESTA GENERACIÓN ===\n${ctx.attemptInstruction.trim()}\n\nEsta es una RE-GENERACIÓN: el nutri ha rechazado el intento anterior pidiendo este cambio concreto. Aplícalo manteniendo todo lo bueno del plan.`,
     );
   }
 
-  // Contexto de la competición (solo cuando ctx.competitionContext está set).
+  // Contexto de competición — dinámico por plan.
   if (isCompetition) {
     const tag = ctx.competitionName?.trim()
       ? `CONTEXTO DE COMPETICIÓN · ${ctx.competitionName.trim()}`
       : "CONTEXTO DE COMPETICIÓN";
-    textBlocks.push(
+    dynamicBlocks.push(
       `\n\n=== ${tag} ===\nEl plan debe estructurarse en torno a la prueba descrita. Tienes en cuenta WODs, horarios, fecha del evento y necesidades específicas de carga de hidratos / día-evento.\n\n${ctx.competitionContext!.trim()}`,
     );
   }
 
-  const fullSystem = briefText
-    ? `${SYSTEM_PROMPT}\n\n${briefText}${textBlocks.join("")}`
-    : `${SYSTEM_PROMPT}${textBlocks.join("")}`;
+  // Bloque ESTABLE: SYSTEM_PROMPT + brief + reglas + feedback. Cacheable.
+  const stableSystemText = briefText
+    ? `${SYSTEM_PROMPT}\n\n${trunc(briefText, 12000)}${stableBlocks.join("")}`
+    : `${SYSTEM_PROMPT}${stableBlocks.join("")}`;
 
+  // User content: prompt del cliente + bloques dinámicos + adjuntos PDF.
+  const userText = buildUserPrompt(ctx) + dynamicBlocks.join("");
   const userContent: unknown =
     documentBlocks.length > 0
-      ? [...documentBlocks, { type: "text", text: buildUserPrompt(ctx) }]
-      : buildUserPrompt(ctx);
+      ? [...documentBlocks, { type: "text", text: userText }]
+      : userText;
 
   // Tool calling con tool_choice forzado: la única forma robusta de que
   // Sonnet 4.6 produzca output estructurado SIN razonar en voz alta. Cuando
@@ -682,8 +696,20 @@ async function generateWithClaude(
     },
   };
 
+  // System como ARRAY de bloques con cache_control ephemeral. Anthropic
+  // cachea el bloque (5 min de TTL) — el segundo intento, regeneraciones
+  // del mismo cliente o generaciones consecutivas dentro de la ventana
+  // pagan ~10% por estos tokens en vez del precio completo.
+  const systemBlocks = [
+    {
+      type: "text",
+      text: stableSystemText,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+
   async function callClaude(
-    system: string,
+    system: unknown,
     messages: Array<{ role: "user" | "assistant"; content: unknown }>,
   ) {
     const body: Record<string, unknown> = {
@@ -739,7 +765,7 @@ async function generateWithClaude(
   }
 
   // 1) Primera llamada con extended thinking.
-  let parsed = (await callClaude(fullSystem, [{ role: "user", content: userContent }])).parsed;
+  let parsed = (await callClaude(systemBlocks, [{ role: "user", content: userContent }])).parsed;
   let days = clampPlan(parsed);
   if (days.length === 0) throw new Error("Plan generado vacío");
 
@@ -786,7 +812,7 @@ ${JSON.stringify({ days }, null, 0).slice(0, 4000)}
 Devuelve el JSON entero corregido (con notes, supplementation y days). Sin markdown.`;
 
       const retry = await callClaude(
-        fullSystem,
+        systemBlocks,
         [{ role: "user", content: correction }],
       );
       const retryDays = clampPlan(retry.parsed);
