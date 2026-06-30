@@ -3,13 +3,12 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
-  Sparkles, Plus, Trash2, Loader2, FileText, ArrowLeft, ChevronDown, ChevronUp,
+  Plus, Trash2, Loader2, FileText, ArrowLeft, ChevronDown, ChevronUp,
   RotateCcw, AlertTriangle,
 } from "lucide-react";
 import {
   addOptionToMeal,
   deleteItem,
-  previewPlanGeneration,
   toggleItemSelected,
   selectExclusiveOption,
   updateOptionMacros,
@@ -23,10 +22,8 @@ import {
   moveMeal,
   updatePlanCopy,
   updatePlanMacroOverride,
-  type DraftPayload,
 } from "@/app/(panel)/planes/actions";
 import { MEAL_TYPE_OPTIONS } from "@/lib/nutrition";
-import { PlanReviewModal } from "@/components/PlanReviewModal";
 
 export type PlanBuilderOption = {
   id: string;
@@ -131,7 +128,8 @@ export function PlanBuilder({
   const [activeDayId, setActiveDayId] = useState<string | null>(
     initialDays[0]?.id ?? null,
   );
-  const [generatingAI, startGeneratingAI] = useTransition();
+  // (Eliminado: useTransition de generación IA. Los planes vienen ya
+  //  poblados desde plantilla — no se "genera" nada desde el builder.)
   const [notesDraft, setNotesDraft] = useState(initialNotes ?? "");
   const [supplementationDraft, setSupplementationDraft] = useState(initialSupplementation ?? "");
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -232,32 +230,6 @@ export function PlanBuilder({
     );
   }
 
-  // Modal de revisión: lo abrimos con el draft devuelto por previewPlanGeneration.
-  // Al aceptar/rechazar/regenerar, el ReviewModal se ocupa.
-  const [pendingReview, setPendingReview] = useState<{
-    draftId: string;
-    payload: DraftPayload;
-  } | null>(null);
-
-  function generateAI() {
-    if (
-      !confirm(
-        "La IA va a proponerte un plan nuevo. Lo verás en un panel antes de aplicarlo: podrás aceptarlo, rechazarlo o pedir un ajuste. Puede tardar 10-20 s. ¿Seguir?",
-      )
-    )
-      return;
-    const fd = new FormData();
-    fd.set("planId", planId);
-    startGeneratingAI(async () => {
-      const r = await previewPlanGeneration(fd);
-      if ("error" in r) {
-        alert(r.error);
-        return;
-      }
-      setPendingReview({ draftId: r.draftId, payload: r.payload });
-    });
-  }
-
   return (
     <div className={embedded ? "" : "mx-auto max-w-6xl"}>
       {/* Cabecera standalone (en /planes/[id]). Embebido en la ficha del
@@ -279,11 +251,8 @@ export function PlanBuilder({
                 {clientName}
               </p>
             </div>
-            {/* Botón "Generar plan" solo en pauta; los de competición se
-                construyen aplicando plantilla al crear. */}
-            {planKind !== "competition" ? (
-              <PlanGenerationButtons onAI={generateAI} busyAI={generatingAI} />
-            ) : null}
+            {/* (Eliminado el botón "Generar plan con IA". Los planes vienen
+                ya poblados desde plantilla al crearse.) */}
           </header>
         </>
       ) : null}
@@ -318,7 +287,7 @@ export function PlanBuilder({
       ) : null}
 
       {!activeDay ? (
-        <EmptyPlan onGenerate={generateAI} planId={planId} planKind={planKind} />
+        <EmptyPlan planKind={planKind} />
       ) : (
         <DayPanel
           day={activeDay}
@@ -400,45 +369,7 @@ export function PlanBuilder({
         </div>
       </section>
 
-      {pendingReview ? (
-        <PlanReviewModal
-          draftId={pendingReview.draftId}
-          payload={pendingReview.payload}
-          onClose={() => setPendingReview(null)}
-          onAccepted={() => {
-            setPendingReview(null);
-            window.location.reload();
-          }}
-          onRejected={() => setPendingReview(null)}
-        />
-      ) : null}
     </div>
-  );
-}
-
-// ── Botones de generación (HB + IA) ──────────────────────────────────────
-
-function PlanGenerationButtons({
-  onAI,
-  busyAI,
-}: {
-  onAI: () => void;
-  busyAI: boolean;
-}) {
-  // Boton unico: por dentro hace HB (recalcula objetivos) + IA (rellena
-  // opciones con alimentos y gramos).
-  return (
-    <button
-      type="button"
-      onClick={onAI}
-      disabled={busyAI}
-      className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md hover:opacity-90 disabled:opacity-60"
-      style={{ backgroundColor: "var(--c-primary)" }}
-      title="Harris-Benedict para objetivos + Claude para escribir cada opción con alimentos y gramos"
-    >
-      {busyAI ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-      Generar plan
-    </button>
   );
 }
 
@@ -521,16 +452,10 @@ function SummaryCard({
 
 // ── Estado vacío del plan ────────────────────────────────────────────────
 
-function EmptyPlan({
-  onGenerate,
-  planKind,
-}: {
-  onGenerate: () => void;
-  planId: string;
-  planKind: string;
-}) {
-  // Plan de competición vacío → mensaje específico: la generación viene de
-  // aplicar plantilla al crear; aquí no hay botón "Generar plan".
+function EmptyPlan({ planKind }: { planKind: string }) {
+  // Plan vacío: ya no hay botón "Generar plan" — los planes vienen poblados
+  // desde plantilla al crearse. Si el plan está vacío es porque el nutri
+  // borró todos los días manualmente.
   if (planKind === "competition") {
     return (
       <div className="rounded-2xl border border-dashed border-border bg-surface/50 p-12 text-center">
@@ -548,20 +473,9 @@ function EmptyPlan({
       <FileText size={28} className="mx-auto text-muted" />
       <p className="mt-3 font-medium">Este plan está vacío</p>
       <p className="mt-1 text-sm text-muted">
-        Pulsa <strong>Generar plan</strong> para crear un día con 5 comidas × 3 opciones rellenas
-        con alimentos y gramos. Internamente: Harris-Benedict calcula los macros objetivo del
-        cliente y la IA escribe cada opción siguiendo el brief.
+        Crea el plan desde la ficha del cliente eligiendo una plantilla en{" "}
+        <strong>Añadir plan</strong>, o añade los días y comidas a mano abajo.
       </p>
-      <div className="mt-4 flex justify-center">
-        <button
-          type="button"
-          onClick={onGenerate}
-          className="inline-flex items-center gap-1 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md hover:opacity-90"
-          style={{ backgroundColor: "var(--c-primary)" }}
-        >
-          <Sparkles size={14} /> Generar plan
-        </button>
-      </div>
     </div>
   );
 }
@@ -1074,7 +988,7 @@ function OptionRow({
             title="Recalcular macros con IA a partir del texto actual"
             className="ml-auto rounded-md p-1 text-muted hover:bg-surface hover:text-primary disabled:opacity-50"
           >
-            <Sparkles size={11} />
+            <RotateCcw size={11} />
           </button>
           <button
             type="button"
@@ -1144,7 +1058,7 @@ function OptionRow({
           title="Recalcular macros con IA a partir del texto actual"
           className="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-[11px] font-medium text-muted hover:border-primary hover:text-primary disabled:opacity-50"
         >
-          <Sparkles size={11} /> Recalcular macros
+          <RotateCcw size={11} /> Recalcular macros
         </button>
         <button
           type="button"

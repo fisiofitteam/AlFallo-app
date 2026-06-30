@@ -1,74 +1,43 @@
 import { requireProfessional } from "@/lib/session";
 import { CLIENT_ACCESS_ROLES } from "@/lib/clients";
-import { getAllBriefs } from "@/lib/aiBrief";
 import { getAllSpecialConsiderations } from "@/lib/specialConsiderations";
-import { prisma } from "@/lib/prisma";
-import { AIBriefEditor } from "@/components/AIBriefEditor";
+import { SpecialConsiderationsEditor } from "@/components/SpecialConsiderationsEditor";
 
-export const metadata = { title: "Brief IA · Biblioteca" };
+export const metadata = { title: "Consideraciones especiales · Biblioteca" };
 export const dynamic = "force-dynamic";
 
-export default async function BriefIATab() {
+/**
+ * Esta página antes contenía el brief de IA + reglas IA + feedback IA.
+ * Con el cambio a plantillas (la IA no genera planes desde brief) todo
+ * eso quedó muerto. Solo se mantiene el CRUD de Consideraciones
+ * Especiales porque los nutris las siguen marcando en la ficha del
+ * cliente y se muestran en el listado y la ficha.
+ *
+ * La URL legacy `/biblioteca/brief-ia` se conserva para no romper enlaces
+ * guardados; el label de la tab se actualiza a "Consideraciones".
+ */
+export default async function ConsideracionesPage() {
   const prof = await requireProfessional();
   if (!CLIENT_ACCESS_ROLES.includes(prof.role)) {
     return (
       <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-        Solo el equipo de nutrición puede editar los briefs del generador IA.
+        Solo el equipo de nutrición puede editar las consideraciones especiales.
       </p>
     );
   }
-  const [briefs, specials, rules, feedback] = await Promise.all([
-    getAllBriefs(),
-    getAllSpecialConsiderations(),
-    prisma.planGenerationRule.findMany({
-      orderBy: { order: "asc" },
-    }),
-    prisma.planGenerationFeedback.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 40,
-    }),
-  ]);
-
-  // Para enriquecer el feedback con el nombre del cliente y plan (si siguen
-  // existiendo). Recogemos los IDs únicos y consultamos en bloque.
-  const clientIds = Array.from(new Set(feedback.map((f) => f.clientId).filter(Boolean) as string[]));
-  const planIds = Array.from(new Set(feedback.map((f) => f.planId).filter(Boolean) as string[]));
-  const [clients, plans] = await Promise.all([
-    clientIds.length
-      ? prisma.client.findMany({
-          where: { id: { in: clientIds } },
-          select: { id: true, fullName: true },
-        })
-      : [],
-    planIds.length
-      ? prisma.nutritionPlan.findMany({
-          where: { id: { in: planIds } },
-          select: { id: true, name: true },
-        })
-      : [],
-  ]);
-  const clientNameById = new Map(clients.map((c) => [c.id, c.fullName]));
-  const planNameById = new Map(plans.map((p) => [p.id, p.name]));
+  const specials = await getAllSpecialConsiderations();
 
   return (
-    <AIBriefEditor
-      initial={briefs}
-      initialSpecial={specials}
-      initialRules={rules.map((r) => ({
-        id: r.id,
-        text: r.text,
-        active: r.active,
-        order: r.order,
-        createdAt: r.createdAt.toISOString(),
-      }))}
-      initialFeedback={feedback.map((f) => ({
-        id: f.id,
-        verdict: f.verdict as "good" | "bad",
-        reason: f.reason,
-        clientName: f.clientId ? clientNameById.get(f.clientId) ?? null : null,
-        planName: f.planId ? planNameById.get(f.planId) ?? null : null,
-        createdAt: f.createdAt.toISOString(),
-      }))}
-    />
+    <div className="space-y-4">
+      <header>
+        <h1 className="text-2xl font-bold">Consideraciones especiales</h1>
+        <p className="text-sm text-muted">
+          Etiquetas con descripción que el nutri puede marcar en la ficha de un cliente:
+          alergias frecuentes, patologías, restricciones puntuales, etc. Se ven en el listado
+          de clientes y en su ficha.
+        </p>
+      </header>
+      <SpecialConsiderationsEditor initial={specials} />
+    </div>
   );
 }

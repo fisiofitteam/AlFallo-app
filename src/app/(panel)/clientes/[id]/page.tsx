@@ -102,13 +102,26 @@ export default async function ClientDetailPage({
   // selector de la pestaña "Ficha nutricional".
   const specialConsiderations = await getAllSpecialConsiderations();
   const selectedConsiderationIds = client.profile?.specialConsiderationIds ?? [];
-  // Plantillas de competición disponibles para el selector "Plan de
-  // competición" al añadir un plan. Las gestiona el equipo en Biblioteca.
+  // Plantillas disponibles al añadir un plan: pauta (NutritionTemplate) +
+  // competición (CompetitionPlanTemplate). Las gestiona el equipo en
+  // Biblioteca.
   const competitionTemplates = await getAllCompetitionTemplates();
   const competitionTemplateOptions = competitionTemplates.map((t) => ({
     id: t.id,
     name: t.name,
     description: t.description,
+  }));
+  const { listTemplates: listNutritionTemplates } = await import(
+    "@/lib/nutritionTemplates"
+  );
+  const nutritionTemplates = await listNutritionTemplates();
+  const nutritionTemplateOptions = nutritionTemplates.map((t) => ({
+    id: t.id,
+    sex: t.sex,
+    goal: t.goal,
+    name: t.name,
+    description: t.description,
+    macros: t.macros,
   }));
 
   // Pestañas Plan/Semanal: galería ↔ detalle.
@@ -264,9 +277,9 @@ export default async function ClientDetailPage({
                   clientId={client.id}
                   plans={client.plans.map((p) => ({ id: p.id, name: p.name, kind: p.kind }))}
                   selectedPlanId={activePlanData.plan.id}
-                  goalOptions={GOAL_OPTIONS}
-                  considerations={specialConsiderations.map((c) => ({ id: c.id, title: c.title }))}
                   competitionTemplates={competitionTemplateOptions}
+                  nutritionTemplates={nutritionTemplateOptions}
+                  defaultSex={client.profile?.sex ?? null}
                 />
                 {active === "plan" ? (
                   <PlanBuilder
@@ -312,15 +325,15 @@ export default async function ClientDetailPage({
                   </div>
                   <AddPlanButton
                     clientId={client.id}
-                    goalOptions={GOAL_OPTIONS}
-                    considerations={specialConsiderations.map((c) => ({ id: c.id, title: c.title }))}
                     competitionTemplates={competitionTemplateOptions}
+                    nutritionTemplates={nutritionTemplateOptions}
+                    defaultSex={client.profile?.sex ?? null}
                   />
                 </div>
                 {planCards.length === 0 ? (
                   <p className="rounded-2xl border border-dashed border-border bg-surface/50 p-8 text-center text-sm text-muted">
-                    Aún no hay planes. Pulsa "Añadir plan" arriba para crear el primero. Podrás darle
-                    a la IA tus instrucciones, elegir un objetivo concreto y una consideración especial.
+                    Aún no hay planes. Pulsa "Añadir plan" arriba para crear el primero. Elegirás
+                    una plantilla (sexo + objetivo) y se copiará editable.
                   </p>
                 ) : (
                   <PlanCards mode="panel" clientId={client.id} plans={planCards} />

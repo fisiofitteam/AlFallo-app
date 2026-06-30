@@ -13,7 +13,7 @@ export const LIBRARY_TABS: LibraryTab[] = [
   { href: "/biblioteca/plantillas", label: "Plantillas nutricionales", emoji: "📋" },
   { href: "/biblioteca/videos", label: "Vídeos", emoji: "🎥" },
   { href: "/biblioteca/onboarding", label: "Formulario inicial", emoji: "📋" },
-  { href: "/biblioteca/brief-ia", label: "Brief IA", emoji: "🤖" },
+  { href: "/biblioteca/brief-ia", label: "Consideraciones especiales", emoji: "🧾" },
   { href: "/biblioteca/competicion", label: "Plantillas de competición", emoji: "🏆" },
   { href: "/biblioteca/landings", label: "Landings", emoji: "🌐" },
 ];
