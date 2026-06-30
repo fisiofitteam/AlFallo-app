@@ -630,8 +630,14 @@ async function generateWithClaude(
     ? `${SYSTEM_PROMPT}\n\n${trunc(briefText, 12000)}${stableBlocks.join("")}`
     : `${SYSTEM_PROMPT}${stableBlocks.join("")}`;
 
-  // User content: prompt del cliente + bloques dinámicos + adjuntos PDF.
-  const userText = buildUserPrompt(ctx) + dynamicBlocks.join("");
+  // User content:
+  //   1) Bloques dinámicos (consideraciones, instrucciones del nutri,
+  //      ajuste, competición) → PRIMERO. Si los ponemos detrás de
+  //      buildUserPrompt quedan después del JSON de ejemplo y de la
+  //      instrucción "Devuelve SOLO el JSON" — la IA los lee como ruido.
+  //   2) buildUserPrompt con los macros objetivo, restricciones, INSTRUCCIONES
+  //      y ejemplo JSON al final. Es lo último que lee → es lo que ejecuta.
+  const userText = dynamicBlocks.join("") + buildUserPrompt(ctx);
   const userContent: unknown =
     documentBlocks.length > 0
       ? [...documentBlocks, { type: "text", text: userText }]
