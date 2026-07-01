@@ -140,43 +140,93 @@ export function estimateMacrosFallback(text: string): MacroEstimateResult {
   };
 }
 
-/** Llama a Anthropic Claude para estimar macros. Lanza si no hay API key o falla la llamada. */
+/** Llama a Anthropic Claude para estimar macros. Lanza si no hay API key o falla la llamada.
+ *
+ *  IMPLEMENTACIÓN 2026-07: tool_choice forzado + temperature 0. Esto hace
+ *  que la estimación sea prácticamente determinista — dos llamadas con el
+ *  mismo texto devuelven los mismos números, y pequeños cambios (bajar
+ *  90g → 80g de avena) escalan proporcionalmente sin saltos raros.
+ *  Con text-only + temperature default el modelo variaba ±5-10 % entre
+ *  llamadas casi idénticas, dando la sensación de que "al bajar gramos
+ *  suben los carbos". */
 async function estimateMacrosClaude(text: string): Promise<MacroEstimateResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("No ANTHROPIC_API_KEY");
 
   const SYSTEM = `Eres un nutricionista experto y meticuloso con los números. Estimas macros de comidas para atletas de CrossFit/Hyrox usando tablas nutricionales estándar (BEDCA, USDA).
 
-Devuelves SIEMPRE un JSON exacto con esta forma:
-{
-  "protein": <gramos totales>,
-  "carbs": <gramos totales>,
-  "fat": <gramos totales>,
-  "kcal": <kcal totales>,
-  "ingredients": [
-    { "name": "<alimento>", "quantityG": <gramos>, "category": "<categoria>" }
-  ]
-}
-Sin texto adicional. Sin markdown. Solo el JSON.
+Tu ÚNICA salida es llamar a la tool submit_estimate con los macros calculados.
 
 REGLAS DE PRECISIÓN (críticas):
-1. Calcula MENTALMENTE ingrediente a ingrediente, sumando al final. NO redondees a ojo el total.
-2. Las kcal DEBEN cuadrar con la fórmula 4·proteína + 9·grasa + 4·carbos. Si no cuadran, has hecho mal alguna cifra → recalcula.
-3. Convierte ml de líquidos a gramos (250 ml leche → 250 g) y unidades a gramos estándar (1 huevo M → 50 g, 1 plátano mediano → 120 g, 1 manzana → 200 g, 1 yogur natural → 125 g).
-4. Macros TOTALES de la comida descrita (no por 100 g). Si falta cantidad, asume ración estándar de atleta adulto.
+1. Calcula ingrediente a ingrediente. Multiplica (gramos / 100) por la tabla de referencia y suma. NO estimes a ojo el total.
+2. Las kcal DEBEN cuadrar con la fórmula 4·proteína + 9·grasa + 4·carbos. Si tras sumar no cuadran, has hecho mal alguna cifra intermedia → recalcula esa cifra ANTES de llamar a la tool.
+3. Convierte ml de líquidos a gramos (250 ml leche → 250 g) y unidades a gramos estándar:
+   · 1 huevo M → 50 g
+   · 1 plátano mediano → 120 g
+   · 1 manzana → 200 g
+   · 1 yogur natural → 125 g
+   · 1 rebanada de pan → 30 g
+4. Macros TOTALES de la comida descrita (no por 100 g). Si falta cantidad de algún alimento, asume ración estándar de atleta adulto (100 g proteína, 60 g fruta, 30 g grasa).
+5. DETERMINISMO: si un ingrediente se repite en dos llamadas distintas, usa EXACTAMENTE los mismos macros por 100 g. No introduzcas variabilidad "clínica".
 
 En "ingredients" desglosa cada alimento individual con su cantidad en gramos. Categorías válidas: proteina | carbohidrato | grasa | verdura | lacteo | suplemento | otro.
 
-Ejemplos de referencia rápidos (kcal/100 g):
+Tabla de referencia rápida (kcal/100 g):
 - avena: 380 (P13, C66, G7)
 - leche semi: 47 (P3.3, C5, G1.6)
 - whey: 380 (P75, C8, G6)
 - plátano: 89 (P1, C23, G0.3)
 - pollo pechuga: 110 (P23, C0, G1.5)
+- pavo pechuga: 105 (P22, C0, G1.5)
+- ternera magra: 190 (P26, C0, G9)
+- salmón: 210 (P20, C0, G14)
+- atún natural: 130 (P29, C0, G1)
 - arroz cocido: 130 (P3, C28, G0.3)
+- pasta cocida: 160 (P5, C31, G1)
+- patata cocida: 85 (P2, C19, G0.1)
+- boniato: 90 (P2, C21, G0.1)
+- pan: 260 (P9, C50, G3)
 - huevo entero: 155 (P13, C1, G11)
+- clara: 50 (P11, C1, G0)
 - aguacate: 160 (P2, C9, G15)
-- yogur natural: 60 (P4, C5, G3)`;
+- aceite oliva: 900 (P0, C0, G100)
+- yogur natural: 60 (P4, C5, G3)
+- yogur griego: 130 (P9, C4, G10)
+- queso curado: 400 (P25, C1, G33)
+- almendras: 580 (P21, C22, G50)
+- lentejas cocidas: 115 (P9, C20, G0.4)
+- garbanzos cocidos: 120 (P8, C22, G1.5)
+- brócoli: 34 (P3, C7, G0.4)`;
+
+  const estimateTool = {
+    name: "submit_estimate",
+    description: "Entrega la estimación de macros calculada.",
+    input_schema: {
+      type: "object",
+      required: ["protein", "carbs", "fat", "kcal"],
+      properties: {
+        protein: { type: "number", description: "gramos totales" },
+        carbs: { type: "number", description: "gramos totales" },
+        fat: { type: "number", description: "gramos totales" },
+        kcal: { type: "number", description: "kcal totales, coherentes con 4·P + 9·G + 4·C" },
+        ingredients: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["name", "quantityG"],
+            properties: {
+              name: { type: "string" },
+              quantityG: { type: "number" },
+              category: {
+                type: "string",
+                description: "proteina|carbohidrato|grasa|verdura|lacteo|suplemento|otro",
+              },
+            },
+          },
+        },
+      },
+    },
+  };
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -186,13 +236,18 @@ Ejemplos de referencia rápidos (kcal/100 g):
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      // Subido de Haiku a Sonnet 4.6: notablemente más preciso con números
-      // pequeños (macros). Latencia ~2-4 s y coste ~10x mayor que Haiku,
-      // pero merece la pena por la fiabilidad del cálculo.
       model: "claude-sonnet-4-6",
       max_tokens: 600,
+      // temperature 0 = máxima consistencia. Dos llamadas con el mismo
+      // texto devuelven los mismos números (o casi, hay ligera aleatoriedad
+      // interna de sampling que Anthropic no elimina totalmente).
+      temperature: 0,
       system: SYSTEM,
       messages: [{ role: "user", content: text }],
+      tools: [estimateTool],
+      // tool_choice forzado: el modelo DEBE llamar submit_estimate → no
+      // puede responder por texto ni razonar en voz alta.
+      tool_choice: { type: "tool", name: "submit_estimate" },
     }),
   });
 
@@ -201,12 +256,16 @@ Ejemplos de referencia rápidos (kcal/100 g):
     throw new Error(`Claude API ${res.status}: ${errText.slice(0, 200)}`);
   }
 
-  const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-  const reply = data.content?.find((c) => c.type === "text")?.text ?? "";
-  // Busca el JSON en la respuesta (por si Claude añade algo)
-  const jsonMatch = reply.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("Claude no devolvió JSON parseable");
-  const parsed = JSON.parse(jsonMatch[0]) as Partial<Macros> & { ingredients?: unknown };
+  const data = (await res.json()) as {
+    content?: Array<{ type: string; name?: string; input?: unknown }>;
+  };
+  const toolBlock = data.content?.find(
+    (c) => c.type === "tool_use" && c.name === "submit_estimate",
+  );
+  if (!toolBlock || !toolBlock.input) {
+    throw new Error("Claude no llamó a submit_estimate");
+  }
+  const parsed = toolBlock.input as Partial<Macros> & { ingredients?: unknown };
 
   const protein = round1(Number(parsed.protein) || 0);
   const carbs = round1(Number(parsed.carbs) || 0);
