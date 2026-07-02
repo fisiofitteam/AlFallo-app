@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getActiveProfessional } from "@/lib/session";
-import { isManager } from "@/lib/roles";
+import { CLIENT_ACCESS_ROLES } from "@/lib/clients";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,9 +40,9 @@ export async function POST(req: Request) {
           console.warn("[upload-doc] no professional in session");
           throw new Error("No hay sesión activa. Vuelve a iniciar sesión.");
         }
-        if (!isManager(prof.role)) {
-          console.warn("[upload-doc] non-manager attempted upload", prof.role);
-          throw new Error("Solo CEO y Head Coach pueden subir archivos de brief.");
+        if (!CLIENT_ACCESS_ROLES.includes(prof.role)) {
+          console.warn("[upload-doc] role without library access", prof.role);
+          throw new Error("Solo el equipo de nutrición puede subir archivos.");
         }
         return {
           allowedContentTypes: [

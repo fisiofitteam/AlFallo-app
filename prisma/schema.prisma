@@ -71,6 +71,8 @@ model Professional {
   competitionTemplatesCreated CompetitionPlanTemplate[] @relation("CompetitionTemplateCreator")
   // Plantillas nutricionales (regulares) creadas por este profesional.
   nutritionTemplatesCreated NutritionTemplate[] @relation("NutritionTemplateCreator")
+  // Última edición del brief de macros (singleton).
+  macroBriefEdits MacroBrief[] @relation("MacroBriefEditor")
 
   @@index([role])
 }
@@ -1408,6 +1410,20 @@ model CompetitionPlanTemplate {
   createdBy       Professional? @relation("CompetitionTemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// Brief de macros (SINGLETON — solo hay una fila). Se pasa al estimador
+// de macros junto con el texto de cada opción para que la IA use las
+// tablas de equivalencias del equipo (Excel/CSV/PDF) como referencia.
+// El campo `attachments` guarda un JSON con la lista de ficheros subidos
+// a Vercel Blob: [{ url, name }].
+model MacroBrief {
+  id          String   @id @default(cuid())
+  notes       String?
+  attachments Json     @default("[]")
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+  updatedBy   Professional? @relation("MacroBriefEditor", fields: [updatedById], references: [id], onDelete: SetNull)
 }
 
 // Plantilla nutricional reutilizable. Reemplaza el flujo de "generar plan

@@ -146,14 +146,26 @@ export function estimateMacrosFallback(text: string): MacroEstimateResult {
  *  que la estimación sea prácticamente determinista — dos llamadas con el
  *  mismo texto devuelven los mismos números, y pequeños cambios (bajar
  *  90g → 80g de avena) escalan proporcionalmente sin saltos raros.
- *  Con text-only + temperature default el modelo variaba ±5-10 % entre
- *  llamadas casi idénticas, dando la sensación de que "al bajar gramos
- *  suben los carbos". */
+ *
+ *  Además inyecta el BRIEF DE MACROS del equipo (/biblioteca/brief-macros):
+ *  notas + adjuntos Excel/CSV/PDF con tablas de equivalencias. La IA lo
+ *  usa como referencia PRIORITARIA para los alimentos que aparezcan en
+ *  ellos. Los adjuntos estables se cachean con prompt caching. */
 async function estimateMacrosClaude(text: string): Promise<MacroEstimateResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("No ANTHROPIC_API_KEY");
 
-  const SYSTEM = `Eres un nutricionista experto y meticuloso con los números. Estimas macros de comidas para atletas de CrossFit/Hyrox usando tablas nutricionales estándar (BEDCA, USDA).
+  // Cargamos el brief de macros para meterlo como contexto estable en el
+  // system prompt (cacheable). Si no hay brief o falla la carga, seguimos
+  // sin él — mejor estimar sin brief que romper.
+  const briefBlocks = await loadMacroBriefBlocks();
+
+  const BRIEF_INSTRUCTION = briefBlocks.hasBrief
+    ? `\n\n⛔ FUENTE DE VERDAD PRIORITARIA — BRIEF DE MACROS DEL EQUIPO:
+Antes de estimar, LEE el brief y sus adjuntos (arriba en este system + PDFs en el user message). Si el alimento aparece en las tablas del brief, usa EXACTAMENTE los macros del brief — ganan sobre la tabla de referencia rápida de abajo. Solo para alimentos que NO estén en el brief, tira de la tabla de referencia y de BEDCA/USDA.`
+    : "";
+
+  const SYSTEM = `Eres un nutricionista experto y meticuloso con los números. Estimas macros de comidas para atletas de CrossFit/Hyrox usando tablas nutricionales estándar (BEDCA, USDA).${BRIEF_INSTRUCTION}${briefBlocks.notesBlock}${briefBlocks.textAttachmentsBlock}
 
 Tu ÚNICA salida es llamar a la tool submit_estimate con los macros calculados.
 
@@ -228,6 +240,23 @@ Tabla de referencia rápida (kcal/100 g):
     },
   };
 
+  // System como array con cache_control ephemeral: el brief cambia poco;
+  // dos llamadas seguidas dentro de 5 min pagan ~10% por estos tokens.
+  const systemBlocks = [
+    {
+      type: "text",
+      text: SYSTEM,
+      cache_control: { type: "ephemeral" as const },
+    },
+  ];
+
+  // El user content lleva los PDFs del brief (bloques document) + el texto
+  // de la opción a estimar. Los PDFs se cargan una vez y aprovechan cache.
+  const userContent: unknown =
+    briefBlocks.pdfBlocks.length > 0
+      ? [...briefBlocks.pdfBlocks, { type: "text", text }]
+      : text;
+
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -242,8 +271,8 @@ Tabla de referencia rápida (kcal/100 g):
       // texto devuelven los mismos números (o casi, hay ligera aleatoriedad
       // interna de sampling que Anthropic no elimina totalmente).
       temperature: 0,
-      system: SYSTEM,
-      messages: [{ role: "user", content: text }],
+      system: systemBlocks,
+      messages: [{ role: "user", content: userContent }],
       tools: [estimateTool],
       // tool_choice forzado: el modelo DEBE llamar submit_estimate → no
       // puede responder por texto ni razonar en voz alta.
@@ -316,6 +345,76 @@ Tabla de referencia rápida (kcal/100 g):
     source: "ai",
     ingredients: ingredients.length > 0 ? ingredients : undefined,
   };
+}
+
+/** Bloques del brief de macros del equipo para inyectar en la llamada:
+ *   · notesBlock: string con las notas escritas por el nutri (o "").
+ *   · textAttachmentsBlock: string con el texto extraído de Excel/CSV/TXT.
+ *   · pdfBlocks: array de bloques `document` con los PDF en base64 para
+ *     el user message (Claude los lee nativos).
+ *   · hasBrief: bandera para saber si añadir la instrucción de prioridad.
+ *
+ *  Si el brief no existe o falla la descarga, devuelve todo vacío y el
+ *  estimador sigue funcionando con solo la tabla de referencia interna. */
+async function loadMacroBriefBlocks(): Promise<{
+  notesBlock: string;
+  textAttachmentsBlock: string;
+  pdfBlocks: Array<{
+    type: "document";
+    source: { type: "base64"; media_type: "application/pdf"; data: string };
+    title?: string;
+  }>;
+  hasBrief: boolean;
+}> {
+  try {
+    const { getMacroBrief } = await import("@/lib/macroBrief");
+    const { fetchAttachmentContent } = await import("@/lib/macroBriefContent");
+    const brief = await getMacroBrief();
+
+    const hasNotes = !!(brief.notes && brief.notes.trim().length > 0);
+    const hasAttachments = brief.attachments.length > 0;
+    if (!hasNotes && !hasAttachments) {
+      return { notesBlock: "", textAttachmentsBlock: "", pdfBlocks: [], hasBrief: false };
+    }
+
+    const notesBlock = hasNotes
+      ? `\n\n=== NOTAS DEL BRIEF DE MACROS ===\n${brief.notes!.trim()}`
+      : "";
+
+    const textParts: string[] = [];
+    const pdfBlocks: Array<{
+      type: "document";
+      source: { type: "base64"; media_type: "application/pdf"; data: string };
+      title?: string;
+    }> = [];
+
+    for (const att of brief.attachments) {
+      const content = await fetchAttachmentContent(att);
+      if (!content) continue;
+      if (content.kind === "pdf") {
+        pdfBlocks.push({
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data: content.base64 },
+          title: att.name,
+        });
+      } else {
+        textParts.push(`\n\n[ADJUNTO · ${att.name}]\n${content.text}`);
+      }
+    }
+    const textAttachmentsBlock = textParts.length > 0
+      ? `\n\n=== TABLAS DEL BRIEF (adjuntos texto/Excel/CSV) ===${textParts.join("")}`
+      : "";
+
+    return {
+      notesBlock,
+      textAttachmentsBlock,
+      pdfBlocks,
+      hasBrief: hasNotes || textParts.length > 0 || pdfBlocks.length > 0,
+    };
+  } catch (e) {
+    console.warn("[macroEstimator] loadMacroBriefBlocks failed:", (e as Error).message);
+    return { notesBlock: "", textAttachmentsBlock: "", pdfBlocks: [], hasBrief: false };
+  }
 }
 
 /** Entrada principal: intenta IA y cae a fallback si falla. Nunca lanza. */
