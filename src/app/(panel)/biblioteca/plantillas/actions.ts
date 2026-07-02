@@ -64,6 +64,30 @@ export async function deleteNutritionTemplate(formData: FormData) {
   revalidatePath("/biblioteca/plantillas");
 }
 
+/** Duplica una plantilla existente. Copia todos los campos y añade "(copia)"
+ *  al nombre. Redirige al editor para que se pueda renombrar y ajustar. */
+export async function duplicateNutritionTemplate(formData: FormData): Promise<void> {
+  const prof = await requireAccess();
+  const id = String(formData.get("id"));
+  const src = await prisma.nutritionTemplate.findUnique({ where: { id } });
+  if (!src) throw new Error("Plantilla no encontrada.");
+
+  const copy = await prisma.nutritionTemplate.create({
+    data: {
+      sex: src.sex,
+      goal: src.goal,
+      name: `${src.name} (copia)`.slice(0, 200),
+      description: src.description,
+      notes: src.notes,
+      supplementation: src.supplementation,
+      structure: src.structure as Prisma.InputJsonValue,
+      createdById: prof.id,
+    },
+  });
+  revalidatePath("/biblioteca/plantillas");
+  redirect(`/biblioteca/plantillas/${copy.id}`);
+}
+
 /** Guarda la plantilla entera. El cliente serializa la estructura en un
  *  hidden `structureJson` y la mandamos en un solo submit. */
 export async function saveNutritionTemplate(formData: FormData) {

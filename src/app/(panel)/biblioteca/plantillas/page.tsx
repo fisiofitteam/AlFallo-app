@@ -13,7 +13,11 @@ import {
   type TemplateSex,
   type TemplateGoal,
 } from "@/lib/nutritionTemplates";
-import { createNutritionTemplate, deleteNutritionTemplate } from "./actions";
+import {
+  createNutritionTemplate,
+  deleteNutritionTemplate,
+  duplicateNutritionTemplate,
+} from "./actions";
 
 export const metadata = { title: "Plantillas nutricionales · Al Fallo" };
 export const dynamic = "force-dynamic";
@@ -137,23 +141,35 @@ export default async function Page({
                   <MacroPill label="G" value={t.macros.fat} suffix="g" />
                 </div>
 
-                <div className="mt-auto flex items-center justify-between pt-3">
+                <div className="mt-auto flex items-center justify-between gap-2 pt-3">
                   <Link
                     href={`/biblioteca/plantillas/${t.id}`}
                     className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg hover:opacity-90"
                   >
                     Abrir →
                   </Link>
-                  <form action={deleteNutritionTemplate}>
-                    <input type="hidden" name="id" value={t.id} />
-                    <button
-                      type="submit"
-                      className="text-[11px] text-muted hover:text-red-600"
-                      title="Borrar plantilla"
-                    >
-                      Borrar
-                    </button>
-                  </form>
+                  <div className="flex items-center gap-3">
+                    <form action={duplicateNutritionTemplate}>
+                      <input type="hidden" name="id" value={t.id} />
+                      <button
+                        type="submit"
+                        className="text-[11px] font-semibold text-muted hover:text-primary"
+                        title="Duplicar plantilla"
+                      >
+                        Duplicar
+                      </button>
+                    </form>
+                    <form action={deleteNutritionTemplate}>
+                      <input type="hidden" name="id" value={t.id} />
+                      <button
+                        type="submit"
+                        className="text-[11px] text-muted hover:text-red-600"
+                        title="Borrar plantilla"
+                      >
+                        Borrar
+                      </button>
+                    </form>
+                  </div>
                 </div>
               </article>
             </li>
