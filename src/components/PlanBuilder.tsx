@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   Plus, Trash2, Loader2, FileText, ArrowLeft, ChevronDown, ChevronUp,
-  RotateCcw, AlertTriangle,
+  RotateCcw, AlertTriangle, StickyNote,
 } from "lucide-react";
 import {
   addOptionToMeal,
@@ -12,6 +12,7 @@ import {
   toggleItemSelected,
   selectExclusiveOption,
   updateOptionMacros,
+  updateOptionNote,
   updateOptionText,
   updateOptionTextAndEstimate,
   addDay,
@@ -35,6 +36,9 @@ export type PlanBuilderOption = {
   selected: boolean;
   /** Solo en comida/cena: intro|grasas|carbos|proteina|postre. */
   subType: string | null;
+  /** Nota libre para el atleta (elaboración, tip, aclaración). No entra en
+   *  el cálculo de macros ni en la lista de la compra. */
+  note: string | null;
 };
 
 const SUB_GROUPS: { value: string; label: string }[] = [
@@ -873,6 +877,25 @@ function OptionRow({
   const [savingPending, startSaving] = useTransition();
   const textTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const macroTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Panel de notas: abierto si ya hay nota guardada, o si el nutri lo abre.
+  const [showNote, setShowNote] = useState<boolean>(
+    typeof option.note === "string" && option.note.trim().length > 0,
+  );
+
+  function saveNoteDebounced(value: string) {
+    onPatch({ note: value });
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => {
+      const fd = new FormData();
+      fd.set("planId", planId);
+      fd.set("itemId", option.id);
+      fd.set("note", value);
+      startSaving(async () => {
+        await updateOptionNote(fd);
+      });
+    }, 800);
+  }
 
   function saveTextDebounced(value: string) {
     onPatch({ text: value });
@@ -1013,6 +1036,13 @@ function OptionRow({
           placeholder="Alimento + cantidad (ej. 150 g pollo)"
           className="w-full resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-xs outline-none focus:border-primary"
         />
+        <NoteBlock
+          note={option.note}
+          open={showNote}
+          onOpen={() => setShowNote(true)}
+          onChange={saveNoteDebounced}
+          compact
+        />
       </div>
     );
   }
@@ -1078,6 +1108,63 @@ function OptionRow({
         placeholder="Describe la opción (ej. Tostada con 100gr pan integral con 1/4 de aguacate, 1 loncha de queso havarti…)"
         className="w-full resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-primary"
       />
+      <NoteBlock
+        note={option.note}
+        open={showNote}
+        onOpen={() => setShowNote(true)}
+        onChange={saveNoteDebounced}
+      />
+    </div>
+  );
+}
+
+// Bloque de notas para una opción. Texto libre, no afecta a macros. Colapsado
+// por defecto salvo que ya haya nota. Compact = versión estrecha para las
+// opciones agrupadas de comida/cena.
+function NoteBlock({
+  note,
+  open,
+  onOpen,
+  onChange,
+  compact = false,
+}: {
+  note: string | null;
+  open: boolean;
+  onOpen: () => void;
+  onChange: (v: string) => void;
+  compact?: boolean;
+}) {
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className={
+          compact
+            ? "mt-1.5 inline-flex items-center gap-1 rounded-md border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted hover:border-primary hover:text-primary"
+            : "mt-2 inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-primary"
+        }
+      >
+        <StickyNote size={compact ? 10 : 11} /> Añadir notas
+      </button>
+    );
+  }
+  return (
+    <div className={compact ? "mt-1.5" : "mt-2"}>
+      <label className={compact ? "block text-[9px]" : "block text-[11px]"}>
+        <span className="font-semibold text-muted">Notas para el atleta</span>
+        <textarea
+          value={note ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          rows={2}
+          placeholder="Ej. Elaborar al horno 20 min a 180 ºC. Puedes cambiar el arroz por quinoa."
+          className={
+            compact
+              ? "mt-0.5 w-full resize-none rounded-md border border-border bg-bg px-2 py-1.5 text-xs outline-none focus:border-primary"
+              : "mt-0.5 w-full resize-none rounded-lg border border-border bg-bg px-3 py-1.5 text-sm outline-none focus:border-primary"
+          }
+        />
+      </label>
     </div>
   );
 }

@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Save, Plus, Trash2, Sparkles } from "lucide-react";
+import { Check, Loader2, Save, Plus, Trash2, Sparkles, StickyNote } from "lucide-react";
 import {
   TEMPLATE_SEXES,
   TEMPLATE_GOALS,
   TEMPLATE_SEX_LABELS,
   TEMPLATE_GOAL_LABELS,
+  isComposedMeal,
   sumCanonicalDay,
   type TemplateStructure,
   type TemplateDay,
@@ -83,32 +84,46 @@ export function NutritionTemplateEditor({ initial }: Props) {
 
   const macros = useMemo(() => sumCanonicalDay(day), [day]);
 
-  function updateMeal(mealName: string, fn: (m: TemplateDay["meals"][number]) => TemplateDay["meals"][number]) {
+  // Mutamos por índice de comida en vez de por nombre — el nutri puede
+  // renombrar libremente y el nombre deja de ser identificador único.
+  function updateMeal(mealIndex: number, fn: (m: TemplateDay["meals"][number]) => TemplateDay["meals"][number]) {
     setDay((d) => ({
       ...d,
-      meals: d.meals.map((m) => (m.name === mealName ? fn(m) : m)),
+      meals: d.meals.map((m, i) => (i === mealIndex ? fn(m) : m)),
     }));
   }
 
-  function setOption(mealName: string, index: number, patch: Partial<TemplateOption>) {
-    updateMeal(mealName, (m) => ({
+  function setMealName(mealIndex: number, name: string) {
+    updateMeal(mealIndex, (m) => ({ ...m, name }));
+  }
+
+  function setOption(mealIndex: number, index: number, patch: Partial<TemplateOption>) {
+    updateMeal(mealIndex, (m) => ({
       ...m,
       options: m.options.map((o, i) => (i === index ? { ...o, ...patch } : o)),
     }));
   }
 
-  function addOption(mealName: string, subType?: string) {
-    updateMeal(mealName, (m) => ({
+  function addOption(mealIndex: number, subType?: string) {
+    updateMeal(mealIndex, (m) => ({
       ...m,
       options: [
         ...m.options,
-        { text: "", kcal: 0, protein: 0, carbs: 0, fat: 0, subType: subType ?? null },
+        {
+          text: "",
+          kcal: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+          subType: subType ?? null,
+          note: null,
+        },
       ],
     }));
   }
 
-  function removeOption(mealName: string, index: number) {
-    updateMeal(mealName, (m) => ({
+  function removeOption(mealIndex: number, index: number) {
+    updateMeal(mealIndex, (m) => ({
       ...m,
       options: m.options.filter((_, i) => i !== index),
     }));
@@ -205,12 +220,20 @@ export function NutritionTemplateEditor({ initial }: Props) {
       </header>
 
       {/* Comidas */}
-      {day.meals.map((meal) => {
-        const isComposed = meal.name === "comida" || meal.name === "cena";
+      {day.meals.map((meal, mealIdx) => {
+        const composed = isComposedMeal(meal);
+        // Label por defecto: si el nombre coincide con un slug conocido,
+        // mostramos el bonito; si el nutri lo renombró, respetamos lo suyo.
+        const defaultLabel = MEAL_LABELS[meal.name] ?? meal.name;
         return (
-          <section key={meal.name} className="rounded-2xl border border-border bg-surface p-4">
-            <h2 className="mb-3 text-base font-bold">{MEAL_LABELS[meal.name] ?? meal.name}</h2>
-            {isComposed ? (
+          <section key={mealIdx} className="rounded-2xl border border-border bg-surface p-4">
+            <input
+              value={defaultLabel}
+              onChange={(e) => setMealName(mealIdx, e.target.value)}
+              placeholder="Nombre de la comida"
+              className="mb-3 w-full max-w-md rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-base font-bold outline-none hover:border-border focus:border-primary"
+            />
+            {composed ? (
               <div className="space-y-3">
                 {COMPOSED_SUBTYPES.map((sub) => {
                   const opts = meal.options
@@ -222,7 +245,7 @@ export function NutritionTemplateEditor({ initial }: Props) {
                         <p className="text-xs font-semibold uppercase text-muted">{sub.label}</p>
                         <button
                           type="button"
-                          onClick={() => addOption(meal.name, sub.value)}
+                          onClick={() => addOption(mealIdx, sub.value)}
                           className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1 text-[11px] hover:border-primary hover:text-primary"
                         >
                           <Plus size={11} /> Añadir
@@ -236,8 +259,8 @@ export function NutritionTemplateEditor({ initial }: Props) {
                             <OptionRow
                               key={idx}
                               option={o}
-                              onChange={(patch) => setOption(meal.name, idx, patch)}
-                              onRemove={() => removeOption(meal.name, idx)}
+                              onChange={(patch) => setOption(mealIdx, idx, patch)}
+                              onRemove={() => removeOption(mealIdx, idx)}
                             />
                           ))}
                         </ul>
@@ -252,13 +275,13 @@ export function NutritionTemplateEditor({ initial }: Props) {
                   <OptionRow
                     key={idx}
                     option={o}
-                    onChange={(patch) => setOption(meal.name, idx, patch)}
-                    onRemove={() => removeOption(meal.name, idx)}
+                    onChange={(patch) => setOption(mealIdx, idx, patch)}
+                    onRemove={() => removeOption(mealIdx, idx)}
                   />
                 ))}
                 <button
                   type="button"
-                  onClick={() => addOption(meal.name)}
+                  onClick={() => addOption(mealIdx)}
                   className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-2 py-1 text-[11px] hover:border-primary hover:text-primary"
                 >
                   <Plus size={11} /> Añadir opción
@@ -340,6 +363,11 @@ function OptionRow({
   // solo al siguiente cambio de texto).
   const [estimating, setEstimating] = useState(false);
   const [estimateError, setEstimateError] = useState(false);
+  // Panel de notas: se abre si ya hay nota guardada o si el nutri pulsa el
+  // botón. La nota es texto libre y NO afecta a macros.
+  const [showNote, setShowNote] = useState<boolean>(
+    typeof option.note === "string" && option.note.trim().length > 0,
+  );
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Guardamos el último texto que pidió estimación para descartar respuestas
   // antiguas (race condition: si el nutri sigue tecleando, la primera
@@ -451,6 +479,31 @@ function OptionRow({
         <NumInput label="C (g)" value={option.carbs} onChange={(v) => onChange({ carbs: v })} />
         <NumInput label="G (g)" value={option.fat} onChange={(v) => onChange({ fat: v })} />
       </div>
+
+      {/* Notas: texto libre para elaboración/tip. No entra en el cálculo de
+          macros. Se muestra al atleta bajo la opción. */}
+      {showNote ? (
+        <div className="mt-2">
+          <label className="block text-[10px]">
+            <span className="font-semibold text-muted">Notas para el atleta</span>
+            <textarea
+              value={option.note ?? ""}
+              onChange={(e) => onChange({ note: e.target.value })}
+              rows={2}
+              placeholder="Ej. Elaborar al horno 20 min a 180 ºC. Puedes cambiar el arroz por quinoa."
+              className="mt-0.5 w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs outline-none focus:border-primary"
+            />
+          </label>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowNote(true)}
+          className="mt-2 inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-primary"
+        >
+          <StickyNote size={11} /> Añadir notas
+        </button>
+      )}
     </li>
   );
 }

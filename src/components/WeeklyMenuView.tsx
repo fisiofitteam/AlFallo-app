@@ -91,7 +91,14 @@ export function WeeklyMenuView({
                             {SUB_LABELS[it.subType] ?? it.subType}
                           </span>
                         ) : null}
-                        <span className="flex-1 leading-snug">{it.text || "—"}</span>
+                        <div className="flex-1 leading-snug">
+                          <span>{it.text || "—"}</span>
+                          {it.note ? (
+                            <p className="mt-0.5 whitespace-pre-line border-l-2 border-primary/40 pl-2 text-[11px] italic text-muted">
+                              {it.note}
+                            </p>
+                          ) : null}
+                        </div>
                       </li>
                     ))}
                   </ul>

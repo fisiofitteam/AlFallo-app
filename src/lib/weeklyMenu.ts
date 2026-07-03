@@ -16,6 +16,7 @@ export type WeekMenuItem = {
   carbs: number;
   fat: number;
   subType: string | null;
+  note: string | null;
 };
 
 export type WeekMenuMeal = {
@@ -53,6 +54,7 @@ function toItem(option: PlanBuilderOption): WeekMenuItem {
     carbs: option.carbs,
     fat: option.fat,
     subType: option.subType,
+    note: option.note,
   };
 }
 

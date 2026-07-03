@@ -502,6 +502,18 @@ export async function updateOptionTextAndEstimate(
   };
 }
 
+// Edita la nota libre de una opción. Texto que ve el atleta bajo la opción,
+// sin efecto sobre macros ni compra. Autosave desde la UI.
+export async function updateOptionNote(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  const itemId = String(formData.get("itemId"));
+  const raw = formData.get("note");
+  const note = typeof raw === "string" && raw.trim().length > 0 ? raw.slice(0, 1000) : null;
+  await prisma.mealItem.update({ where: { id: itemId }, data: { note } });
+}
+
 // Edita los 4 macros (totales) de una opción. Autosave desde la UI.
 export async function updateOptionMacros(formData: FormData) {
   const prof = await requireAccess();

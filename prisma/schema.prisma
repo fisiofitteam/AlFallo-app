@@ -793,6 +793,11 @@ model MealItem {
   selected      Boolean @default(true)
   order         Int     @default(0)
 
+  // Nota libre del nutri para el atleta (elaboración, tip, aclaración).
+  // No afecta a macros ni al cálculo de la compra — solo se muestra bajo
+  // la opción en la ficha del plan y en la app del cliente.
+  note          String?
+
   // Ingredientes descompuestos del freestyle text. La IA y el estimador
   // de macros devuelven, además del texto y los macros totales, un array
   // de ingredientes individuales con cantidad en gramos y categoría. Se

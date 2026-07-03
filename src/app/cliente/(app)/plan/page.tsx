@@ -132,6 +132,7 @@ export default async function ClientPlanPage({
     foodId: string | null;
     selected: boolean;
     subType: string | null;
+    note: string | null;
     kcalPer100: number;
     proteinPer100: number;
     carbsPer100: number;
@@ -235,6 +236,11 @@ export default async function ClientPlanPage({
                                         Opción {idx + 1}
                                       </span>
                                       <span className="ml-2">{it.nameSnapshot || "—"}</span>
+                                      {it.note ? (
+                                        <p className="mt-1 whitespace-pre-line border-l-2 border-primary/40 pl-2 text-xs italic text-muted">
+                                          {it.note}
+                                        </p>
+                                      ) : null}
                                     </li>
                                   ))}
                                 </ul>

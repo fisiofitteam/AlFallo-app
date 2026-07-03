@@ -43,6 +43,9 @@ export type TemplateOption = {
   carbs: number;
   fat: number;
   subType?: string | null;
+  /** Nota libre del nutri para el atleta (elaboración, tip, aclaración).
+   *  No entra en el cálculo de macros. */
+  note?: string | null;
 };
 export type TemplateMeal = {
   name: string;
@@ -59,6 +62,15 @@ export type TemplateStructure = {
 
 const COMPOSED_SUBTYPES = ["intro", "grasas", "carbos", "proteina", "postre"] as const;
 
+/** Una comida es "compuesta" (con subgrupos intro/grasas/carbos/proteina/
+ *  postre) si alguna de sus opciones lleva subType. Antes se inferíamos por
+ *  el nombre ("comida"/"cena") pero el nutri puede renombrar libremente, así
+ *  que ahora va por los datos — igual que el PlanBuilder y la vista del
+ *  cliente. */
+export function isComposedMeal(meal: TemplateMeal): boolean {
+  return meal.options.some((o) => o.subType != null && o.subType !== "");
+}
+
 /** Suma la combinación canónica del día (1 opción de cada comida simple +
  *  1 opción de cada subgrupo de comida/cena). */
 export function sumCanonicalDay(day: TemplateDay): {
@@ -72,8 +84,7 @@ export function sumCanonicalDay(day: TemplateDay): {
     carbs = 0,
     fat = 0;
   for (const meal of day.meals) {
-    const isComposed = meal.name === "comida" || meal.name === "cena";
-    if (isComposed) {
+    if (isComposedMeal(meal)) {
       for (const sub of COMPOSED_SUBTYPES) {
         const pick = meal.options.find((o) => o.subType === sub);
         if (!pick) continue;
