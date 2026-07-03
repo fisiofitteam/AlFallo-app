@@ -417,9 +417,31 @@ async function loadMacroBriefBlocks(): Promise<{
   }
 }
 
+/** El nutri usa "/" para dar alternativas equivalentes del mismo alimento
+ *  ("150 g pollo / pavo", "120 g avena / muesli"). SOLO la primera opción
+ *  debe contar para los macros — la segunda es un intercambio para el
+ *  atleta. Aquí strippeamos "/ <palabra>" antes de mandar el texto al
+ *  estimador (IA o fallback). El texto original que el atleta ve NO se
+ *  toca — este filtro solo aplica al input del cálculo.
+ *
+ *  Regla: elimina "/" seguido de la próxima palabra (hasta el siguiente
+ *  espacio o separador +,.). Encadenables: "pollo / pavo / ternera" →
+ *  "pollo". */
+export function stripSlashAlternatives(text: string): string {
+  let out = text;
+  // Repetimos hasta que no queden slashes — así "/pavo / ternera" cae en
+  // dos pasadas y no requiere regex greedy inseguro.
+  for (let i = 0; i < 5; i++) {
+    const next = out.replace(/\s*\/\s*[^+,.\/\s][^+,.\/\s]*/g, "");
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
 /** Entrada principal: intenta IA y cae a fallback si falla. Nunca lanza. */
 export async function estimateMacros(text: string): Promise<MacroEstimateResult> {
-  const cleaned = text.trim().slice(0, 500);
+  const cleaned = stripSlashAlternatives(text.trim()).slice(0, 500);
   if (!cleaned) {
     return { kcal: 0, protein: 0, carbs: 0, fat: 0, source: "fallback", notes: "Texto vacío" };
   }
