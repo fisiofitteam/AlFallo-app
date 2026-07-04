@@ -98,6 +98,7 @@ export async function applyTemplateToPlan(
             carbsPer100: o.carbs || 0,
             fatPer100: o.fat || 0,
             subType: o.subType ?? null,
+            dayContext: o.dayContext ?? null,
             note: o.note ?? null,
             selected: oi === 0,
             order: oi,

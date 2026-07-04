@@ -43,6 +43,10 @@ export type TemplateOption = {
   carbs: number;
   fat: number;
   subType?: string | null;
+  /** Contexto de día para el que aplica la opción. Hoy se usa en el
+   *  subgrupo "carbos" de comida/cena para separar entreno vs descanso.
+   *  "training" | "rest" | null. */
+  dayContext?: string | null;
   /** Nota libre del nutri para el atleta (elaboración, tip, aclaración).
    *  No entra en el cálculo de macros. */
   note?: string | null;
@@ -86,7 +90,14 @@ export function sumCanonicalDay(day: TemplateDay): {
   for (const meal of day.meals) {
     if (isComposedMeal(meal)) {
       for (const sub of COMPOSED_SUBTYPES) {
-        const pick = meal.options.find((o) => o.subType === sub);
+        // En "carbos" priorizamos día de entreno (training) como canónico:
+        // el resumen de macros representa un día de entrenamiento típico.
+        // Si no hay training, cogemos la primera opción del subgrupo.
+        const pool = meal.options.filter((o) => o.subType === sub);
+        const pick =
+          sub === "carbos"
+            ? pool.find((o) => o.dayContext === "training") ?? pool[0]
+            : pool[0];
         if (!pick) continue;
         kcal += pick.kcal || 0;
         protein += pick.protein || 0;

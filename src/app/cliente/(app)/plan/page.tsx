@@ -132,6 +132,7 @@ export default async function ClientPlanPage({
     foodId: string | null;
     selected: boolean;
     subType: string | null;
+    dayContext: string | null;
     note: string | null;
     kcalPer100: number;
     proteinPer100: number;
@@ -219,6 +220,33 @@ export default async function ClientPlanPage({
                               composed ? it.subType === sub : true,
                             );
                             if (list.length === 0) return null;
+                            // Renderer de una lista de opciones (reutilizado
+                            // para plana y para las sub-secciones de carbos).
+                            const renderList = (opts: Item[]) => (
+                              <ul className="space-y-1 text-sm">
+                                {opts.map((it, idx) => (
+                                  <li
+                                    key={it.id}
+                                    className="rounded-md bg-surface p-2 leading-snug"
+                                  >
+                                    <span className="text-[10px] font-semibold text-primary">
+                                      Opción {idx + 1}
+                                    </span>
+                                    <span className="ml-2">{it.nameSnapshot || "—"}</span>
+                                    {it.note ? (
+                                      <p className="mt-1 whitespace-pre-line border-l-2 border-primary/40 pl-2 text-xs italic text-muted">
+                                        {it.note}
+                                      </p>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            );
+                            // Carbos: dividimos en día entreno / día
+                            // descanso si alguna opción tiene dayContext.
+                            const isCarbs = composed && sub === "carbos";
+                            const hasCtx =
+                              isCarbs && list.some((it) => it.dayContext != null);
                             return (
                               <div key={sub ?? "_flat"} className="mb-3 last:mb-0">
                                 {composed && sub ? (
@@ -226,24 +254,28 @@ export default async function ClientPlanPage({
                                     {SUB_LABEL[sub]}
                                   </p>
                                 ) : null}
-                                <ul className="space-y-1 text-sm">
-                                  {list.map((it, idx) => (
-                                    <li
-                                      key={it.id}
-                                      className="rounded-md bg-surface p-2 leading-snug"
-                                    >
-                                      <span className="text-[10px] font-semibold text-primary">
-                                        Opción {idx + 1}
-                                      </span>
-                                      <span className="ml-2">{it.nameSnapshot || "—"}</span>
-                                      {it.note ? (
-                                        <p className="mt-1 whitespace-pre-line border-l-2 border-primary/40 pl-2 text-xs italic text-muted">
-                                          {it.note}
-                                        </p>
-                                      ) : null}
-                                    </li>
-                                  ))}
-                                </ul>
+                                {hasCtx ? (
+                                  <div className="space-y-2">
+                                    {(["training", "rest"] as const).map((ctx) => {
+                                      const ctxList = list.filter(
+                                        (it) => (it.dayContext ?? null) === ctx,
+                                      );
+                                      if (ctxList.length === 0) return null;
+                                      return (
+                                        <div key={ctx}>
+                                          <p className="mb-1 text-[10px] font-semibold text-primary/80">
+                                            {ctx === "training"
+                                              ? "Día de entrenamiento"
+                                              : "Día de descanso / recovery"}
+                                          </p>
+                                          {renderList(ctxList)}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  renderList(list)
+                                )}
                               </div>
                             );
                           })}

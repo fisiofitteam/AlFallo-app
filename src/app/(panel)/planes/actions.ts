@@ -395,6 +395,8 @@ export async function addOptionToMeal(formData: FormData) {
   await loadPlanForEdit(planId, prof);
   const mealId = String(formData.get("mealId"));
   const subType = parseStr(formData.get("subType"));
+  const rawCtx = parseStr(formData.get("dayContext"));
+  const dayContext = rawCtx === "training" || rawCtx === "rest" ? rawCtx : null;
   const count = await prisma.mealItem.count({
     where: { mealId, subType: subType ?? null },
   });
@@ -410,6 +412,7 @@ export async function addOptionToMeal(formData: FormData) {
       fatPer100: 0,
       selected: false,
       subType: subType ?? null,
+      dayContext,
       order: count,
     },
   });

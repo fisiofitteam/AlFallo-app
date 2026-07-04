@@ -104,7 +104,7 @@ export function NutritionTemplateEditor({ initial }: Props) {
     }));
   }
 
-  function addOption(mealIndex: number, subType?: string) {
+  function addOption(mealIndex: number, subType?: string, dayContext?: "training" | "rest") {
     updateMeal(mealIndex, (m) => ({
       ...m,
       options: [
@@ -116,6 +116,7 @@ export function NutritionTemplateEditor({ initial }: Props) {
           carbs: 0,
           fat: 0,
           subType: subType ?? null,
+          dayContext: dayContext ?? null,
           note: null,
         },
       ],
@@ -239,6 +240,52 @@ export function NutritionTemplateEditor({ initial }: Props) {
                   const opts = meal.options
                     .map((o, idx) => ({ o, idx }))
                     .filter((x) => x.o.subType === sub.value);
+                  // El subgrupo CARBOS se divide en día entreno / descanso.
+                  // El resto de subgrupos siguen mostrándose plano.
+                  if (sub.value === "carbos") {
+                    return (
+                      <div key={sub.value} className="rounded-xl border border-border bg-bg p-3">
+                        <p className="mb-2 text-xs font-semibold uppercase text-muted">
+                          {sub.label}
+                        </p>
+                        {(["training", "rest"] as const).map((ctx) => {
+                          const ctxLabel =
+                            ctx === "training" ? "Día de entrenamiento" : "Día de descanso / recovery";
+                          const ctxOpts = opts.filter(
+                            (x) => (x.o.dayContext ?? null) === ctx,
+                          );
+                          return (
+                            <div key={ctx} className="mb-2 rounded-lg border border-dashed border-border/60 p-2 last:mb-0">
+                              <div className="mb-1.5 flex items-center justify-between">
+                                <p className="text-[11px] font-semibold text-primary">{ctxLabel}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => addOption(mealIdx, sub.value, ctx)}
+                                  className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-0.5 text-[11px] hover:border-primary hover:text-primary"
+                                >
+                                  <Plus size={11} /> Añadir
+                                </button>
+                              </div>
+                              {ctxOpts.length === 0 ? (
+                                <p className="text-[11px] italic text-muted">Sin opciones aún.</p>
+                              ) : (
+                                <ul className="space-y-2">
+                                  {ctxOpts.map(({ o, idx }) => (
+                                    <OptionRow
+                                      key={idx}
+                                      option={o}
+                                      onChange={(patch) => setOption(mealIdx, idx, patch)}
+                                      onRemove={() => removeOption(mealIdx, idx)}
+                                    />
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
                   return (
                     <div key={sub.value} className="rounded-xl border border-border bg-bg p-3">
                       <div className="mb-2 flex items-center justify-between">

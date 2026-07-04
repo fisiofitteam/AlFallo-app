@@ -155,6 +155,10 @@ function sanitizeStructure(s: TemplateStructure): TemplateStructure {
                   typeof o?.subType === "string" && o.subType
                     ? o.subType.slice(0, 20)
                     : null,
+                dayContext:
+                  o?.dayContext === "training" || o?.dayContext === "rest"
+                    ? o.dayContext
+                    : null,
                 note:
                   typeof o?.note === "string" && o.note.trim().length > 0
                     ? o.note.trim().slice(0, 1000)

@@ -790,6 +790,10 @@ model MealItem {
   carbsPer100   Float   @default(0)
   fatPer100     Float   @default(0)
   subType       String?
+  // Contexto de día tipo para el que aplica la opción. Se usa hoy en el
+  // subgrupo "carbos" de comida/cena para separar día de entrenamiento vs
+  // día de descanso/recovery. Valores: "training" | "rest" | null.
+  dayContext    String?
   selected      Boolean @default(true)
   order         Int     @default(0)
 

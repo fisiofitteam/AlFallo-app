@@ -82,6 +82,7 @@ export async function loadPlanForBuilder(planId: string): Promise<LoadedPlan | n
           fat: Math.round(it.fatPer100 * factor * 10) / 10,
           selected: it.selected,
           subType: it.subType ?? null,
+          dayContext: it.dayContext ?? null,
           note: it.note ?? null,
         };
       }),

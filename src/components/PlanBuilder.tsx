@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   Plus, Trash2, Loader2, FileText, ArrowLeft, ChevronDown, ChevronUp,
@@ -36,6 +36,9 @@ export type PlanBuilderOption = {
   selected: boolean;
   /** Solo en comida/cena: intro|grasas|carbos|proteina|postre. */
   subType: string | null;
+  /** Contexto de día. Hoy solo aplica al subgrupo carbos de comida/cena
+   *  para separar día de entreno vs día de descanso. "training"|"rest"|null. */
+  dayContext: string | null;
   /** Nota libre para el atleta (elaboración, tip, aclaración). No entra en
    *  el cálculo de macros ni en la lista de la compra. */
   note: string | null;
@@ -619,11 +622,12 @@ function MealCard({
     { kcal: 0, protein: 0, carbs: 0, fat: 0 },
   );
 
-  function addOption(subType?: string) {
+  function addOption(subType?: string, dayContext?: "training" | "rest") {
     const fd = new FormData();
     fd.set("planId", planId);
     fd.set("mealId", meal.id);
     if (subType) fd.set("subType", subType);
+    if (dayContext) fd.set("dayContext", dayContext);
     startAdding(async () => {
       await addOptionToMeal(fd);
       // Recargamos para hidratar la nueva opción con su id real.
@@ -726,7 +730,7 @@ function MealCard({
             adding={addingPending}
             onPatch={onPatch}
             onRemoveOption={onRemoveOption}
-            onAdd={(sub) => addOption(sub)}
+            onAdd={(sub, ctx) => addOption(sub, ctx)}
           />
         ) : (
           <SimpleBody
@@ -786,23 +790,46 @@ function ComposedBody({
   adding: boolean;
   onPatch: (optionId: string, patch: Partial<PlanBuilderOption>) => void;
   onRemoveOption: (optionId: string) => void;
-  onAdd: (subType: string) => void;
+  onAdd: (subType: string, dayContext?: "training" | "rest") => void;
 }) {
   // Selección exclusiva por subgrupo: marca esta y deselecciona hermanas.
+  // En carbos las hermanas son las del mismo dayContext (entreno vs
+  // descanso) — así el atleta puede tener a la vez su carbo de entreno
+  // marcado y su carbo de descanso marcado, sin desactivarse mutuamente.
   function handleExclusive(optionId: string, subType: string) {
     const opt = meal.options.find((o) => o.id === optionId);
     if (!opt) return;
     if (opt.selected) {
-      // ya estaba seleccionada → toggle a false
       onPatch(optionId, { selected: false });
     } else {
       for (const sib of meal.options) {
-        if (sib.subType === subType && sib.id !== optionId && sib.selected) {
+        if (
+          sib.subType === subType &&
+          sib.id !== optionId &&
+          sib.selected &&
+          (subType !== "carbos" || (sib.dayContext ?? null) === (opt.dayContext ?? null))
+        ) {
           onPatch(sib.id, { selected: false });
         }
       }
       onPatch(optionId, { selected: true });
     }
+  }
+
+  function optionRowFor(opt: PlanBuilderOption, i: number, subValue: string) {
+    return (
+      <OptionRow
+        key={opt.id}
+        option={opt}
+        index={i}
+        planId={planId}
+        exclusiveInGroup
+        compact
+        onPatch={(patch) => onPatch(opt.id, patch)}
+        onDelete={() => onRemoveOption(opt.id)}
+        onSelectExclusive={() => handleExclusive(opt.id, subValue)}
+      />
+    );
   }
 
   return (
@@ -811,6 +838,46 @@ function ComposedBody({
         const items = meal.options
           .filter((o) => o.subType === g.value)
           .sort((a, b) => a.kcal - b.kcal);
+        // Carbos: dos sub-secciones (día entreno / día descanso).
+        if (g.value === "carbos") {
+          return (
+            <div key={g.value}>
+              <p className="mb-2 border-l-2 border-primary pl-2 text-xs font-bold uppercase tracking-wider text-primary">
+                {g.label}
+              </p>
+              <div className="space-y-3">
+                {(["training", "rest"] as const).map((ctx) => {
+                  const label =
+                    ctx === "training" ? "Día de entrenamiento" : "Día de descanso / recovery";
+                  const ctxItems = items.filter((o) => (o.dayContext ?? null) === ctx);
+                  return (
+                    <div key={ctx} className="rounded-lg border border-dashed border-border/60 p-2">
+                      <header className="mb-1.5 flex items-center justify-between">
+                        <p className="text-[11px] font-semibold text-primary/90">{label}</p>
+                        <button
+                          type="button"
+                          onClick={() => onAdd(g.value, ctx)}
+                          disabled={adding}
+                          title={`Añadir opción para ${label.toLowerCase()}`}
+                          className="rounded-md p-1 text-muted hover:bg-bg hover:text-primary disabled:opacity-50"
+                        >
+                          {adding ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                        </button>
+                      </header>
+                      {ctxItems.length === 0 ? (
+                        <p className="text-xs italic text-muted/70">Sin opciones aún.</p>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                          {ctxItems.map((opt, i) => optionRowFor(opt, i, g.value))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
         return (
           <div key={g.value}>
             <header className="mb-2 flex items-center justify-between">
@@ -831,19 +898,7 @@ function ComposedBody({
               <p className="text-xs italic text-muted/70">Sin opciones aún.</p>
             ) : (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {items.map((opt, i) => (
-                  <OptionRow
-                    key={opt.id}
-                    option={opt}
-                    index={i}
-                    planId={planId}
-                    exclusiveInGroup
-                    compact
-                    onPatch={(patch) => onPatch(opt.id, patch)}
-                    onDelete={() => onRemoveOption(opt.id)}
-                    onSelectExclusive={() => handleExclusive(opt.id, g.value)}
-                  />
-                ))}
+                {items.map((opt, i) => optionRowFor(opt, i, g.value))}
               </div>
             )}
           </div>
@@ -875,13 +930,25 @@ function OptionRow({
   onSelectExclusive: () => void;
 }) {
   const [savingPending, startSaving] = useTransition();
+  const [estimating, setEstimating] = useState(false);
   const textTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const macroTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guardamos el último texto que pidió estimación para descartar respuestas
+  // antiguas (race condition si el nutri sigue tecleando).
+  const lastEstimateReq = useRef<string>(option.text);
   // Panel de notas: abierto si ya hay nota guardada, o si el nutri lo abre.
   const [showNote, setShowNote] = useState<boolean>(
     typeof option.note === "string" && option.note.trim().length > 0,
   );
+
+  useEffect(() => {
+    return () => {
+      if (textTimer.current) clearTimeout(textTimer.current);
+      if (macroTimer.current) clearTimeout(macroTimer.current);
+      if (noteTimer.current) clearTimeout(noteTimer.current);
+    };
+  }, []);
 
   function saveNoteDebounced(value: string) {
     onPatch({ note: value });
@@ -900,13 +967,14 @@ function OptionRow({
   function saveTextDebounced(value: string) {
     onPatch({ text: value });
     if (textTimer.current) clearTimeout(textTimer.current);
-    // Debounce 800 ms para persistir el texto. NO reestimamos macros con
-    // IA automáticamente — antes lo hacíamos y daba sensación de "cambios
-    // aleatorios" cada vez que el nutri tocaba una cantidad. Los macros
-    // ahora son ESTABLES y solo cambian con:
-    //   1) edición manual en los inputs kcal/P/C/G de la opción.
-    //   2) click en el botón "Recalcular con IA" de la opción.
+    // Debounce 1200 ms: persistimos el texto Y disparamos re-estimación de
+    // macros con IA. Antes solo se recalculaba con el botón; el nutri se
+    // quejaba de opciones que quedaban en 0 hasta pulsarlo manualmente.
+    // Race condition: si el nutri sigue tecleando, la respuesta obsoleta
+    // se descarta comparando contra lastEstimateReq.
+    const trimmed = value.trim();
     textTimer.current = setTimeout(() => {
+      // 1. Persistimos texto sin IA (sirve incluso si la IA falla).
       const fd = new FormData();
       fd.set("planId", planId);
       fd.set("itemId", option.id);
@@ -914,7 +982,28 @@ function OptionRow({
       startSaving(async () => {
         await updateOptionText(fd);
       });
-    }, 800);
+      // 2. Si hay contenido suficiente, disparamos estimación de macros.
+      if (trimmed.length < 3) return;
+      lastEstimateReq.current = trimmed;
+      setEstimating(true);
+      updateOptionTextAndEstimate(planId, option.id, trimmed)
+        .then((next) => {
+          if (lastEstimateReq.current !== trimmed) return; // respuesta obsoleta
+          onPatch({
+            kcal: next.kcal,
+            protein: next.protein,
+            carbs: next.carbs,
+            fat: next.fat,
+          });
+        })
+        .catch(() => {
+          // Silencioso: el texto ya se ha guardado. El nutri puede pulsar
+          // el botón 🔄 para reintentar manualmente.
+        })
+        .finally(() => {
+          if (lastEstimateReq.current === trimmed) setEstimating(false);
+        });
+    }, 1200);
   }
 
   /** Recalcula los macros de esta opción con la IA (Sonnet 4.6 + validación
@@ -1021,7 +1110,7 @@ function OptionRow({
           >
             <Trash2 size={11} />
           </button>
-          {savingPending ? <Loader2 size={10} className="animate-spin text-muted" /> : null}
+          {savingPending || estimating ? <Loader2 size={10} className="animate-spin text-muted" /> : null}
         </div>
         <div className="mb-1.5 grid grid-cols-4 gap-1 text-[10px]">
           <CompactMacro label="Kcal" value={option.kcal} onChange={(v) => saveMacrosDebounced({ kcal: v })} />
@@ -1098,7 +1187,7 @@ function OptionRow({
         >
           <Trash2 size={13} />
         </button>
-        {savingPending ? <Loader2 size={11} className="animate-spin text-muted" /> : null}
+        {savingPending || estimating ? <Loader2 size={11} className="animate-spin text-muted" /> : null}
       </div>
 
       <textarea

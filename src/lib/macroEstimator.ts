@@ -447,7 +447,15 @@ export async function estimateMacros(text: string): Promise<MacroEstimateResult>
   }
   if (process.env.ANTHROPIC_API_KEY) {
     try {
-      return await estimateMacrosClaude(cleaned);
+      const ai = await estimateMacrosClaude(cleaned);
+      // Defensa: si Claude devuelve macros = 0 con texto no vacío, es una
+      // respuesta rara. En vez de aceptarlos y dejar la opción a 0 en la
+      // UI, tiramos del fallback determinista para al menos dar algo.
+      if (ai.kcal === 0 && ai.protein === 0 && ai.carbs === 0 && ai.fat === 0) {
+        console.warn("[macroEstimator] Claude devolvió todo 0 con texto no vacío, usando fallback:", cleaned);
+        return estimateMacrosFallback(cleaned);
+      }
+      return ai;
     } catch (e) {
       console.warn("[macroEstimator] Claude failed, using fallback:", (e as Error).message);
     }
