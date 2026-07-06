@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Save, Plus, Trash2, Sparkles, StickyNote } from "lucide-react";
+import {
+  Check, ChevronDown, ChevronUp, Loader2, Save, Plus, Trash2, Sparkles, StickyNote,
+} from "lucide-react";
+import { MEAL_TYPE_OPTIONS } from "@/lib/nutrition";
 import {
   TEMPLATE_SEXES,
   TEMPLATE_GOALS,
@@ -130,6 +133,31 @@ export function NutritionTemplateEditor({ initial }: Props) {
     }));
   }
 
+  function addMeal(name: string) {
+    if (!name.trim()) return;
+    setDay((d) => ({
+      ...d,
+      meals: [...d.meals, { name: name.trim(), options: [] }],
+    }));
+  }
+
+  function removeMeal(mealIndex: number) {
+    setDay((d) => ({
+      ...d,
+      meals: d.meals.filter((_, i) => i !== mealIndex),
+    }));
+  }
+
+  function moveMeal(mealIndex: number, dir: "up" | "down") {
+    setDay((d) => {
+      const j = mealIndex + (dir === "up" ? -1 : 1);
+      if (j < 0 || j >= d.meals.length) return d;
+      const next = [...d.meals];
+      [next[mealIndex], next[j]] = [next[j], next[mealIndex]];
+      return { ...d, meals: next };
+    });
+  }
+
   function save() {
     const fd = new FormData();
     fd.set("id", initial.id);
@@ -228,12 +256,43 @@ export function NutritionTemplateEditor({ initial }: Props) {
         const defaultLabel = MEAL_LABELS[meal.name] ?? meal.name;
         return (
           <section key={mealIdx} className="rounded-2xl border border-border bg-surface p-4">
-            <input
-              value={defaultLabel}
-              onChange={(e) => setMealName(mealIdx, e.target.value)}
-              placeholder="Nombre de la comida"
-              className="mb-3 w-full max-w-md rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-base font-bold outline-none hover:border-border focus:border-primary"
-            />
+            <div className="mb-3 flex items-center gap-2">
+              <input
+                value={defaultLabel}
+                onChange={(e) => setMealName(mealIdx, e.target.value)}
+                placeholder="Nombre de la comida"
+                className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-base font-bold outline-none hover:border-border focus:border-primary"
+              />
+              <button
+                type="button"
+                onClick={() => moveMeal(mealIdx, "up")}
+                disabled={mealIdx === 0}
+                title="Subir comida"
+                className="rounded-md p-1 text-muted hover:bg-bg hover:text-text disabled:opacity-30"
+              >
+                <ChevronUp size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => moveMeal(mealIdx, "down")}
+                disabled={mealIdx === day.meals.length - 1}
+                title="Bajar comida"
+                className="rounded-md p-1 text-muted hover:bg-bg hover:text-text disabled:opacity-30"
+              >
+                <ChevronDown size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!confirm(`¿Borrar "${defaultLabel}"? Se eliminan sus opciones.`)) return;
+                  removeMeal(mealIdx);
+                }}
+                title="Borrar comida"
+                className="rounded-md p-1 text-muted hover:bg-bg hover:text-red-600"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
             {composed ? (
               <div className="space-y-3">
                 {COMPOSED_SUBTYPES.map((sub) => {
@@ -338,6 +397,9 @@ export function NutritionTemplateEditor({ initial }: Props) {
           </section>
         );
       })}
+
+      {/* Añadir comida extra al día tipo */}
+      <AddMealForm onAdd={(name) => addMeal(name)} />
 
       {/* Observaciones + Suplementación */}
       <section className="rounded-2xl border border-border bg-surface p-4">
@@ -588,5 +650,68 @@ function MacroPill({ label, value, suffix }: { label: string; value: number; suf
         {suffix ? <span className="text-[10px] text-muted">{suffix}</span> : null}
       </p>
     </div>
+  );
+}
+
+/** Añadir una comida extra al día tipo. El nutri elige un tipo predefinido
+ *  (desayuno, snack, pre-wod…) o escribe uno libre. Al añadir se crea sin
+ *  opciones y con detección automática de simple/composed (empieza simple
+ *  porque no tiene subType; para hacerla composed basta con añadir opciones
+ *  a los subgrupos desde el editor — pero aquí la ruta natural es simple). */
+function AddMealForm({ onAdd }: { onAdd: (name: string) => void }) {
+  const [choice, setChoice] = useState<string>("snack");
+  const [custom, setCustom] = useState<string>("");
+  const isCustom = choice === "__custom";
+
+  return (
+    <section className="rounded-2xl border border-dashed border-border bg-surface/60 p-4">
+      <p className="mb-2 text-sm font-semibold">Añadir otra comida</p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block text-xs">
+          <span className="font-semibold text-muted">Tipo</span>
+          <select
+            value={choice}
+            onChange={(e) => setChoice(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
+          >
+            {MEAL_TYPE_OPTIONS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+            <option value="__custom">Otra… (nombre libre)</option>
+          </select>
+        </label>
+        {isCustom ? (
+          <label className="block flex-1 text-xs">
+            <span className="font-semibold text-muted">Nombre</span>
+            <input
+              value={custom}
+              onChange={(e) => setCustom(e.target.value)}
+              placeholder="Ej. Batido post-entreno"
+              className="mt-1 w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm outline-none focus:border-primary"
+            />
+          </label>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => {
+            if (isCustom) {
+              const name = custom.trim();
+              if (!name) return;
+              onAdd(name);
+              setCustom("");
+            } else {
+              const label = MEAL_TYPE_OPTIONS.find((m) => m.value === choice)?.value ?? choice;
+              onAdd(label);
+            }
+          }}
+          disabled={isCustom && custom.trim().length === 0}
+          className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-fg hover:opacity-90 disabled:opacity-50"
+        >
+          <Plus size={13} /> Añadir comida
+        </button>
+      </div>
+    </section>
   );
 }
