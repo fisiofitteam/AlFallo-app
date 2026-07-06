@@ -70,7 +70,33 @@ const FOOD_RULES: FoodRule[] = [
 ];
 
 function round1(n: number): number {
+  if (!Number.isFinite(n)) return 0;
   return Math.round(Math.max(0, n) * 10) / 10;
+}
+
+/** Convierte a número tolerando el patrón "expression string" que a veces
+ *  devuelve Sonnet en el input de una tool ("120*380/100 + 30*380/100").
+ *  Si es número, lo devuelve. Si es string con SOLO dígitos, espacios,
+ *  puntos, comas y operadores + - * / ( ), evalúa la expresión. Rechaza
+ *  cualquier otra cosa (no ejecuta código arbitrario). */
+function toNumber(v: unknown): number {
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  if (typeof v !== "string") return 0;
+  const trimmed = v.trim();
+  if (!trimmed) return 0;
+  // Caso simple: string que ya representa un número.
+  const asNum = Number(trimmed.replace(",", "."));
+  if (Number.isFinite(asNum)) return asNum;
+  // Caso Sonnet perezoso: expresión aritmética. Whitelist estricta.
+  if (!/^[\d\s+\-*/().,]+$/.test(trimmed)) return 0;
+  try {
+    const normalized = trimmed.replace(/,/g, ".");
+    // eslint-disable-next-line no-new-func
+    const result = Function(`"use strict"; return (${normalized});`)();
+    return Number.isFinite(result) ? Number(result) : 0;
+  } catch {
+    return 0;
+  }
 }
 
 /** Categoría aproximada para una keyword: usamos los pesos relativos de la
@@ -180,6 +206,7 @@ REGLAS DE PRECISIÓN (críticas):
    · 1 rebanada de pan → 30 g
 4. Macros TOTALES de la comida descrita (no por 100 g). Si falta cantidad de algún alimento, asume ración estándar de atleta adulto (100 g proteína, 60 g fruta, 30 g grasa).
 5. DETERMINISMO: si un ingrediente se repite en dos llamadas distintas, usa EXACTAMENTE los mismos macros por 100 g. No introduzcas variabilidad "clínica".
+6. FORMATO DE LOS NÚMEROS (crítico): protein, carbs, fat y kcal DEBEN ser NÚMEROS ya calculados y sumados. Ejemplo correcto: kcal: 720. Ejemplo INCORRECTO: kcal: "120*380/100 + 250*47/100 + 30*380/100". Haz tú las multiplicaciones y sumas MENTALMENTE antes de llamar a la tool y entrega solo el número final. Si dudas del cálculo, hazlo paso a paso en tu cabeza y solo entrega el total.
 
 En "ingredients" desglosa cada alimento individual con su cantidad en gramos. Categorías válidas: proteina | carbohidrato | grasa | verdura | lacteo | suplemento | otro.
 
@@ -296,16 +323,22 @@ Tabla de referencia rápida (kcal/100 g):
   }
   const parsed = toolBlock.input as Partial<Macros> & { ingredients?: unknown };
 
-  const protein = round1(Number(parsed.protein) || 0);
-  const carbs = round1(Number(parsed.carbs) || 0);
-  const fat = round1(Number(parsed.fat) || 0);
+  // Sonnet a veces devuelve los campos numéricos como STRING con la fórmula
+  // literal ("120*380/100 + 250*47/100 + …") en vez de resolverla. El
+  // schema JSON dice `number` pero tool_use no lo valida strict, y el
+  // string pasa. Number("…") = NaN → macros a 0. Salvaguarda: si viene
+  // string, evaluamos la expresión aritmética (solo dígitos y operadores).
+  const protein = round1(toNumber(parsed.protein));
+  const carbs = round1(toNumber(parsed.carbs));
+  const fat = round1(toNumber(parsed.fat));
 
   // Validación de coherencia 4-9-4. Si el modelo devolvió kcal que no cuadra
   // con los macros (a veces los suma mal o se inventa el total), forzamos
   // el valor derivado de la fórmula. Margen 15% para tolerar redondeos
   // razonables sin descartar respuestas válidas.
   const derivedKcal = Math.round(kcalFromMacros(protein, carbs, fat));
-  const reportedKcal = Number(parsed.kcal) > 0 ? Math.round(Number(parsed.kcal)) : 0;
+  const kcalNum = toNumber(parsed.kcal);
+  const reportedKcal = kcalNum > 0 ? Math.round(kcalNum) : 0;
   let kcal = derivedKcal;
   if (reportedKcal > 0 && derivedKcal > 0) {
     const ratio = reportedKcal / derivedKcal;
