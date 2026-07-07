@@ -44,6 +44,7 @@ const ALLOWED_CATEGORIES = [
   "carbohidrato",
   "grasa",
   "verdura",
+  "fruta",
   "lacteo",
   "suplemento",
   "otro",
@@ -193,72 +194,108 @@ Antes de estimar, LEE el brief y sus adjuntos (arriba en este system + PDFs en e
 
   const SYSTEM = `Eres un nutricionista experto y meticuloso con los números. Estimas macros de comidas para atletas de CrossFit/Hyrox usando tablas nutricionales estándar (BEDCA, USDA).${BRIEF_INSTRUCTION}${briefBlocks.notesBlock}${briefBlocks.textAttachmentsBlock}
 
-Tu ÚNICA salida es llamar a la tool submit_estimate con los macros calculados.
+Tu ÚNICA salida es llamar a la tool submit_ingredients con el DESGLOSE de la comida — un item por CADA alimento del texto. Los macros TOTALES los calcula el código a partir de tu desglose. TÚ NO SUMAS.
 
-REGLAS DE PRECISIÓN (críticas):
-1. Calcula ingrediente a ingrediente. Multiplica (gramos / 100) por la tabla de referencia y suma. NO estimes a ojo el total.
-2. Las kcal DEBEN cuadrar con la fórmula 4·proteína + 9·grasa + 4·carbos. Si tras sumar no cuadran, has hecho mal alguna cifra intermedia → recalcula esa cifra ANTES de llamar a la tool.
-3. Convierte ml de líquidos a gramos (250 ml leche → 250 g) y unidades a gramos estándar:
-   · 1 huevo M → 50 g
-   · 1 plátano mediano → 120 g
-   · 1 manzana → 200 g
-   · 1 yogur natural → 125 g
-   · 1 rebanada de pan → 30 g
-4. Macros TOTALES de la comida descrita (no por 100 g). Si falta cantidad de algún alimento, asume ración estándar de atleta adulto (100 g proteína, 60 g fruta, 30 g grasa).
-5. DETERMINISMO: si un ingrediente se repite en dos llamadas distintas, usa EXACTAMENTE los mismos macros por 100 g. No introduzcas variabilidad "clínica".
-6. FORMATO DE LOS NÚMEROS (crítico): protein, carbs, fat y kcal DEBEN ser NÚMEROS ya calculados y sumados. Ejemplo correcto: kcal: 720. Ejemplo INCORRECTO: kcal: "120*380/100 + 250*47/100 + 30*380/100". Haz tú las multiplicaciones y sumas MENTALMENTE antes de llamar a la tool y entrega solo el número final. Si dudas del cálculo, hazlo paso a paso en tu cabeza y solo entrega el total.
+REGLAS (críticas):
+1. NO OMITAS NINGÚN INGREDIENTE del texto. Si el texto menciona 3 alimentos, tu array ingredients debe tener 3 items. Si menciona 5, deben ser 5. Cuenta mentalmente los alimentos del texto ANTES de llamar la tool y comprueba que coincide.
+2. Para cada ingrediente entrega:
+   · name: nombre exacto (ej. "avena", "leche semi", "aguacate")
+   · quantityG: cantidad en GRAMOS de ese ingrediente (número ya calculado, no expresión)
+   · kcalPer100, proteinPer100, carbsPer100, fatPer100: macros del alimento POR 100 g
+   · category: proteina | carbohidrato | grasa | verdura | lacteo | fruta | suplemento | otro
+3. Conversión a gramos:
+   · 1 huevo M = 50 g · 1 plátano = 120 g · 1 manzana/pera = 200 g · 1 yogur natural = 125 g
+   · 1 rebanada pan = 30 g · 1 tortita arroz = 8 g
+   · 1 ml de líquido = 1 g (200 ml leche → 200 g). Aceite: 1 ml ≈ 0.9 g.
+4. FRACCIONES (importante): "1/4 aguacate" = 50 g, "1/2 aguacate" = 100 g, "1 aguacate" = 200 g. Un cuarto NO es un aguacate entero. Igual para "1/2 plátano" = 60 g, etc.
+5. Si falta cantidad, asume ración de atleta: 150 g proteína animal, 200 g carbohidrato cocido, 100 g fruta, 30 g grasa/frutos secos, 200 ml lácteo.
+6. Los macros por 100 g DEBEN ser coherentes con la fórmula 4·P + 9·G + 4·C ≈ kcalPer100 (margen 20%).
+7. DETERMINISMO: mismo alimento → mismos macros por 100 g en todas las llamadas.
+8. Todos los campos numéricos DEBEN ser NÚMEROS, no strings ni expresiones. Ejemplo: quantityG: 120, NO quantityG: "1*120".
 
-En "ingredients" desglosa cada alimento individual con su cantidad en gramos. Categorías válidas: proteina | carbohidrato | grasa | verdura | lacteo | suplemento | otro.
-
-Tabla de referencia rápida (kcal/100 g):
-- avena: 380 (P13, C66, G7)
-- leche semi: 47 (P3.3, C5, G1.6)
-- whey: 380 (P75, C8, G6)
-- plátano: 89 (P1, C23, G0.3)
-- pollo pechuga: 110 (P23, C0, G1.5)
-- pavo pechuga: 105 (P22, C0, G1.5)
-- ternera magra: 190 (P26, C0, G9)
-- salmón: 210 (P20, C0, G14)
-- atún natural: 130 (P29, C0, G1)
-- arroz cocido: 130 (P3, C28, G0.3)
-- pasta cocida: 160 (P5, C31, G1)
-- patata cocida: 85 (P2, C19, G0.1)
-- boniato: 90 (P2, C21, G0.1)
-- pan: 260 (P9, C50, G3)
-- huevo entero: 155 (P13, C1, G11)
-- clara: 50 (P11, C1, G0)
-- aguacate: 160 (P2, C9, G15)
-- aceite oliva: 900 (P0, C0, G100)
-- yogur natural: 60 (P4, C5, G3)
-- yogur griego: 130 (P9, C4, G10)
-- queso curado: 400 (P25, C1, G33)
-- almendras: 580 (P21, C22, G50)
-- lentejas cocidas: 115 (P9, C20, G0.4)
-- garbanzos cocidos: 120 (P8, C22, G1.5)
-- brócoli: 34 (P3, C7, G0.4)`;
+Tabla de referencia (kcal/100 g · P/C/G):
+- avena: 380 · 13/66/7
+- muesli/granola: 450 · 10/60/18
+- leche semi: 47 · 3.3/5/1.6
+- leche desnatada: 34 · 3.4/5/0.1
+- leche entera: 62 · 3.2/4.7/3.5
+- bebida vegetal avena: 45 · 1/7/1.5
+- yogur natural: 60 · 4/5/3
+- yogur griego: 130 · 9/4/10
+- yogur skyr: 65 · 11/4/0.2
+- queso fresco batido 0%: 45 · 8/4/0.2
+- whey: 380 · 75/8/6
+- plátano: 89 · 1/23/0.3
+- manzana/pera: 52 · 0.3/14/0.2
+- fresa/frambuesa/mora: 32 · 0.7/8/0.3
+- kiwi/mandarina/naranja: 55 · 0.9/12/0.3
+- piña/melón/sandía: 45 · 0.6/11/0.1
+- pollo pechuga: 110 · 23/0/1.5
+- pavo pechuga: 105 · 22/0/1.5
+- ternera magra: 190 · 26/0/9
+- cerdo lomo: 180 · 22/0/9
+- salmón: 210 · 20/0/14
+- merluza/lubina/dorada/bacalao: 90 · 18/0/1.5
+- atún natural (lata): 130 · 29/0/1
+- sepia/pulpo/calamar: 85 · 17/1/1
+- arroz cocido: 130 · 3/28/0.3
+- pasta cocida: 160 · 5/31/1
+- quinoa cocida: 120 · 4/21/2
+- patata cocida: 85 · 2/19/0.1
+- boniato asado: 90 · 2/21/0.1
+- pan blanco: 265 · 9/50/3
+- pan integral: 245 · 9/45/3.5
+- tostada/biscote: 380 · 12/70/6
+- tortita de arroz: 385 · 8/82/3
+- copos maíz sin azúcar: 370 · 8/82/1
+- huevo entero: 155 · 13/1/11
+- clara: 50 · 11/1/0
+- aguacate: 160 · 2/9/15
+- aceite oliva: 900 · 0/0/100
+- almendras/nueces/anacardos: 580 · 20/15/50
+- crema de cacahuete: 590 · 25/15/50
+- semillas chía/lino: 490 · 17/40/30
+- queso curado: 400 · 25/1/33
+- queso semi (havarti, gouda): 340 · 24/1/27
+- jamón serrano: 240 · 30/0/13
+- jamón cocido/pavo: 110 · 20/1/2
+- lentejas cocidas: 115 · 9/20/0.4
+- garbanzos cocidos: 120 · 8/22/1.5
+- alubias cocidas: 105 · 7/19/0.5
+- hummus: 180 · 8/13/12
+- brócoli/coliflor: 34 · 3/7/0.4
+- espinaca/canónigo/rúcula: 25 · 3/2/0.4
+- tomate/pepino/calabacín/pimiento: 20 · 1/3/0.2
+- ensalada verde mixta: 20 · 1/3/0.2
+- lechuga: 15 · 1/2/0.2
+- zanahoria: 40 · 0.9/9/0.2
+- café/infusión (sin leche/azúcar): 2 · 0.1/0.2/0
+- miel/mermelada: 300 · 0.3/75/0
+- mermelada 0% azúcar: 100 · 0.3/25/0`;
 
   const estimateTool = {
-    name: "submit_estimate",
-    description: "Entrega la estimación de macros calculada.",
+    name: "submit_ingredients",
+    description: "Entrega el desglose ingrediente por ingrediente. El código suma los totales.",
     input_schema: {
       type: "object",
-      required: ["protein", "carbs", "fat", "kcal"],
+      required: ["ingredients"],
       properties: {
-        protein: { type: "number", description: "gramos totales" },
-        carbs: { type: "number", description: "gramos totales" },
-        fat: { type: "number", description: "gramos totales" },
-        kcal: { type: "number", description: "kcal totales, coherentes con 4·P + 9·G + 4·C" },
         ingredients: {
           type: "array",
+          description: "Lista de alimentos con sus macros por 100 g y su cantidad en gramos.",
           items: {
             type: "object",
-            required: ["name", "quantityG"],
+            required: ["name", "quantityG", "kcalPer100", "proteinPer100", "carbsPer100", "fatPer100"],
             properties: {
               name: { type: "string" },
-              quantityG: { type: "number" },
+              quantityG: { type: "number", description: "gramos del alimento en esta comida" },
+              kcalPer100: { type: "number" },
+              proteinPer100: { type: "number" },
+              carbsPer100: { type: "number" },
+              fatPer100: { type: "number" },
               category: {
                 type: "string",
-                description: "proteina|carbohidrato|grasa|verdura|lacteo|suplemento|otro",
+                description: "proteina|carbohidrato|grasa|verdura|fruta|lacteo|suplemento|otro",
               },
             },
           },
@@ -293,7 +330,7 @@ Tabla de referencia rápida (kcal/100 g):
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 600,
+      max_tokens: 2000,
       // temperature 0 = máxima consistencia. Dos llamadas con el mismo
       // texto devuelven los mismos números (o casi, hay ligera aleatoriedad
       // interna de sampling que Anthropic no elimina totalmente).
@@ -303,7 +340,7 @@ Tabla de referencia rápida (kcal/100 g):
       tools: [estimateTool],
       // tool_choice forzado: el modelo DEBE llamar submit_estimate → no
       // puede responder por texto ni razonar en voz alta.
-      tool_choice: { type: "tool", name: "submit_estimate" },
+      tool_choice: { type: "tool", name: "submit_ingredients" },
     }),
   });
 
@@ -316,59 +353,68 @@ Tabla de referencia rápida (kcal/100 g):
     content?: Array<{ type: string; name?: string; input?: unknown }>;
   };
   const toolBlock = data.content?.find(
-    (c) => c.type === "tool_use" && c.name === "submit_estimate",
+    (c) => c.type === "tool_use" && c.name === "submit_ingredients",
   );
   if (!toolBlock || !toolBlock.input) {
-    throw new Error("Claude no llamó a submit_estimate");
+    throw new Error("Claude no llamó a submit_ingredients");
   }
-  const parsed = toolBlock.input as Partial<Macros> & { ingredients?: unknown };
+  const parsed = toolBlock.input as { ingredients?: unknown };
 
-  // Sonnet a veces devuelve los campos numéricos como STRING con la fórmula
-  // literal ("120*380/100 + 250*47/100 + …") en vez de resolverla. El
-  // schema JSON dice `number` pero tool_use no lo valida strict, y el
-  // string pasa. Number("…") = NaN → macros a 0. Salvaguarda: si viene
-  // string, evaluamos la expresión aritmética (solo dígitos y operadores).
-  const protein = round1(toNumber(parsed.protein));
-  const carbs = round1(toNumber(parsed.carbs));
-  const fat = round1(toNumber(parsed.fat));
-
-  // Validación de coherencia 4-9-4. Si el modelo devolvió kcal que no cuadra
-  // con los macros (a veces los suma mal o se inventa el total), forzamos
-  // el valor derivado de la fórmula. Margen 15% para tolerar redondeos
-  // razonables sin descartar respuestas válidas.
-  const derivedKcal = Math.round(kcalFromMacros(protein, carbs, fat));
-  const kcalNum = toNumber(parsed.kcal);
-  const reportedKcal = kcalNum > 0 ? Math.round(kcalNum) : 0;
-  let kcal = derivedKcal;
-  if (reportedKcal > 0 && derivedKcal > 0) {
-    const ratio = reportedKcal / derivedKcal;
-    if (ratio >= 0.85 && ratio <= 1.15) {
-      // Cuadra dentro del margen: confiamos en el reportado del modelo
-      // (suele estar redondeado de forma más natural).
-      kcal = reportedKcal;
-    } else {
-      // Discrepancia grande: el modelo se equivocó en el total. Usamos
-      // el derivado de macros para mantener coherencia interna.
-      kcal = derivedKcal;
-    }
-  }
-
-  // Sanitización de ingredients: filtramos lo inválido y limitamos a 12.
+  // Nuevo enfoque: la IA solo desglosa. Nosotros sumamos.
+  //
+  // Ventajas frente al esquema anterior (donde la IA devolvía los totales):
+  //   · Si la IA se salta un ingrediente, es visible en el desglose y podemos
+  //     detectarlo. Antes el fallo era silencioso (macros bajos sin más).
+  //   · La IA no puede escribir "120*380/100" como string en el total — cada
+  //     ingrediente lleva su cantidad y sus macros por 100 g, la aritmética
+  //     la hace el código.
+  //   · Cambios pequeños en el texto (bajar 20 g de arroz) escalan
+  //     proporcionalmente sin que la IA re-sume mal.
   const ingredients: EstimatedIngredient[] = [];
+  let kcalSum = 0;
+  let proteinSum = 0;
+  let carbsSum = 0;
+  let fatSum = 0;
+
   if (Array.isArray(parsed.ingredients)) {
     for (const ing of parsed.ingredients) {
       if (!ing || typeof ing !== "object") continue;
       const r = ing as Record<string, unknown>;
       const name = String(r.name ?? "").trim().slice(0, 80);
       if (!name) continue;
-      const qty = Number(r.quantityG);
+      const qty = toNumber(r.quantityG);
       if (!Number.isFinite(qty) || qty <= 0) continue;
+      const kcalPer100 = toNumber(r.kcalPer100);
+      const proteinPer100 = toNumber(r.proteinPer100);
+      const carbsPer100 = toNumber(r.carbsPer100);
+      const fatPer100 = toNumber(r.fatPer100);
+      const factor = qty / 100;
+      kcalSum += kcalPer100 * factor;
+      proteinSum += proteinPer100 * factor;
+      carbsSum += carbsPer100 * factor;
+      fatSum += fatPer100 * factor;
+
       const rawCat = typeof r.category === "string" ? r.category : "";
       const category = ALLOWED_CATEGORIES.includes(rawCat) ? rawCat : "otro";
       ingredients.push({ name, quantityG: Math.round(qty), category });
-      if (ingredients.length >= 12) break;
+      if (ingredients.length >= 20) break;
     }
   }
+
+  if (ingredients.length === 0) {
+    // La IA no devolvió nada usable — dejamos que el fallback determinista
+    // haga lo suyo. Un error mejor que 0s silenciosos.
+    throw new Error("submit_ingredients devolvió lista vacía");
+  }
+
+  const protein = round1(proteinSum);
+  const carbs = round1(carbsSum);
+  const fat = round1(fatSum);
+  // kcal: preferimos el derivado por 4·P + 9·G + 4·C (coherente con nuestros
+  // macros). El kcalPer100 devuelto por la IA suele ser un redondeo — al
+  // multiplicar por cantidad puede desviarse ligeramente. Usar derived
+  // garantiza coherencia interna.
+  const kcal = Math.round(kcalFromMacros(protein, carbs, fat));
 
   return {
     kcal,
