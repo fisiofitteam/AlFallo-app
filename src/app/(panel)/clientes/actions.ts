@@ -56,6 +56,18 @@ export async function createClient(formData: FormData) {
   redirect(`/clientes/${client.id}`);
 }
 
+/** Actualiza las notas internas del nutri sobre el cliente. Texto libre
+ *  que solo ve el equipo. Autosave desde el popover del header. */
+export async function updateClientInternalNotes(formData: FormData) {
+  const prof = await requireClientAccess();
+  const clientId = String(formData.get("clientId"));
+  await loadClientForEdit(clientId, prof);
+  const raw = formData.get("notes");
+  const notes = typeof raw === "string" && raw.trim().length > 0 ? raw.slice(0, 5000) : null;
+  await prisma.client.update({ where: { id: clientId }, data: { internalNotes: notes } });
+  revalidatePath(`/clientes/${clientId}`);
+}
+
 export async function reassignNutritionist(formData: FormData) {
   const prof = await requireClientAccess();
   if (!isManagerRole(prof.role)) redirect("/clientes"); // solo managers reasignan

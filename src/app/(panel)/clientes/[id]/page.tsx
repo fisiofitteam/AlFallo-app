@@ -28,6 +28,7 @@ import { FichaForm } from "./ficha-form";
 import { CheckInsTab } from "./checkins-tab";
 import { EvolucionTab } from "./evolucion-tab";
 import { reassignNutritionist, setClientPassword, updateClientStatus } from "../actions";
+import { ClientNotesButton } from "@/components/ClientNotesButton";
 import { PlanBuilder } from "@/components/PlanBuilder";
 import { PlanPicker, AddPlanButton } from "@/components/PlanPicker";
 import { PlanCards } from "@/components/PlanCards";
@@ -220,6 +221,9 @@ export default async function ClientDetailPage({
             {client.email ?? "Sin email"}
             {client.phone && ` · ${client.phone}`}
           </p>
+        </div>
+        <div className="flex-shrink-0">
+          <ClientNotesButton clientId={client.id} initialNotes={client.internalNotes} />
         </div>
       </header>
 

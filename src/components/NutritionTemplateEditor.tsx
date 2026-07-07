@@ -84,6 +84,7 @@ export function NutritionTemplateEditor({ initial }: Props) {
   const [pending, start] = useTransition();
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recalc, setRecalc] = useState<{ done: number; total: number } | null>(null);
 
   const macros = useMemo(() => sumCanonicalDay(day), [day]);
 
@@ -156,6 +157,53 @@ export function NutritionTemplateEditor({ initial }: Props) {
       [next[mealIndex], next[j]] = [next[j], next[mealIndex]];
       return { ...d, meals: next };
     });
+  }
+
+  /** Recorre todas las opciones con texto y les recalcula los macros con la
+   *  IA. Serial (no en paralelo) para no reventar la API con 20+ llamadas
+   *  simultáneas. Muestra progreso "N/M" y actualiza el state según llegan
+   *  las respuestas. Los inputs vacíos se saltan. Al terminar dispara save()
+   *  automáticamente para persistir. */
+  async function recalcAll() {
+    // Índice plano de opciones con texto suficiente para estimar.
+    const tasks: { mealIdx: number; optIdx: number; text: string }[] = [];
+    day.meals.forEach((m, mi) =>
+      m.options.forEach((o, oi) => {
+        if (o.text.trim().length >= 3) tasks.push({ mealIdx: mi, optIdx: oi, text: o.text.trim() });
+      }),
+    );
+    if (tasks.length === 0) {
+      alert("No hay opciones con texto para recalcular.");
+      return;
+    }
+    if (
+      !confirm(
+        `Se van a recalcular los macros de ${tasks.length} opciones con IA. Esto puede tardar ${Math.ceil((tasks.length * 2) / 5) * 5}s aprox. ¿Continuar?`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setRecalc({ done: 0, total: tasks.length });
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      try {
+        const m = await estimateMacrosForTemplateOption(t.text);
+        setOption(t.mealIdx, t.optIdx, {
+          kcal: m.kcal,
+          protein: m.protein,
+          carbs: m.carbs,
+          fat: m.fat,
+        });
+      } catch {
+        // seguimos con las demás — no queremos abortar por un fallo puntual
+      }
+      setRecalc({ done: i + 1, total: tasks.length });
+    }
+    setRecalc(null);
+    // Guardado automático al acabar para no perder los macros nuevos si
+    // el nutri se olvida de darle a Guardar plantilla.
+    setTimeout(() => save(), 100);
   }
 
   function save() {
@@ -441,15 +489,29 @@ export function NutritionTemplateEditor({ initial }: Props) {
           <span className="font-semibold">{macros.fat}</span> G
         </p>
         <div className="flex items-center gap-2">
-          {savedAt ? (
+          {savedAt && !recalc ? (
             <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
               <Check size={13} /> Guardado
             </span>
           ) : null}
+          {recalc ? (
+            <span className="inline-flex items-center gap-1 text-xs text-primary">
+              <Loader2 size={13} className="animate-spin" /> Recalculando {recalc.done}/{recalc.total}…
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={recalcAll}
+            disabled={pending || recalc !== null}
+            title="Recalcular los macros de todas las opciones con IA"
+            className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-text hover:border-primary hover:text-primary disabled:opacity-50"
+          >
+            <Sparkles size={14} /> Recalcular todos los macros
+          </button>
           <button
             type="button"
             onClick={save}
-            disabled={pending}
+            disabled={pending || recalc !== null}
             className="inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:opacity-90 disabled:opacity-50"
           >
             {pending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}

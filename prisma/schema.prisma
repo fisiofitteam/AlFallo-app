@@ -98,6 +98,11 @@ model Client {
   contractVersion      String?
   contractTextSnapshot String?
 
+  // Notas internas del nutri sobre el cliente (recordatorios, cosas a
+  // hablar en la próxima llamada, alergias, contexto, etc.). Solo las ve
+  // el equipo; el atleta no las ve nunca.
+  internalNotes String?
+
   // Reset del badge "novedades en comunidad" al entrar la última vez.
   communityLastSeenAt DateTime?
 
