@@ -263,24 +263,28 @@ export function NutritionTemplateEditor({ initial }: Props) {
                 placeholder="Nombre de la comida"
                 className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-base font-bold outline-none hover:border-border focus:border-primary"
               />
-              <button
-                type="button"
-                onClick={() => moveMeal(mealIdx, "up")}
-                disabled={mealIdx === 0}
-                title="Subir comida"
-                className="rounded-md p-1 text-muted hover:bg-bg hover:text-text disabled:opacity-30"
-              >
-                <ChevronUp size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => moveMeal(mealIdx, "down")}
-                disabled={mealIdx === day.meals.length - 1}
-                title="Bajar comida"
-                className="rounded-md p-1 text-muted hover:bg-bg hover:text-text disabled:opacity-30"
-              >
-                <ChevronDown size={16} />
-              </button>
+              <div className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-border bg-bg p-0.5">
+                <button
+                  type="button"
+                  onClick={() => moveMeal(mealIdx, "up")}
+                  disabled={mealIdx === 0}
+                  title="Subir comida"
+                  aria-label="Subir comida"
+                  className="rounded-md px-2 py-1 text-text hover:bg-surface hover:text-primary disabled:cursor-not-allowed disabled:text-muted/40"
+                >
+                  <ChevronUp size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveMeal(mealIdx, "down")}
+                  disabled={mealIdx === day.meals.length - 1}
+                  title="Bajar comida"
+                  aria-label="Bajar comida"
+                  className="rounded-md px-2 py-1 text-text hover:bg-surface hover:text-primary disabled:cursor-not-allowed disabled:text-muted/40"
+                >
+                  <ChevronDown size={16} />
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -288,7 +292,8 @@ export function NutritionTemplateEditor({ initial }: Props) {
                   removeMeal(mealIdx);
                 }}
                 title="Borrar comida"
-                className="rounded-md p-1 text-muted hover:bg-bg hover:text-red-600"
+                aria-label="Borrar comida"
+                className="flex-shrink-0 rounded-lg border border-border bg-bg p-1.5 text-muted hover:border-red-300 hover:bg-red-50 hover:text-red-600"
               >
                 <Trash2 size={16} />
               </button>
