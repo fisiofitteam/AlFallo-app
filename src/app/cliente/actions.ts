@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/auth";
 import {
@@ -149,17 +150,16 @@ export async function submitCheckIn(formData: FormData) {
     return;
   }
 
+  const { coreData, extraAnswers } = await extractCheckInFieldsFromForm(formData);
+
   const checkIn = await prisma.checkIn.create({
     data: {
       clientId: client.id,
-      weightKg: parseNumber(formData.get("weightKg")),
-      waistCm: parseNumber(formData.get("waistCm")),
-      hipCm: parseNumber(formData.get("hipCm")),
-      armCm: parseNumber(formData.get("armCm")),
-      bodyFatPct: parseNumber(formData.get("bodyFatPct")),
-      adherencePct: parseIntOrNull(formData.get("adherencePct")),
-      energy: parseIntOrNull(formData.get("energy")),
-      notes: parseStr(formData.get("notes")),
+      ...coreData,
+      extraAnswers:
+        Object.keys(extraAnswers).length > 0
+          ? (extraAnswers as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
     },
   });
 
@@ -195,23 +195,88 @@ export async function updateCheckIn(formData: FormData) {
   const { hasCheckInThisWeek } = await import("@/lib/weeklyCheckin");
   if (!(await hasCheckInThisWeek(client.id))) return;
 
+  const { coreData, extraAnswers } = await extractCheckInFieldsFromForm(formData);
+
   await prisma.checkIn.update({
     where: { id },
     data: {
-      weightKg: parseNumber(formData.get("weightKg")),
-      waistCm: parseNumber(formData.get("waistCm")),
-      hipCm: parseNumber(formData.get("hipCm")),
-      armCm: parseNumber(formData.get("armCm")),
-      bodyFatPct: parseNumber(formData.get("bodyFatPct")),
-      adherencePct: parseIntOrNull(formData.get("adherencePct")),
-      energy: parseIntOrNull(formData.get("energy")),
-      notes: parseStr(formData.get("notes")),
+      ...coreData,
+      extraAnswers:
+        Object.keys(extraAnswers).length > 0
+          ? (extraAnswers as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
     },
   });
 
   await persistCustomMetricValues(client.id, id, formData);
 
   revalidatePath("/cliente/checkin");
+}
+
+/** Lee el FormData del check-in y separa los valores en:
+ *   · coreData: mapea los coreField (weightKg, waistCm, ...) según el
+ *     catálogo activo. Solo se incluyen las columnas de métricas que están
+ *     en el catálogo (para no pisar columnas de métricas retiradas).
+ *   · extraAnswers: dict {metricId: value} de las métricas sin coreField.
+ *
+ *  Convierte los inputs según type: number → Float, scale5/scale10 → Int,
+ *  checkbox → Boolean, resto → String. Los valores vacíos van a null. */
+async function extractCheckInFieldsFromForm(formData: FormData): Promise<{
+  coreData: Record<string, string | number | null>;
+  extraAnswers: Record<string, string | number | boolean | null>;
+}> {
+  const { listMetricDefinitions } = await import("@/lib/metricDefinitions");
+  const metrics = await listMetricDefinitions();
+  const coreData: Record<string, string | number | null> = {};
+  const extraAnswers: Record<string, string | number | boolean | null> = {};
+
+  for (const m of metrics) {
+    const key = m.coreField ?? `extra:${m.id}`;
+    const raw = formData.get(key);
+    const isCore = !!m.coreField;
+
+    if (m.type === "checkbox") {
+      const checked = raw != null && raw !== "";
+      if (isCore) coreData[m.coreField!] = checked ? "1" : null;
+      else extraAnswers[m.id] = checked;
+      continue;
+    }
+
+    if (raw == null || (typeof raw === "string" && raw.trim() === "")) {
+      if (isCore) coreData[m.coreField!] = null;
+      continue;
+    }
+
+    const strVal = String(raw);
+
+    if (m.type === "number") {
+      const n = Number(strVal.replace(",", "."));
+      if (Number.isFinite(n)) {
+        if (isCore) coreData[m.coreField!] = n;
+        else extraAnswers[m.id] = n;
+      } else if (isCore) {
+        coreData[m.coreField!] = null;
+      }
+      continue;
+    }
+
+    if (m.type === "scale5" || m.type === "scale10") {
+      const n = parseInt(strVal, 10);
+      if (Number.isFinite(n)) {
+        if (isCore) coreData[m.coreField!] = n;
+        else extraAnswers[m.id] = n;
+      } else if (isCore) {
+        coreData[m.coreField!] = null;
+      }
+      continue;
+    }
+
+    // text | textarea | select
+    if (isCore) coreData[m.coreField!] = strVal;
+    else extraAnswers[m.id] = strVal;
+  }
+
+  return { coreData, extraAnswers };
 }
 
 /** Upsert de valores de métricas personalizadas para un check-in concreto.

@@ -5,7 +5,9 @@ import {
   CheckInWeekly,
   type CheckInActive,
   type CustomMetricInput,
+  type MetricInput,
 } from "@/components/cliente/CheckInWeekly";
+import { listMetricsForClient } from "@/lib/metricDefinitions";
 
 export const metadata = { title: "Check-in · Al Fallo" };
 export const dynamic = "force-dynamic";
@@ -46,6 +48,7 @@ export default async function CheckInPage() {
         adherencePct: activeRaw.adherencePct,
         energy: activeRaw.energy,
         notes: activeRaw.notes,
+        extraAnswers: activeRaw.extraAnswers as CheckInActive["extraAnswers"],
         status: activeRaw.status,
         reviewNotes: activeRaw.reviewNotes,
       }
@@ -86,9 +89,26 @@ export default async function CheckInPage() {
   // en la home.
   const clientMeta = await prisma.client.findUnique({
     where: { id: me.id },
-    select: { initialCheckInDone: true },
+    select: { initialCheckInDone: true, useAdvancedCheckIn: true },
   });
   const isInitial = !clientMeta?.initialCheckInDone;
+  const useAdvanced = !!clientMeta?.useAdvancedCheckIn;
+
+  // Métricas activas para este cliente según el flag básico/avanzado.
+  const rawMetrics = await listMetricsForClient(useAdvanced);
+  const metrics: MetricInput[] = rawMetrics.map((m) => ({
+    id: m.id,
+    name: m.name,
+    description: m.description,
+    type: m.type,
+    unit: m.unit,
+    coreField: m.coreField,
+    category: m.category,
+    frequency: m.frequency,
+    options: Array.isArray(m.options)
+      ? (m.options as { value: string; label: string }[])
+      : null,
+  }));
 
   return (
     <div>
@@ -101,7 +121,7 @@ export default async function CheckInPage() {
           : "Registra tu progreso de la semana para que tu nutricionista lo revise."}
       </p>
 
-      <CheckInWeekly active={active} customMetrics={customMetrics} />
+      <CheckInWeekly active={active} metrics={metrics} customMetrics={customMetrics} />
 
       {/* Histórico de semanas anteriores. */}
       {previousCheckIns.length > 0 && (

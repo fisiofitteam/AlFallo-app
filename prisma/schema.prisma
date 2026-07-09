@@ -218,6 +218,49 @@ model CustomMetricValue {
   @@index([checkInId])
 }
 
+// ─── Métricas de check-in configurables ───
+//
+// Catálogo GLOBAL editable de métricas que se piden al atleta en su check-in.
+// Cada métrica tiene flags para aparecer en el check-in BÁSICO, en el AVANZADO,
+// o en ambos. Los clientes con Client.useAdvancedCheckIn=true ven las
+// métricas del avanzado; el resto ve las del básico.
+//
+// coreField mapea a las columnas tipadas históricas de CheckIn (weightKg,
+// waistCm, etc.) para no romper Evolución/gráficas y preservar los datos
+// existentes. Las métricas SIN coreField se persisten en CheckIn.extraAnswers.
+//
+// frequency es informativa (weekly | biweekly | monthly | any) — la UI la
+// muestra como etiqueta pero no bloquea el input si el atleta quiere
+// rellenarla antes.
+model MetricDefinition {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  // number | scale5 | scale10 | text | textarea | select | checkbox
+  type        String   @default("number")
+  unit        String?
+  // Solo si type=select: [{value,label}]
+  options     Json?
+  // Columna fija de CheckIn a la que mapea (o null si es custom):
+  //   weightKg | waistCm | hipCm | armCm | bodyFatPct | adherencePct
+  //   | energy | notes
+  coreField   String?
+  // Agrupador visual en el formulario:
+  //   peso_perimetros | adherencia | subjetivos | otros
+  category    String   @default("otros")
+  // Aparece en el check-in básico / en el avanzado.
+  inBasic     Boolean  @default(false)
+  inAdvanced  Boolean  @default(true)
+  // Etiqueta informativa: weekly | biweekly | monthly | any
+  frequency   String   @default("weekly")
+  order       Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active, order])
+}
+
 // ─── Marcas de fuerza y benchmarks ───
 //
 // Catálogo GLOBAL editable de marcas (ejercicios / benchmarks) que se aplica

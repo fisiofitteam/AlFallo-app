@@ -1,6 +1,7 @@
 import type { CheckIn } from "@prisma/client";
 import { CheckCircle2, Clock } from "lucide-react";
 import { TextArea } from "@/components/form-ui";
+import { listMetricDefinitions } from "@/lib/metricDefinitions";
 import { reviewCheckIn } from "../actions";
 
 function Metric({ label, value, unit = "" }: { label: string; value: number | null; unit?: string }) {
@@ -13,7 +14,18 @@ function Metric({ label, value, unit = "" }: { label: string; value: number | nu
   );
 }
 
-export function CheckInsTab({ checkIns }: { checkIns: CheckIn[] }) {
+export async function CheckInsTab({ checkIns }: { checkIns: CheckIn[] }) {
+  // Cargamos el catálogo para poder mostrar los labels bonitos de las
+  // métricas custom (extraAnswers) que aparezcan en algún check-in.
+  const metricDefs = checkIns.some(
+    (c) => c.extraAnswers && typeof c.extraAnswers === "object",
+  )
+    ? await listMetricDefinitions({ includeInactive: true })
+    : [];
+  const metricLabelById = new Map(
+    metricDefs.map((m) => [m.id, { label: m.name, unit: m.unit }]),
+  );
+
   if (checkIns.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-border p-12 text-center">
@@ -51,6 +63,24 @@ export function CheckInsTab({ checkIns }: { checkIns: CheckIn[] }) {
           </div>
 
           {c.notes && <p className="mt-3 rounded-xl bg-surface-2 p-3 text-sm">{c.notes}</p>}
+
+          {c.extraAnswers && typeof c.extraAnswers === "object" ? (
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 rounded-xl bg-bg/60 p-3">
+              {Object.entries(c.extraAnswers as Record<string, unknown>).map(([id, val]) => {
+                if (val == null || val === "") return null;
+                const meta = metricLabelById.get(id);
+                const label = meta?.label ?? id;
+                const unit = meta?.unit ?? "";
+                const display = typeof val === "boolean" ? (val ? "Sí" : "No") : String(val);
+                return (
+                  <span key={id} className="text-sm">
+                    <span className="text-muted">{label}:</span> {display}
+                    {unit ? ` ${unit}` : ""}
+                  </span>
+                );
+              })}
+            </div>
+          ) : null}
 
           <form action={reviewCheckIn} className="mt-3 space-y-2">
             <input type="hidden" name="checkInId" value={c.id} />

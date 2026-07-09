@@ -13,11 +13,28 @@ const SCALE_1_5 = [
   { value: "5", label: "5 · Muy alta" },
 ];
 
+const SCALE_1_10 = Array.from({ length: 10 }, (_, i) => ({
+  value: String(i + 1),
+  label: String(i + 1),
+}));
+
+export type MetricInput = {
+  id: string;
+  name: string;
+  description: string | null;
+  type: string;
+  unit: string | null;
+  coreField: string | null;
+  category: string;
+  frequency: string;
+  options: { value: string; label: string }[] | null;
+};
+
 export type CustomMetricInput = {
   id: string;
   name: string;
   unit: string | null;
-  type: string; // "number" | "scale"
+  type: string;
   value: number | null;
 };
 
@@ -31,46 +48,78 @@ export type CheckInActive = {
   adherencePct: number | null;
   energy: number | null;
   notes: string | null;
+  extraAnswers: Record<string, string | number | boolean | null> | null;
   status: string;
   reviewNotes: string | null;
 };
 
-/**
- * Bloque interactivo del check-in semanal del atleta.
- *
- * Modos:
- *  - "Sin enviar todavía"  → muestra el form. Submit deshabilitado mientras
- *    está pendiente (anti-doble-submit en cliente).
- *  - "Ya enviado"          → muestra resumen + botón "Editar respuestas".
- *  - "Editando"            → mismo form con los valores precargados; al
- *    guardar llama a updateCheckIn (no a submitCheckIn).
- *
- * Server-side ya rechaza doble submitCheckIn (ver lib/weeklyCheckin); esta
- * UI lo refuerza para que ni siquiera lo intente.
- */
+const CATEGORY_LABEL: Record<string, string> = {
+  peso_perimetros: "Peso y perímetros",
+  adherencia: "Adherencia",
+  subjetivos: "Sensaciones",
+  otros: "Otros",
+};
+
+const FREQUENCY_LABEL: Record<string, string> = {
+  weekly: "semanal",
+  biweekly: "quincenal",
+  monthly: "mensual",
+  any: "libre",
+};
+
+/** Devuelve el name= del input para cada métrica. Los que mapean a columna
+ *  fija reutilizan el nombre exacto (weightKg, ...) para que la server action
+ *  las lea como antes. Los custom van con prefijo "extra:" y su id. */
+function inputName(metric: MetricInput): string {
+  return metric.coreField ?? `extra:${metric.id}`;
+}
+
+function coreValue(metric: MetricInput, active: CheckInActive | null): string | number | null | undefined {
+  if (!active) return undefined;
+  if (!metric.coreField) {
+    const raw = active.extraAnswers?.[metric.id];
+    if (raw == null) return undefined;
+    if (typeof raw === "boolean") return raw ? "1" : "";
+    return raw;
+  }
+  return (active as unknown as Record<string, string | number | null>)[metric.coreField];
+}
+
 export function CheckInWeekly({
   active,
+  metrics,
   customMetrics,
 }: {
   active: CheckInActive | null;
+  metrics: MetricInput[];
   customMetrics: CustomMetricInput[];
 }) {
   const [editing, setEditing] = useState(false);
 
   if (!active) {
-    return <CheckInForm mode="new" initial={null} customMetrics={customMetrics} />;
+    return <CheckInForm mode="new" initial={null} metrics={metrics} customMetrics={customMetrics} />;
   }
-
   if (editing) {
     return (
       <CheckInForm
         mode="edit"
         initial={active}
+        metrics={metrics}
         customMetrics={customMetrics}
         onDone={() => setEditing(false)}
       />
     );
   }
+
+  // Resumen resumido de las 4-6 primeras métricas con valor.
+  const withValue = metrics
+    .map((m) => {
+      const raw = coreValue(m, active);
+      const has =
+        raw !== undefined && raw !== null && raw !== "" && !(typeof raw === "number" && Number.isNaN(raw));
+      return has ? { name: m.name, unit: m.unit, value: raw } : null;
+    })
+    .filter((x): x is { name: string; unit: string | null; value: string | number } => x !== null);
 
   return (
     <section className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5">
@@ -79,24 +128,20 @@ export function CheckInWeekly({
         <div className="min-w-0 flex-1">
           <p className="font-bold text-emerald-900">Check-in de esta semana enviado</p>
           <p className="mt-0.5 text-sm text-emerald-800/80">
-            Ya está en manos de tu nutri. Si te has equivocado en algo, puedes editar las
-            respuestas hasta el próximo lunes.
+            Ya está en manos de tu nutri. Si te has equivocado en algo, puedes editar las respuestas hasta el próximo lunes.
           </p>
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
-            <KV label="Peso" value={active.weightKg != null ? `${active.weightKg} kg` : "—"} />
-            <KV label="% Grasa" value={active.bodyFatPct != null ? `${active.bodyFatPct}%` : "—"} />
-            <KV label="Adherencia" value={active.adherencePct != null ? `${active.adherencePct}%` : "—"} />
-            <KV label="Cintura" value={active.waistCm != null ? `${active.waistCm} cm` : "—"} />
-            <KV label="Cadera" value={active.hipCm != null ? `${active.hipCm} cm` : "—"} />
-            <KV label="Brazo" value={active.armCm != null ? `${active.armCm} cm` : "—"} />
-          </dl>
-          {active.notes ? (
-            <div className="mt-3">
-              <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">
-                Tus sensaciones
-              </p>
-              <p className="mt-0.5 whitespace-pre-wrap text-sm text-emerald-900">{active.notes}</p>
-            </div>
+          {withValue.length > 0 ? (
+            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
+              {withValue.slice(0, 9).map((it, i) => (
+                <div key={i}>
+                  <dt className="text-xs text-emerald-700">{it.name}</dt>
+                  <dd className="font-semibold text-emerald-900">
+                    {it.value}
+                    {it.unit ? ` ${it.unit}` : ""}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           ) : null}
           <div className="mt-4">
             <button
@@ -113,33 +158,33 @@ export function CheckInWeekly({
   );
 }
 
-function KV({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs text-emerald-700">{label}</dt>
-      <dd className="font-semibold text-emerald-900">{value}</dd>
-    </div>
-  );
-}
-
-/** El formulario en sí. mode="new" envía submitCheckIn, "edit" updateCheckIn. */
 function CheckInForm({
   mode,
   initial,
+  metrics,
   customMetrics,
   onDone,
 }: {
   mode: "new" | "edit";
   initial: CheckInActive | null;
+  metrics: MetricInput[];
   customMetrics: CustomMetricInput[];
   onDone?: () => void;
 }) {
   const [pending, start] = useTransition();
-  // Esto bloquea TODOS los submits posteriores en el mismo cliente aunque el
-  // useTransition acabe rápido — anti-doble-click definitivo. La página se
-  // recarga al revalidate, así que tampoco importa que quede true.
   const [sent, setSent] = useState(false);
   const blocked = pending || sent;
+
+  // Agrupamos métricas por category respetando su order en cada grupo.
+  const groups: { key: string; label: string; items: MetricInput[] }[] = [];
+  for (const m of metrics) {
+    let g = groups.find((x) => x.key === m.category);
+    if (!g) {
+      g = { key: m.category, label: CATEGORY_LABEL[m.category] ?? m.category, items: [] };
+      groups.push(g);
+    }
+    g.items.push(m);
+  }
 
   return (
     <form
@@ -155,71 +200,23 @@ function CheckInForm({
           }
         });
       }}
-      className="mt-5 space-y-4 rounded-2xl border border-border bg-surface p-5"
+      className="mt-5 space-y-5 rounded-2xl border border-border bg-surface p-5"
     >
       {mode === "edit" && initial ? <input type="hidden" name="id" value={initial.id} /> : null}
 
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Peso (kg)" htmlFor="weightKg">
-          <TextInput
-            id="weightKg"
-            name="weightKg"
-            inputMode="decimal"
-            defaultValue={initial?.weightKg ?? ""}
-          />
-        </Field>
-        <Field label="% Grasa" htmlFor="bodyFatPct">
-          <TextInput
-            id="bodyFatPct"
-            name="bodyFatPct"
-            inputMode="decimal"
-            defaultValue={initial?.bodyFatPct ?? ""}
-          />
-        </Field>
-        <Field label="Cintura (cm)" htmlFor="waistCm">
-          <TextInput
-            id="waistCm"
-            name="waistCm"
-            inputMode="decimal"
-            defaultValue={initial?.waistCm ?? ""}
-          />
-        </Field>
-        <Field label="Cadera (cm)" htmlFor="hipCm">
-          <TextInput
-            id="hipCm"
-            name="hipCm"
-            inputMode="decimal"
-            defaultValue={initial?.hipCm ?? ""}
-          />
-        </Field>
-        <Field label="Brazo (cm)" htmlFor="armCm">
-          <TextInput
-            id="armCm"
-            name="armCm"
-            inputMode="decimal"
-            defaultValue={initial?.armCm ?? ""}
-          />
-        </Field>
-        <Field label="Adherencia (%)" htmlFor="adherencePct">
-          <TextInput
-            id="adherencePct"
-            name="adherencePct"
-            inputMode="numeric"
-            defaultValue={initial?.adherencePct ?? ""}
-          />
-        </Field>
-      </div>
-      <Field label="Energía" htmlFor="energy">
-        <Select
-          id="energy"
-          name="energy"
-          options={SCALE_1_5}
-          defaultValue={initial?.energy != null ? String(initial.energy) : ""}
-        />
-      </Field>
-      {/* Métricas personalizadas que el nutri ha definido para este cliente. */}
+      {groups.map((g) => (
+        <section key={g.key} className="space-y-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted">{g.label}</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {g.items.map((m) => (
+              <MetricField key={m.id} metric={m} initial={coreValue(m, initial)} />
+            ))}
+          </div>
+        </section>
+      ))}
+
       {customMetrics.length > 0 ? (
-        <div className="space-y-3 rounded-xl border border-border bg-bg/40 p-4">
+        <section className="space-y-3 rounded-xl border border-border bg-bg/40 p-4">
           <p className="text-xs font-bold uppercase tracking-wider text-muted">
             Tus métricas personalizadas
           </p>
@@ -239,12 +236,8 @@ function CheckInForm({
               </Field>
             ))}
           </div>
-        </div>
+        </section>
       ) : null}
-
-      <Field label="¿Cómo ha ido la semana?" htmlFor="notes" hint="Sensaciones, dificultades, dudas…">
-        <TextArea id="notes" name="notes" defaultValue={initial?.notes ?? ""} />
-      </Field>
 
       <div className="flex flex-wrap gap-2">
         <button
@@ -275,5 +268,85 @@ function CheckInForm({
         ) : null}
       </div>
     </form>
+  );
+}
+
+/** Renderiza el input adecuado según el tipo de la métrica. Anota la cadencia
+ *  al lado del label como pista ("semanal", "quincenal", etc.). */
+function MetricField({
+  metric,
+  initial,
+}: {
+  metric: MetricInput;
+  initial: string | number | null | undefined;
+}) {
+  const name = inputName(metric);
+  const label = metric.unit ? `${metric.name} (${metric.unit})` : metric.name;
+  const hint = metric.description
+    ? metric.description
+    : metric.frequency === "any"
+    ? undefined
+    : `Cadencia: ${FREQUENCY_LABEL[metric.frequency] ?? metric.frequency}`;
+  const defaultStr = initial == null ? "" : String(initial);
+
+  if (metric.type === "textarea") {
+    return (
+      <div className="sm:col-span-2">
+        <Field label={label} htmlFor={name} hint={hint}>
+          <TextArea id={name} name={name} defaultValue={defaultStr} />
+        </Field>
+      </div>
+    );
+  }
+  if (metric.type === "scale5") {
+    return (
+      <Field label={label} htmlFor={name} hint={hint}>
+        <Select id={name} name={name} options={SCALE_1_5} defaultValue={defaultStr} />
+      </Field>
+    );
+  }
+  if (metric.type === "scale10") {
+    return (
+      <Field label={label} htmlFor={name} hint={hint}>
+        <Select id={name} name={name} options={SCALE_1_10} defaultValue={defaultStr} />
+      </Field>
+    );
+  }
+  if (metric.type === "select" && metric.options) {
+    return (
+      <Field label={label} htmlFor={name} hint={hint}>
+        <Select id={name} name={name} options={metric.options} defaultValue={defaultStr} />
+      </Field>
+    );
+  }
+  if (metric.type === "checkbox") {
+    return (
+      <Field label={label} htmlFor={name} hint={hint}>
+        <label className="mt-1 inline-flex items-center gap-2 text-sm">
+          <input
+            id={name}
+            name={name}
+            type="checkbox"
+            value="1"
+            defaultChecked={defaultStr === "true" || defaultStr === "1"}
+            className="rounded border-border text-primary"
+          />
+          <span>Sí</span>
+        </label>
+      </Field>
+    );
+  }
+  if (metric.type === "text") {
+    return (
+      <Field label={label} htmlFor={name} hint={hint}>
+        <TextInput id={name} name={name} defaultValue={defaultStr} />
+      </Field>
+    );
+  }
+  // number por defecto
+  return (
+    <Field label={label} htmlFor={name} hint={hint}>
+      <TextInput id={name} name={name} inputMode="decimal" defaultValue={defaultStr} />
+    </Field>
   );
 }
