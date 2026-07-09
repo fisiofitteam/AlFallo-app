@@ -131,6 +131,7 @@ model Client {
   dailyLogs        DailyLog[]
   checkIns         CheckIn[]
   customMetrics    CustomMetric[]
+  strengthRecords  StrengthRecord[]
   convertedLeads   Lead[]
   sales            Sale[]
   scheduledCalls   ScheduledCall[]
@@ -215,6 +216,51 @@ model CustomMetricValue {
   @@unique([metricId, checkInId])
   @@index([metricId])
   @@index([checkInId])
+}
+
+// ─── Marcas de fuerza y benchmarks ───
+//
+// Catálogo GLOBAL editable de marcas (ejercicios / benchmarks) que se aplica
+// a todos los clientes. Cada atleta registra sus propios valores.
+//
+// unit: "kg" | "reps" | "s" | "m" | "rondas" | "cal"
+// direction:
+//   · "up"   = mayor es mejor (1RM, reps máx, calorías)
+//   · "down" = menor es mejor (tiempos de WOD, 500m row)
+model StrengthMark {
+  id          String   @id @default(cuid())
+  name        String   // "Back squat 1RM", "Fran", "Row 500m"
+  category    String   @default("fuerza") // fuerza | olimpico | gimnasia | cardio | mixto
+  unit        String   @default("kg")     // kg | reps | s | m | rondas | cal
+  direction   String   @default("up")     // up | down
+  description String?
+  order       Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  records StrengthRecord[]
+
+  @@index([active, order])
+}
+
+model StrengthRecord {
+  id            String   @id @default(cuid())
+  markId        String
+  clientId      String
+  value         Float
+  date          DateTime @default(now())
+  notes         String?
+  // Quién lo introdujo (para trazabilidad). null = lo introdujo el atleta
+  // desde su app; con id de Professional = lo introdujo el nutri.
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  mark   StrengthMark @relation(fields: [markId], references: [id], onDelete: Cascade)
+  client Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, markId, date])
+  @@index([markId, date])
 }
 
 // ─── Módulo de Contenido (planificación de Instagram) ───

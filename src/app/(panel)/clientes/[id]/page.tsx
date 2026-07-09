@@ -9,7 +9,7 @@ export const maxDuration = 300;
 import {
   ArrowLeft,
   UtensilsCrossed, ClipboardList, CalendarDays,
-  TrendingUp, NotebookPen, KeyRound, Settings,
+  TrendingUp, NotebookPen, KeyRound, Settings, Dumbbell,
   type LucideIcon,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -34,6 +34,8 @@ import {
   updateClientStatus,
 } from "../actions";
 import { ClientNotesButton } from "@/components/ClientNotesButton";
+import { StrengthMarksPanel } from "@/components/StrengthMarksPanel";
+import { listMarks } from "@/lib/strengthMarks";
 import { PlanBuilder } from "@/components/PlanBuilder";
 import { PlanPicker, AddPlanButton } from "@/components/PlanPicker";
 import { PlanCards } from "@/components/PlanCards";
@@ -57,6 +59,7 @@ type SectionKey =
   | "evolucion"
   | "checkins"
   | "acceso"
+  | "marcas"
   | "ajustes";
 
 const SECTIONS: { key: SectionKey; label: string; description: string; icon: LucideIcon }[] = [
@@ -65,6 +68,7 @@ const SECTIONS: { key: SectionKey; label: string; description: string; icon: Luc
   { key: "ficha", label: "Ficha nutricional", description: "Anamnesis y datos personales", icon: ClipboardList },
   { key: "evolucion", label: "Evolución", description: "Peso, cintura y % grasa", icon: TrendingUp },
   { key: "checkins", label: "Check-ins", description: "Cuestionarios semanales", icon: NotebookPen },
+  { key: "marcas", label: "Marcas de fuerza", description: "1RM, benchmarks y evolución", icon: Dumbbell },
   { key: "acceso", label: "Acceso a la app", description: "Credenciales del cliente", icon: KeyRound },
   { key: "ajustes", label: "Ajustes", description: "Estado y nutricionista asignado", icon: Settings },
 ];
@@ -366,6 +370,8 @@ export default async function ClientDetailPage({
             />
           ) : active === "checkins" ? (
             <CheckInsTab checkIns={client.checkIns} />
+          ) : active === "marcas" ? (
+            <MarksSection clientId={client.id} />
           ) : active === "acceso" ? (
             <AccesoSection
               clientId={client.id}
@@ -553,6 +559,47 @@ function AjustesSection({
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Pestaña "Marcas" de la ficha del cliente. Carga catálogo activo + los
+ *  registros del cliente, y delega al componente cliente para el interactivo. */
+async function MarksSection({ clientId }: { clientId: string }) {
+  const [marks, records] = await Promise.all([
+    listMarks(),
+    prisma.strengthRecord.findMany({
+      where: { clientId },
+      orderBy: { date: "desc" },
+      select: { id: true, markId: true, value: true, date: true, notes: true },
+    }),
+  ]);
+  return (
+    <div className="space-y-3">
+      <header>
+        <h2 className="text-lg font-bold">Marcas de fuerza y benchmarks</h2>
+        <p className="mt-1 text-xs text-muted">
+          Pulsa una marca para ver la gráfica de evolución y añadir un nuevo registro.
+          El atleta también las registra desde su app.
+        </p>
+      </header>
+      <StrengthMarksPanel
+        clientId={clientId}
+        marks={marks.map((m) => ({
+          id: m.id,
+          name: m.name,
+          category: m.category,
+          unit: m.unit,
+          direction: m.direction,
+        }))}
+        records={records.map((r) => ({
+          id: r.id,
+          markId: r.markId,
+          value: r.value,
+          date: r.date.toISOString(),
+          notes: r.notes,
+        }))}
+      />
     </div>
   );
 }

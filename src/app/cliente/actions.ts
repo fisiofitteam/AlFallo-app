@@ -246,3 +246,66 @@ async function persistCustomMetricValues(
     });
   }
 }
+
+/** Valor de una marca desde el input del atleta. Acepta "MM:SS" para tiempos
+ *  y número decimal para el resto. Devuelve null si no es válido. */
+function parseValueForUnit(raw: string, unit: string): number | null {
+  const s = raw.trim();
+  if (!s) return null;
+  if (unit === "s" && s.includes(":")) {
+    const [mm, ss] = s.split(":");
+    const m = Number(mm);
+    const sec = Number(ss);
+    if (!Number.isFinite(m) || !Number.isFinite(sec) || sec < 0 || sec >= 60) return null;
+    return m * 60 + sec;
+  }
+  const n = Number(s.replace(",", "."));
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
+/** El propio atleta añade un registro para una marca del catálogo activo.
+ *  createdById queda a null para distinguirlos de los que introduce el nutri. */
+export async function addOwnStrengthRecord(formData: FormData) {
+  const client = await requireOnboardedClient();
+  const markId = String(formData.get("markId"));
+  const mark = await prisma.strengthMark.findUnique({
+    where: { id: markId },
+    select: { unit: true, active: true },
+  });
+  if (!mark || !mark.active) return;
+  const rawValue = String(formData.get("value") ?? "");
+  const value = parseValueForUnit(rawValue, mark.unit);
+  if (value == null) return;
+  const dateRaw = formData.get("date");
+  const date =
+    typeof dateRaw === "string" && dateRaw ? new Date(dateRaw) : new Date();
+  if (Number.isNaN(date.getTime())) return;
+  const notesRaw = formData.get("notes");
+  const notes =
+    typeof notesRaw === "string" && notesRaw.trim() ? notesRaw.trim().slice(0, 400) : null;
+  await prisma.strengthRecord.create({
+    data: {
+      markId,
+      clientId: client.id,
+      value,
+      date,
+      notes,
+      createdById: null,
+    },
+  });
+  revalidatePath("/cliente/marcas");
+}
+
+export async function deleteOwnStrengthRecord(formData: FormData) {
+  const client = await requireOnboardedClient();
+  const id = String(formData.get("id"));
+  const rec = await prisma.strengthRecord.findUnique({
+    where: { id },
+    select: { clientId: true },
+  });
+  // El atleta solo puede borrar registros suyos.
+  if (!rec || rec.clientId !== client.id) return;
+  await prisma.strengthRecord.delete({ where: { id } });
+  revalidatePath("/cliente/marcas");
+}
