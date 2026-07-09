@@ -1,6 +1,8 @@
-import { TrendingUp } from "lucide-react";
+import { Dumbbell, TrendingUp } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
+import { listMarks } from "@/lib/strengthMarks";
+import { OwnStrengthMarks } from "@/components/cliente/OwnStrengthMarks";
 
 export const metadata = { title: "Mi progreso · Al Fallo" };
 export const dynamic = "force-dynamic";
@@ -65,6 +67,16 @@ export default async function ProgressPage() {
   const last = points.at(-1);
   const first = points.at(0);
   const diff = last && first ? last.value - first.value : 0;
+
+  // Marcas de fuerza / benchmarks (catálogo global) + registros del atleta.
+  const [strengthMarks, strengthRecords] = await Promise.all([
+    listMarks(),
+    prisma.strengthRecord.findMany({
+      where: { clientId: me.id },
+      orderBy: { date: "desc" },
+      select: { id: true, markId: true, value: true, date: true, notes: true },
+    }),
+  ]);
 
   // Métricas personalizadas activas + sus valores.
   const customMetrics = await prisma.customMetric.findMany({
@@ -171,6 +183,35 @@ export default async function ProgressPage() {
           })}
         </div>
       ) : null}
+
+      {/* Marcas de fuerza y benchmarks. El catálogo lo define el equipo en
+          Biblioteca › Marcas de fuerza. Cada atleta lleva sus registros
+          desde aquí y ve la evolución. */}
+      <section className="mt-8">
+        <header className="mb-3 flex items-center gap-2">
+          <Dumbbell size={18} className="text-primary" />
+          <h2 className="text-lg font-bold">Marcas de fuerza y benchmarks</h2>
+        </header>
+        <p className="mb-4 text-sm text-muted">
+          Registra tus 1RM, benchmarks y récords. Pulsa una marca para ver la evolución.
+        </p>
+        <OwnStrengthMarks
+          marks={strengthMarks.map((m) => ({
+            id: m.id,
+            name: m.name,
+            category: m.category,
+            unit: m.unit,
+            direction: m.direction,
+          }))}
+          records={strengthRecords.map((r) => ({
+            id: r.id,
+            markId: r.markId,
+            value: r.value,
+            date: r.date.toISOString(),
+            notes: r.notes,
+          }))}
+        />
+      </section>
     </div>
   );
 }

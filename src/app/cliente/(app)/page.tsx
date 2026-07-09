@@ -44,7 +44,6 @@ const SECTIONS: Section[] = [
   { key: "compra", href: "/cliente/compra", label: "Mi compra", icon: ShoppingCart, ready: true },
   { key: "recetas", href: "/cliente/recetas", label: "Recetas", icon: ChefHat, ready: true },
   { key: "progreso", href: "/cliente/progreso", label: "Mi progreso", icon: TrendingUp, ready: true },
-  { key: "marcas", href: "/cliente/marcas", label: "Mis marcas", icon: Dumbbell, ready: true },
   { key: "comunidad", href: "/cliente/comunidad", label: "Comunidad", icon: Users, ready: true },
   { key: "recursos", href: "/cliente/recursos", label: "Recursos", icon: GraduationCap, ready: true },
   { key: "training", href: "/cliente/training", label: "Entreno", icon: Dumbbell, ready: false },
