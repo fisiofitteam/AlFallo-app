@@ -27,7 +27,12 @@ import type { ChartPoint } from "@/components/line-chart";
 import { FichaForm } from "./ficha-form";
 import { CheckInsTab } from "./checkins-tab";
 import { EvolucionTab } from "./evolucion-tab";
-import { reassignNutritionist, setClientPassword, updateClientStatus } from "../actions";
+import {
+  reassignNutritionist,
+  setClientPassword,
+  setUseAdvancedCheckIn,
+  updateClientStatus,
+} from "../actions";
 import { ClientNotesButton } from "@/components/ClientNotesButton";
 import { PlanBuilder } from "@/components/PlanBuilder";
 import { PlanPicker, AddPlanButton } from "@/components/PlanPicker";
@@ -375,6 +380,8 @@ export default async function ClientDetailPage({
               nutritionistName={client.nutritionist?.fullName ?? null}
               isManager={manager}
               nutritionists={nutritionists}
+              useAdvancedCheckIn={client.useAdvancedCheckIn}
+              initialCheckInDone={client.initialCheckInDone}
             />
           )}
         </section>
@@ -439,6 +446,8 @@ function AjustesSection({
   nutritionistName,
   isManager,
   nutritionists,
+  useAdvancedCheckIn,
+  initialCheckInDone,
 }: {
   clientId: string;
   status: string;
@@ -446,6 +455,8 @@ function AjustesSection({
   nutritionistName: string | null;
   isManager: boolean;
   nutritionists: { id: string; fullName: string }[];
+  useAdvancedCheckIn: boolean;
+  initialCheckInDone: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -471,6 +482,44 @@ function AjustesSection({
             Guardar
           </button>
         </form>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-surface p-5">
+        <h2 className="font-semibold">Check-in avanzado</h2>
+        <p className="mt-1 text-xs text-muted">
+          Si lo activas, este atleta ve el formulario configurado en
+          <a href="/biblioteca/checkin-avanzado" className="mx-1 underline">
+            Biblioteca › Check-in avanzado
+          </a>
+          en lugar del check-in semanal básico.
+        </p>
+        <form action={setUseAdvancedCheckIn} className="mt-3 flex items-center gap-2">
+          <input type="hidden" name="clientId" value={clientId} />
+          <input type="hidden" name="enabled" value={useAdvancedCheckIn ? "0" : "1"} />
+          <button
+            type="submit"
+            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${
+              useAdvancedCheckIn
+                ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                : "border-border bg-surface text-text hover:bg-surface-2"
+            }`}
+          >
+            <span
+              className={`inline-block h-2.5 w-2.5 rounded-full ${
+                useAdvancedCheckIn ? "bg-emerald-500" : "bg-muted/40"
+              }`}
+            />
+            {useAdvancedCheckIn ? "Activado — usa formulario avanzado" : "Desactivado — usa el semanal básico"}
+          </button>
+        </form>
+        <p className="mt-2 text-[11px] text-muted">
+          Medida inicial:{" "}
+          {initialCheckInDone ? (
+            <span className="text-emerald-700">registrada ✓</span>
+          ) : (
+            <span className="text-amber-700">pendiente — el atleta la verá al entrar en la app</span>
+          )}
+        </p>
       </div>
 
       <div className="rounded-2xl border border-border bg-surface p-5">

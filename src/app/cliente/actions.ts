@@ -167,6 +167,15 @@ export async function submitCheckIn(formData: FormData) {
   // Persistimos solo las activas y con valor numérico finito.
   await persistCustomMetricValues(client.id, checkIn.id, formData);
 
+  // Al enviar el PRIMER check-in de la vida del atleta marcamos
+  // initialCheckInDone=true. Así la home deja de mostrar el banner
+  // "Registra tu medida inicial". Usamos updateMany con guard para
+  // no pisar el timestamp updatedAt si ya estaba a true.
+  await prisma.client.updateMany({
+    where: { id: client.id, initialCheckInDone: false },
+    data: { initialCheckInDone: true },
+  });
+
   revalidatePath("/cliente/checkin");
   revalidatePath("/cliente");
 }

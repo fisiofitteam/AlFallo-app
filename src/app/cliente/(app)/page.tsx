@@ -86,6 +86,14 @@ export default async function ClientHomePage() {
   const quote = getDailyQuote();
   // Aviso de check-in: solo se ve el lunes hasta que el cliente lo envía.
   const showCheckInReminder = await shouldShowCheckInReminder(me.id);
+  // Medida inicial: hasta que el atleta no envíe su primer check-in de la
+  // vida, mostramos un aviso destacado ámbar. Prioriza sobre el semanal
+  // porque es más importante para el histórico.
+  const clientState = await prisma.client.findUnique({
+    where: { id: me.id },
+    select: { initialCheckInDone: true },
+  });
+  const showInitialCheckIn = clientState && !clientState.initialCheckInDone;
 
   return (
     <div className="relative pt-1">
@@ -112,10 +120,15 @@ export default async function ClientHomePage() {
         <span className="text-primary">{quote.tail}</span>
       </h1>
 
+      {/* Aviso de medida inicial: hasta el primer check-in de la vida del
+          atleta. Sale destacado en ámbar. Cuando lo mande, desaparece. */}
+      {showInitialCheckIn ? <InitialCheckInCard /> : null}
+
       {/* Aviso del check-in semanal — visible solo el día del aviso si todavía
           no lo han enviado. Recuadro rosa translúcido para que destaque sin
-          robarle la portada a la frase. */}
-      {showCheckInReminder ? <CheckInReminderCard /> : null}
+          robarle la portada a la frase. Ocultamos si aún no ha hecho la
+          medida inicial para no duplicar avisos. */}
+      {!showInitialCheckIn && showCheckInReminder ? <CheckInReminderCard /> : null}
 
       {/* Mosaico de secciones — solo las "ready". Las que no, se ocultan
           hasta que estén montadas (sin badges "Pronto" que ensucien la UI). */}
@@ -160,6 +173,30 @@ export default async function ClientHomePage() {
         })}
       </div>
     </div>
+  );
+}
+
+/** Banner ámbar destacado para el check-in INICIAL. Aparece la primera vez
+ *  que el atleta entra en la app tras registrarse y no desaparece hasta que
+ *  envía el primer check-in. Nos da la foto inicial para comparar contra
+ *  ella toda la evolución posterior. */
+function InitialCheckInCard() {
+  return (
+    <Link
+      href="/cliente/checkin"
+      className="relative mt-5 flex items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm transition hover:bg-amber-100"
+    >
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-md">
+        <ClipboardCheck size={22} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-amber-900">Registra tu medida inicial</p>
+        <p className="text-xs leading-snug text-amber-900/80">
+          Antes de empezar, rellena tu primer check-in. Nos sirve de referencia para tu evolución.
+        </p>
+      </div>
+      <ArrowRight size={18} className="shrink-0 text-amber-800" />
+    </Link>
   );
 }
 

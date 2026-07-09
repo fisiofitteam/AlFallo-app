@@ -103,6 +103,16 @@ model Client {
   // el equipo; el atleta no las ve nunca.
   internalNotes String?
 
+  // Al TRUE, este atleta ve el formulario avanzado (configurado en
+  // /biblioteca/checkin-avanzado) en lugar del check-in semanal básico.
+  // Se activa/desactiva desde la ficha del cliente. Por defecto: básico.
+  useAdvancedCheckIn Boolean @default(false)
+
+  // Se marca en cuanto el atleta envía su PRIMER check-in tras registrarse.
+  // Mientras esté false, la home del cliente muestra un banner "Registra tu
+  // medida inicial" que le lleva a /cliente/checkin.
+  initialCheckInDone Boolean @default(false)
+
   // Reset del badge "novedades en comunidad" al entrar la última vez.
   communityLastSeenAt DateTime?
 
@@ -152,6 +162,11 @@ model CheckIn {
   reviewNotes  String?
   reviewedById String?
   reviewedAt   DateTime?
+
+  // Respuestas a los campos custom del formulario avanzado (cuando el
+  // atleta tiene useAdvancedCheckIn = true). JSON con {fieldId: value}.
+  // Los campos "core" (peso, cintura…) siguen en columnas tipadas.
+  extraAnswers Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1286,6 +1301,18 @@ model AIPlanBrief {
 // Plantilla configurable del formulario de onboarding del atleta. Singleton.
 // Las secciones y campos viven como JSON para poder añadir preguntas custom
 // y reordenar sin migraciones. Editable desde /biblioteca/onboarding.
+// Configuración global (singleton) del check-in AVANZADO. Cuando un atleta
+// tiene Client.useAdvancedCheckIn = true, se le muestra este formulario en
+// lugar del semanal básico. Editable por managers desde /biblioteca/checkin-avanzado.
+// Mismo shape que OnboardingFormConfig: array de secciones con campos
+// tipados (number|scale|text|textarea|select), reordenables y editables.
+model CheckInFormConfig {
+  id        String   @id @default("default")
+  // [{ id, title, description?, fields: [{ id, label, type, hint?, options?, required?, hidden? }] }]
+  sections  Json
+  updatedAt DateTime @updatedAt
+}
+
 model OnboardingFormConfig {
   id        String   @id @default("default")
   // [{ id, title, description?, fields: [{ id, label, type, hint?, options?, required?, hidden? }] }]

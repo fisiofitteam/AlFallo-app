@@ -81,11 +81,24 @@ export default async function CheckInPage() {
     value: activeValues.find((v) => v.metricId === m.id)?.value ?? null,
   }));
 
+  // Si el atleta aún no ha registrado su primer check-in, lo tratamos
+  // como "medida inicial" en el título/copy — es lo que le hemos pedido
+  // en la home.
+  const clientMeta = await prisma.client.findUnique({
+    where: { id: me.id },
+    select: { initialCheckInDone: true },
+  });
+  const isInitial = !clientMeta?.initialCheckInDone;
+
   return (
     <div>
-      <h1 className="text-2xl font-bold">Check-in semanal</h1>
+      <h1 className="text-2xl font-bold">
+        {isInitial ? "Medida inicial" : "Check-in semanal"}
+      </h1>
       <p className="mt-1 text-muted">
-        Registra tu progreso de la semana para que tu nutricionista lo revise.
+        {isInitial
+          ? "Registra tus datos de partida. Los usaremos como referencia para tu evolución."
+          : "Registra tu progreso de la semana para que tu nutricionista lo revise."}
       </p>
 
       <CheckInWeekly active={active} customMetrics={customMetrics} />

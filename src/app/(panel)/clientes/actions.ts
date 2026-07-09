@@ -56,6 +56,20 @@ export async function createClient(formData: FormData) {
   redirect(`/clientes/${client.id}`);
 }
 
+/** Activa o desactiva el check-in avanzado para un cliente. Toggle desde
+ *  la pestaña Ajustes de la ficha. */
+export async function setUseAdvancedCheckIn(formData: FormData) {
+  const prof = await requireClientAccess();
+  const clientId = String(formData.get("clientId"));
+  await loadClientForEdit(clientId, prof);
+  const enabled = String(formData.get("enabled")) === "1";
+  await prisma.client.update({
+    where: { id: clientId },
+    data: { useAdvancedCheckIn: enabled },
+  });
+  revalidatePath(`/clientes/${clientId}`);
+}
+
 /** Actualiza las notas internas del nutri sobre el cliente. Texto libre
  *  que solo ve el equipo. Autosave desde el popover del header. */
 export async function updateClientInternalNotes(formData: FormData) {
