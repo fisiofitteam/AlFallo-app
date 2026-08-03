@@ -42,10 +42,16 @@ export async function createClient(formData: FormData) {
     nutritionistId = prof.id;
   }
 
+  // El email es la clave por la que el atleta hace login (que normaliza a
+  // lowercase). Si aquí se guarda con mayúsculas, findUnique nunca cuadra y
+  // "email o contraseña incorrectos" se vuelve permanente.
+  const rawEmail = parseStr(formData.get("email"));
+  const email = rawEmail ? rawEmail.trim().toLowerCase() : null;
+
   const client = await prisma.client.create({
     data: {
       fullName,
-      email: parseStr(formData.get("email")),
+      email,
       phone: parseStr(formData.get("phone")),
       status: parseStr(formData.get("status")) ?? "pendiente_revision",
       nutritionistId,
