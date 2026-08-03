@@ -28,6 +28,15 @@ export default async function PiecePage({ params }: { params: { id: string } }) 
 
   const blocks = JSON.parse(piece.blocks) as { id: string; label: string; content: string; order: number }[];
 
+  // El primer bloque del guion es SIEMPRE el gancho. Si la pieza no lo trae
+  // (piezas antiguas o plantillas que no lo definen), lo inyectamos aquí en
+  // render — no se persiste hasta que el usuario edite y guarde.
+  const hasGancho = blocks.length > 0 && blocks[0].label.trim().toLowerCase() === "gancho";
+  if (!hasGancho) {
+    blocks.unshift({ id: `gancho-${piece.id}`, label: "Gancho", content: "", order: 0 });
+    blocks.forEach((b, i) => (b.order = i));
+  }
+
   return (
     <PieceEditor
       piece={{
@@ -40,7 +49,7 @@ export default async function PiecePage({ params }: { params: { id: string } }) 
         goal: piece.goal,
         ctaType: piece.ctaType,
         dmKeyword: piece.dmKeyword,
-        hook: piece.hook,
+        recordingInstructions: piece.recordingInstructions,
         blocks,
         caption: piece.caption,
         recordingLocation: piece.recordingLocation,

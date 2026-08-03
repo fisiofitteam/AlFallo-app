@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
 import { ContentNav } from "@/components/ContentNav";
 import { MetricsView } from "@/components/MetricsView";
+import { pieceHookFromBlocks } from "@/lib/content-formats";
 
 type Range = "week" | "month" | "quarter" | "custom";
 
@@ -192,10 +193,11 @@ export default async function MetricsPage({
     return (p.metricsReach ?? 0) * 0.3 + (p.metricsSaves ?? 0) * 0.3 + (p.metricsDmKeyword ?? 0) * 50;
   }
   const topHooks = piecesCurrent
-    .filter((p) => p.hook)
-    .map((p) => ({
+    .map((p) => ({ p, hook: pieceHookFromBlocks(p.blocks) }))
+    .filter((x) => x.hook)
+    .map(({ p, hook }) => ({
       pieceId: p.id,
-      hook: p.hook!,
+      hook: hook!,
       format: p.format,
       bodyZone: p.week.bodyZone,
       weekTheme: p.week.centralTheme,

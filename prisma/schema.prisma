@@ -390,7 +390,11 @@ model ContentPiece {
   ctaType   String
   dmKeyword String?
 
-  hook    String?
+  hook    String? // LEGACY: antes era el "gancho" literal del reel. Ahora
+                  // el gancho vive en el primer bloque del guion (blocks[0]).
+                  // Se mantiene para no perder datos históricos.
+  recordingInstructions String? // Notas del creador para la persona que graba
+                                 // el reel (contexto, tono, cortes clave...).
   blocks  String  @default("[]") // JSON: [{id, label, content, order}]
   caption String?
 

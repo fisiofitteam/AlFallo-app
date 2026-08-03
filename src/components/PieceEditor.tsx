@@ -31,7 +31,7 @@ type Piece = {
   goal: string;
   ctaType: string;
   dmKeyword: string | null;
-  hook: string | null;
+  recordingInstructions: string | null;
   blocks: Block[];
   caption: string | null;
   recordingLocation: string | null;
@@ -316,17 +316,18 @@ export function PieceEditor({
       <div className="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-4">
         {/* COLUMNA IZQUIERDA: guion editable */}
         <section className="space-y-3">
-          {/* Hook */}
+          {/* Instrucciones para quien graba (el guión lo escribe el creador;
+              graba otra persona y necesita entender en qué consiste el reel). */}
           <div className="border-2 border-amber-200 rounded-lg p-3 bg-amber-50/40">
             <label className="text-[10px] uppercase text-amber-700 font-semibold tracking-wide mb-1 block">
-              ⚡ Hook principal
+              📝 Instrucciones para grabación
             </label>
             <textarea
-              className="w-full bg-transparent border-0 outline-none text-base font-medium resize-none"
-              rows={2}
-              value={piece.hook ?? ""}
-              onChange={(e) => update("hook", e.target.value)}
-              placeholder="El gancho que para el scroll. Frase corta, directa, provocadora."
+              className="w-full bg-transparent border-0 outline-none text-sm resize-none"
+              rows={3}
+              value={piece.recordingInstructions ?? ""}
+              onChange={(e) => update("recordingInstructions", e.target.value)}
+              placeholder="Contexto para quien graba: de qué va el reel, tono, cortes clave, ejemplos visuales..."
             />
           </div>
 
@@ -691,13 +692,13 @@ function RecordingMode({
 
       {/* Guion en grande */}
       <div className="max-w-3xl mx-auto px-6 py-8 pb-32">
-        {piece.hook && (
+        {piece.recordingInstructions && (
           <div className="mb-10 pb-6 border-b-2" style={{ borderColor: "#F59E0B" }}>
             <div className="text-xs uppercase tracking-wider mb-2 font-semibold" style={{ color: "#F59E0B" }}>
-              ⚡ Hook
+              📝 Instrucciones
             </div>
-            <p className="text-3xl font-semibold leading-tight" style={{ color: "#0A0A0A", letterSpacing: "-0.015em" }}>
-              {piece.hook}
+            <p className="text-xl leading-relaxed whitespace-pre-wrap" style={{ color: "#0A0A0A", letterSpacing: "-0.01em" }}>
+              {piece.recordingInstructions}
             </p>
           </div>
         )}

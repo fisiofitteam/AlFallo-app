@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-import { piecePublishDate } from "@/lib/content-formats";
+import { piecePublishDate, pieceHookFromBlocks } from "@/lib/content-formats";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +50,8 @@ export async function GET() {
       dayOfWeek: p.dayOfWeek,
       format: p.format,
       title: p.title,
-      hook: p.hook,
+      hook: pieceHookFromBlocks(p.blocks),
+      recordingInstructions: p.recordingInstructions,
       publishDate: p._publishDate?.toISOString() ?? null,
       recordingLocation: p.recordingLocation,
       recordingOutfit: p.recordingOutfit,

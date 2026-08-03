@@ -4,6 +4,7 @@ import { getActiveProfessional } from "@/lib/session";
 import { ContentNav } from "@/components/ContentNav";
 import { ThisWeekView } from "@/components/ThisWeekView";
 import { isoWeekFromDate } from "@/lib/content-templates";
+import { pieceHookFromBlocks } from "@/lib/content-formats";
 
 export default async function ContentPage({
   searchParams,
@@ -166,7 +167,7 @@ export default async function ContentPage({
             title: p.title,
             goals: p.goals,
             status: p.status,
-            hook: p.hook,
+            hook: pieceHookFromBlocks(p.blocks),
             metricsFilledAt: p.metricsFilledAt?.toISOString() ?? null,
           })),
         }}

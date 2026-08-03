@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
 import { ContentNav } from "@/components/ContentNav";
 import { CalendarView } from "@/components/CalendarView";
+import { pieceHookFromBlocks } from "@/lib/content-formats";
 
 export default async function CalendarPage({
   searchParams,
@@ -36,7 +37,7 @@ export default async function CalendarPage({
       orderBy: [{ year: "desc" }, { weekNumber: "desc" }],
       include: {
         pieces: {
-          select: { id: true, dayOfWeek: true, format: true, title: true, goals: true, status: true, hook: true },
+          select: { id: true, dayOfWeek: true, format: true, title: true, goals: true, status: true, blocks: true },
           orderBy: { dayOfWeek: "asc" },
         },
       },
@@ -75,7 +76,7 @@ export default async function CalendarPage({
             title: p.title,
             goals: p.goals,
             status: p.status,
-            hook: p.hook,
+            hook: pieceHookFromBlocks(p.blocks),
           })),
         }))}
         events={events.map((e) => ({

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
 import { ContentNav } from "@/components/ContentNav";
 import { DAY_LABELS } from "@/lib/content-templates";
-import { formatLabelOnly, formatIcon, piecePublishDate, parseGoals, goalColor, goalLabel, GOAL_COLOR_CLASSES } from "@/lib/content-formats";
+import { formatLabelOnly, formatIcon, piecePublishDate, parseGoals, goalColor, goalLabel, GOAL_COLOR_CLASSES, pieceHookFromBlocks } from "@/lib/content-formats";
 
 export const dynamic = "force-dynamic";
 
@@ -101,11 +101,19 @@ export default async function ToRecordPage() {
                       <div className="text-xs text-neutral-500 mt-1">
                         Semana {p.week.weekNumber}/{p.week.year} · {p.week.centralTheme || "Sin tema"} · {p.week.bodyZone}
                       </div>
-                      {p.hook && (
-                        <p className="text-xs text-neutral-700 italic line-clamp-2 mt-1">
-                          "{p.hook}"
+                      {p.recordingInstructions && (
+                        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1.5 whitespace-pre-wrap">
+                          📝 {p.recordingInstructions}
                         </p>
                       )}
+                      {(() => {
+                        const hookText = pieceHookFromBlocks(p.blocks);
+                        return hookText ? (
+                          <p className="text-xs text-neutral-700 italic line-clamp-2 mt-1">
+                            "{hookText}"
+                          </p>
+                        ) : null;
+                      })()}
                       {(p.recordingLocation || p.recordingOutfit) && (
                         <div className="text-[11px] text-neutral-500 mt-1 flex gap-3 flex-wrap">
                           {p.recordingLocation && <span>📍 {p.recordingLocation}</span>}

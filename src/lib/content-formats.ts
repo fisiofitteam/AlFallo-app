@@ -28,6 +28,37 @@ export function formatLabelOnly(value: string): string {
   return FORMATS.find((f) => f.value === value)?.label ?? value;
 }
 
+/**
+ * Extrae el "gancho" de una pieza a partir de sus blocks (JSON del guion).
+ *
+ * Regla: el gancho es el content del primer bloque del guion. En pieza/[id]
+ * garantizamos que el primer bloque es "Gancho"; pero por robustez aquí
+ * aceptamos "cualquier primer bloque no vacío". Acepta blocks como array
+ * ya parseado o como string JSON crudo (así lo llaman las vistas que solo
+ * seleccionan el campo blocks).
+ *
+ * Antes vivía en la columna `ContentPiece.hook`; ahora esa columna queda
+ * como legacy y todas las lecturas nuevas van por aquí.
+ */
+export function pieceHookFromBlocks(
+  blocks: string | Array<{ label?: string; content?: string }> | null | undefined,
+): string | null {
+  if (!blocks) return null;
+  let arr: Array<{ label?: string; content?: string }>;
+  if (typeof blocks === "string") {
+    try {
+      arr = JSON.parse(blocks);
+    } catch {
+      return null;
+    }
+  } else {
+    arr = blocks;
+  }
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const content = arr[0]?.content?.trim();
+  return content && content.length > 0 ? content : null;
+}
+
 export function formatIcon(value: string): string {
   return FORMATS.find((f) => f.value === value)?.icon ?? "";
 }

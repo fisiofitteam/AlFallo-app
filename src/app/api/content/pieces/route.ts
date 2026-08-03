@@ -20,7 +20,7 @@ export async function PATCH(req: NextRequest) {
 
   // Campos directos
   const textFields = [
-    "title", "hook", "caption",
+    "title", "hook", "recordingInstructions", "caption",
     "format", "goal", "ctaType",
     "recordingLocation", "recordingOutfit", "recordingMaterial",
     "editorNotes", "finalFileUrl", "dmKeyword", "status",
