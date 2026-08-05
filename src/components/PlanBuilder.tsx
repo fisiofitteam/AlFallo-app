@@ -21,6 +21,7 @@ import {
   deleteMeal,
   renameMeal,
   moveMeal,
+  moveMealItem,
   updatePlanCopy,
   updatePlanMacroOverride,
 } from "@/app/(panel)/planes/actions";
@@ -42,6 +43,9 @@ export type PlanBuilderOption = {
   /** Nota libre para el atleta (elaboración, tip, aclaración). No entra en
    *  el cálculo de macros ni en la lista de la compra. */
   note: string | null;
+  /** Orden manual dentro del subgrupo (mealId + subType + dayContext). Lo
+   *  gestionan las flechas ↑↓ del OptionRow vía moveMealItem. */
+  order: number;
 };
 
 const SUB_GROUPS: { value: string; label: string }[] = [
@@ -816,7 +820,7 @@ function ComposedBody({
     }
   }
 
-  function optionRowFor(opt: PlanBuilderOption, i: number, subValue: string) {
+  function optionRowFor(opt: PlanBuilderOption, i: number, subValue: string, total: number) {
     return (
       <OptionRow
         key={opt.id}
@@ -825,6 +829,8 @@ function ComposedBody({
         planId={planId}
         exclusiveInGroup
         compact
+        canMoveUp={i > 0}
+        canMoveDown={i < total - 1}
         onPatch={(patch) => onPatch(opt.id, patch)}
         onDelete={() => onRemoveOption(opt.id)}
         onSelectExclusive={() => handleExclusive(opt.id, subValue)}
@@ -835,9 +841,11 @@ function ComposedBody({
   return (
     <div className="space-y-5 px-5 py-4">
       {SUB_GROUPS.map((g) => {
+        // Antes ordenábamos por kcal; ahora respetamos el orden manual del
+        // nutri (las flechas ↑↓ mueven items dentro del subgrupo).
         const items = meal.options
           .filter((o) => o.subType === g.value)
-          .sort((a, b) => a.kcal - b.kcal);
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         // Carbos: dos sub-secciones (día entreno / día descanso).
         if (g.value === "carbos") {
           return (
@@ -868,7 +876,7 @@ function ComposedBody({
                         <p className="text-xs italic text-muted/70">Sin opciones aún.</p>
                       ) : (
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                          {ctxItems.map((opt, i) => optionRowFor(opt, i, g.value))}
+                          {ctxItems.map((opt, i) => optionRowFor(opt, i, g.value, ctxItems.length))}
                         </div>
                       )}
                     </div>
@@ -898,7 +906,7 @@ function ComposedBody({
               <p className="text-xs italic text-muted/70">Sin opciones aún.</p>
             ) : (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {items.map((opt, i) => optionRowFor(opt, i, g.value))}
+                {items.map((opt, i) => optionRowFor(opt, i, g.value, items.length))}
               </div>
             )}
           </div>
@@ -916,6 +924,8 @@ function OptionRow({
   planId,
   exclusiveInGroup,
   compact = false,
+  canMoveUp = false,
+  canMoveDown = false,
   onPatch,
   onDelete,
   onSelectExclusive,
@@ -925,6 +935,10 @@ function OptionRow({
   planId: string;
   exclusiveInGroup: boolean;
   compact?: boolean;
+  /** Flechas para reordenar dentro del subgrupo. Solo se muestran cuando
+   *  la vista es compact (comida/cena con macros agrupados). */
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
   onPatch: (patch: Partial<PlanBuilderOption>) => void;
   onDelete: () => void;
   onSelectExclusive: () => void;
@@ -1076,6 +1090,16 @@ function OptionRow({
     });
   }
 
+  function moveOption(direction: "up" | "down") {
+    const fd = new FormData();
+    fd.set("planId", planId);
+    fd.set("itemId", option.id);
+    fd.set("direction", direction);
+    startSaving(async () => {
+      await moveMealItem(fd);
+    });
+  }
+
   if (compact) {
     return (
       <div
@@ -1093,12 +1117,32 @@ function OptionRow({
             />
             <span className="text-xs font-semibold text-primary">Opción {index + 1}</span>
           </label>
+          <div className="ml-auto flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => moveOption("up")}
+              disabled={!canMoveUp || savingPending}
+              title="Subir opción"
+              className="rounded-md p-1 text-muted hover:bg-surface hover:text-text disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <ChevronUp size={11} />
+            </button>
+            <button
+              type="button"
+              onClick={() => moveOption("down")}
+              disabled={!canMoveDown || savingPending}
+              title="Bajar opción"
+              className="rounded-md p-1 text-muted hover:bg-surface hover:text-text disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <ChevronDown size={11} />
+            </button>
+          </div>
           <button
             type="button"
             onClick={recalcMacrosWithAI}
             disabled={savingPending}
             title="Recalcular macros con IA a partir del texto actual"
-            className="ml-auto rounded-md p-1 text-muted hover:bg-surface hover:text-primary disabled:opacity-50"
+            className="rounded-md p-1 text-muted hover:bg-surface hover:text-primary disabled:opacity-50"
           >
             <RotateCcw size={11} />
           </button>

@@ -84,6 +84,7 @@ export async function loadPlanForBuilder(planId: string): Promise<LoadedPlan | n
           subType: it.subType ?? null,
           dayContext: it.dayContext ?? null,
           note: it.note ?? null,
+          order: it.order ?? 0,
         };
       }),
     })),

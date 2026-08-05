@@ -419,6 +419,49 @@ export async function addOptionToMeal(formData: FormData) {
   revalidatePath(`/planes/${planId}`);
 }
 
+// Mueve una opción arriba/abajo DENTRO de su grupo (mismo mealId + subType +
+// dayContext). Antes de intercambiar reindexamos el grupo a 0..n-1 para
+// auto-reparar planes viejos cuyos items podían tener order=0 todos (los
+// addOptionToMeal originales asignaban count() pero plantillas y migraciones
+// no siempre respetaban orden). Así el primer clic ya deja el grupo estable.
+export async function moveMealItem(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  await loadPlanForEdit(planId, prof);
+  const itemId = String(formData.get("itemId"));
+  const direction = String(formData.get("direction")); // "up" | "down"
+  const item = await prisma.mealItem.findUnique({
+    where: { id: itemId },
+    select: { id: true, mealId: true, subType: true, dayContext: true },
+  });
+  if (!item) return;
+
+  const siblings = await prisma.mealItem.findMany({
+    where: {
+      mealId: item.mealId,
+      subType: item.subType,
+      dayContext: item.dayContext,
+    },
+    orderBy: [{ order: "asc" }, { id: "asc" }],
+    select: { id: true, order: true },
+  });
+
+  const idx = siblings.findIndex((s) => s.id === itemId);
+  if (idx === -1) return;
+  const target = direction === "up" ? idx - 1 : idx + 1;
+  if (target < 0 || target >= siblings.length) return;
+
+  // Reindexado + swap en una sola transacción.
+  const desired = [...siblings];
+  [desired[idx], desired[target]] = [desired[target], desired[idx]];
+  await prisma.$transaction(
+    desired.map((s, i) =>
+      prisma.mealItem.update({ where: { id: s.id }, data: { order: i } }),
+    ),
+  );
+  revalidatePath(`/planes/${planId}`);
+}
+
 // Selección exclusiva dentro del subgrupo: marca esta opción como elegida y
 // deselecciona el resto de opciones del mismo subType en la misma comida.
 // Si ya estaba seleccionada, la desactiva (toggle limpio para volver al "nada
