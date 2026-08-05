@@ -25,6 +25,7 @@ import {
 import { TextInput } from "@/components/form-ui";
 import type { ChartPoint } from "@/components/line-chart";
 import { FichaForm } from "./ficha-form";
+import { DeleteClientButton } from "./delete-client-button";
 import { CheckInsTab } from "./checkins-tab";
 import { EvolucionTab } from "./evolucion-tab";
 import {
@@ -381,6 +382,7 @@ export default async function ClientDetailPage({
           ) : (
             <AjustesSection
               clientId={client.id}
+              clientName={client.fullName}
               status={client.status}
               nutritionistId={client.nutritionistId}
               nutritionistName={client.nutritionist?.fullName ?? null}
@@ -447,6 +449,7 @@ function AccesoSection({
 
 function AjustesSection({
   clientId,
+  clientName,
   status,
   nutritionistId,
   nutritionistName,
@@ -456,6 +459,7 @@ function AjustesSection({
   initialCheckInDone,
 }: {
   clientId: string;
+  clientName: string;
   status: string;
   nutritionistId: string | null;
   nutritionistName: string | null;
@@ -559,6 +563,19 @@ function AjustesSection({
           </p>
         )}
       </div>
+
+      {isManager && (
+        <div className="rounded-2xl border border-red-200 bg-red-50/40 p-5">
+          <h2 className="font-semibold text-red-800">Zona peligrosa</h2>
+          <p className="mt-1 text-xs text-muted">
+            Eliminar el cliente borra planes, check-ins, métricas, acceso a la
+            app y su rastro en la comunidad. No se puede deshacer.
+          </p>
+          <div className="mt-3">
+            <DeleteClientButton clientId={clientId} clientName={clientName} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

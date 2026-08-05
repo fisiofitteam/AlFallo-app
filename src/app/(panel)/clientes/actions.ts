@@ -116,6 +116,31 @@ export async function updateClientStatus(formData: FormData) {
   revalidatePath(`/clientes/${clientId}`);
 }
 
+// Elimina un cliente por completo. Todas las relaciones tienen onDelete
+// Cascade/SetNull en el esquema, así que Prisma se encarga de check-ins,
+// planes, métricas, contraseñas, sesiones, comentarios de la comunidad...
+// Se exige que quien lo pide teclee el nombre completo del cliente para
+// evitar borrados accidentales, y se restringe a roles manager.
+export async function deleteClient(formData: FormData) {
+  const prof = await requireClientAccess();
+  if (!isManagerRole(prof.role)) redirect("/clientes");
+
+  const clientId = String(formData.get("clientId"));
+  const client = await loadClientForEdit(clientId, prof);
+
+  const confirmName = parseStr(formData.get("confirmName"));
+  if (!confirmName || confirmName.trim() !== client.fullName.trim()) {
+    // Nombre no coincide: abortamos silenciosamente. La UI ya no permite
+    // enviar el formulario si el input no coincide, así que llegar aquí
+    // solo pasa por manipulación directa.
+    return;
+  }
+
+  await prisma.client.delete({ where: { id: clientId } });
+  revalidatePath("/clientes");
+  redirect("/clientes");
+}
+
 // Establece/restablece la contraseña de acceso del cliente a la app.
 export async function setClientPassword(formData: FormData) {
   const prof = await requireClientAccess();
