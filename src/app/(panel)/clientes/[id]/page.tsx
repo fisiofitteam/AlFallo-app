@@ -350,7 +350,7 @@ export default async function ClientDetailPage({
                     una plantilla (sexo + objetivo) y se copiará editable.
                   </p>
                 ) : (
-                  <PlanCards mode="panel" clientId={client.id} plans={planCards} />
+                  <PlanCards mode="panel" clientId={client.id} plans={planCards} panelTab={active} />
                 )}
               </>
             )

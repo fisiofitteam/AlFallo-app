@@ -21,15 +21,19 @@ export function PlanCards({
   mode,
   clientId,
   plans,
+  panelTab,
 }: {
   mode: Mode;
   clientId: string;
   plans: PlanCardData[];
+  /** Solo mode="panel": pestaña activa (plan|semanal). Se preserva al abrir
+   *  un plan desde la galería para no saltar de semanal a completo. */
+  panelTab?: "plan" | "semanal";
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       {plans.map((p) => (
-        <PlanCard key={p.id} mode={mode} clientId={clientId} plan={p} />
+        <PlanCard key={p.id} mode={mode} clientId={clientId} plan={p} panelTab={panelTab} />
       ))}
     </div>
   );
@@ -39,15 +43,21 @@ function PlanCard({
   mode,
   clientId,
   plan,
+  panelTab = "plan",
 }: {
   mode: Mode;
   clientId: string;
   plan: PlanCardData;
+  panelTab?: "plan" | "semanal";
 }) {
+  // En modo panel, la galería puede estar tanto en la pestaña "Plan
+  // nutricional" (?tab=plan) como en "Plan semanal" (?tab=semanal). Al abrir
+  // un plan mantenemos la pestaña activa; si no, seleccionar un plan desde
+  // la galería semanal saltaba siempre al detalle plano y perdía la vista L-D.
   const href =
     mode === "cliente"
       ? `/cliente/plan?id=${plan.id}`
-      : `/clientes/${clientId}?tab=plan&planId=${plan.id}`;
+      : `/clientes/${clientId}?tab=${panelTab}&planId=${plan.id}`;
 
   const isCompetition = plan.kind === "competition";
 
