@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Pencil, Plus } from "lucide-react";
+import { LogIn, Pencil, Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireProfessional } from "@/lib/session";
+import { requireProfessional, getRealProfessional } from "@/lib/session";
 import { ALL_ROLES, ROLE_LABELS, type Role } from "@/lib/roles";
 import { NewMemberForm } from "./new-member-form";
 import { DeleteMemberButton } from "./delete-button";
+import { startImpersonation, stopImpersonation } from "./impersonate-actions";
 
 export const metadata = { title: "Equipo · Al Fallo Nutrition" };
 
@@ -24,14 +25,19 @@ function formatLastLogin(d: Date | null): string {
 
 export default async function TeamPage() {
   const me = await requireProfessional();
-  if (me.role !== "ceo" && me.role !== "head_coach") redirect("/");
+  const real = await getRealProfessional();
+  // Dirección real siempre puede entrar aquí, incluso si está viendo el
+  // panel como otro miembro (para poder cambiar o salir).
+  const isRealCeo = real?.role === "ceo";
+  if (!isRealCeo && me.role !== "ceo" && me.role !== "head_coach") redirect("/");
 
   const members = await prisma.professional.findMany({
     orderBy: [{ isActive: "desc" }, { fullName: "asc" }],
   });
 
   const roleOptions = ALL_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }));
-  const canManage = me.role === "ceo";
+  const canManage = isRealCeo;
+  const currentImpersonatedId = me.impersonating ? me.id : null;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -108,6 +114,28 @@ export default async function TeamPage() {
                   <td className="px-3 py-4">
                     {canManage ? (
                       <div className="flex items-center justify-end gap-1">
+                        {!isSelf && m.isActive && (
+                          m.id === currentImpersonatedId ? (
+                            <form action={stopImpersonation}>
+                              <button
+                                type="submit"
+                                className="rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-200"
+                              >
+                                Salir
+                              </button>
+                            </form>
+                          ) : (
+                            <form action={startImpersonation}>
+                              <input type="hidden" name="professionalId" value={m.id} />
+                              <button
+                                type="submit"
+                                className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-primary transition hover:bg-primary-soft"
+                              >
+                                <LogIn size={13} /> Entrar como
+                              </button>
+                            </form>
+                          )
+                        )}
                         <Link
                           href={`/equipo/${m.id}`}
                           className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted transition hover:bg-surface-2 hover:text-text"

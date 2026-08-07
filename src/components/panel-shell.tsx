@@ -7,9 +7,16 @@ import { Menu, X } from "lucide-react";
 import { navForRole, ROLE_LABELS, type Role } from "@/lib/roles";
 import { BrandLogo, BrandMark } from "@/components/brand-mark";
 import { LogoutButton } from "@/components/logout-button";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 
 type Props = {
-  professional: { fullName: string; email: string; role: string; imageUrl: string | null };
+  professional: {
+    fullName: string;
+    email: string;
+    role: string;
+    imageUrl: string | null;
+    impersonating?: { id: string; fullName: string; email: string };
+  };
   children: React.ReactNode;
 };
 
@@ -24,6 +31,7 @@ export function PanelShell({ professional, children }: Props) {
 
   const items = navForRole(professional.role);
   const roleLabel = ROLE_LABELS[professional.role as Role] ?? professional.role;
+  const isImpersonating = !!professional.impersonating;
 
   // Modo "focus" para la ficha de un cliente: ocultamos el sidebar global
   // para que la pantalla quede dedicada al cliente. La nav se sustituye por
@@ -34,14 +42,27 @@ export function PanelShell({ professional, children }: Props) {
     segs[0] === "clientes" &&
     !["nuevo", "llamadas-seguimiento"].includes(segs[1]);
 
+  const banner = isImpersonating ? (
+    <ImpersonationBanner
+      viewingAs={{ fullName: professional.fullName, roleLabel }}
+      realName={professional.impersonating!.fullName}
+    />
+  ) : null;
+
   if (isClientFocus) {
     // Aplicamos la clase .shell para que las variables de tema (--c-bg,
     // --c-border, --c-primary, etc.) estén disponibles para los hijos.
-    return <div className="shell min-h-screen bg-bg text-text">{children}</div>;
+    return (
+      <div className="shell min-h-screen bg-bg text-text">
+        {banner}
+        {children}
+      </div>
+    );
   }
 
   return (
     <div className="shell min-h-screen bg-bg text-text">
+      {banner}
       {/* Cabecera móvil */}
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-surface px-4 py-3 md:hidden">
         <button

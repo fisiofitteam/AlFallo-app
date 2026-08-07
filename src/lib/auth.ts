@@ -4,8 +4,18 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
 export const SESSION_COOKIE = "afn_session";
+export const IMPERSONATE_COOKIE = "afn_impersonate";
 const SESSION_DAYS = 30;
 const SESSION_MS = SESSION_DAYS * 24 * 60 * 60 * 1000;
+
+export const impersonateCookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  // Sin maxAge: cookie de sesión que muere al cerrar el navegador para
+  // evitar quedarse "viendo como" alguien sin darse cuenta.
+};
 
 export function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, 12);
