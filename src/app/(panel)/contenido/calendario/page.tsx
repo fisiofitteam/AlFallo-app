@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
+import { canManageContent } from "@/lib/roles";
 import { ContentNav } from "@/components/ContentNav";
 import { CalendarView } from "@/components/CalendarView";
 import { pieceHookFromBlocks } from "@/lib/content-formats";
@@ -11,7 +12,7 @@ export default async function CalendarPage({
   searchParams: { view?: string; month?: string; year?: string; zone?: string; type?: string };
 }) {
   const user = (await getActiveProfessional())!;
-  if (user.role !== "ceo" && user.role !== "head_coach") redirect("/");
+  if (!canManageContent(user.role)) redirect("/");
 
   const view = searchParams.view === "table" ? "table" : "month";
   const today = new Date();

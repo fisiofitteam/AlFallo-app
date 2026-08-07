@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
+import { canManageContent } from "@/lib/roles";
 import { ContentNav } from "@/components/ContentNav";
 import { DAY_LABELS } from "@/lib/content-templates";
 import { formatLabelOnly, formatIcon, piecePublishDate, parseGoals, goalColor, goalLabel, GOAL_COLOR_CLASSES, pieceHookFromBlocks } from "@/lib/content-formats";
@@ -25,7 +26,7 @@ function formatDate(d: Date | null): string {
 export default async function ToRecordPage() {
   const user = await getActiveProfessional();
   if (!user) redirect("/login");
-  if (user.role !== "ceo" && user.role !== "head_coach") redirect("/");
+  if (!canManageContent(user.role)) redirect("/");
 
   const piecesRaw = await prisma.contentPiece.findMany({
     where: { status: "script" },

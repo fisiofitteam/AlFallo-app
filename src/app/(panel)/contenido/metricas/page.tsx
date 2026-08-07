@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
+import { canManageContent } from "@/lib/roles";
 import { ContentNav } from "@/components/ContentNav";
 import { MetricsView } from "@/components/MetricsView";
 import { pieceHookFromBlocks } from "@/lib/content-formats";
@@ -52,7 +53,7 @@ export default async function MetricsPage({
   searchParams: { range?: string; from?: string; to?: string; zone?: string; type?: string; formats?: string };
 }) {
   const user = (await getActiveProfessional())!;
-  if (user.role !== "ceo" && user.role !== "head_coach") redirect("/");
+  if (!canManageContent(user.role)) redirect("/");
 
   const range = (["week", "month", "quarter", "custom"].includes(searchParams.range ?? "")
     ? searchParams.range

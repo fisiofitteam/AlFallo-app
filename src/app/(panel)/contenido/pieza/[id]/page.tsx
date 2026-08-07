@@ -1,11 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
+import { canManageContent } from "@/lib/roles";
 import { PieceEditor } from "@/components/PieceEditor";
 
 export default async function PiecePage({ params }: { params: { id: string } }) {
   const user = (await getActiveProfessional())!;
-  if (user.role !== "ceo" && user.role !== "head_coach") redirect("/");
+  if (!canManageContent(user.role)) redirect("/");
 
   const piece = await prisma.contentPiece.findUnique({
     where: { id: params.id },

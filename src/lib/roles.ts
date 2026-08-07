@@ -21,6 +21,7 @@ export const ROLES = {
   nutricionista: "nutricionista",
   setter: "setter",
   closer: "closer",
+  marketing: "marketing",
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
@@ -33,11 +34,17 @@ export const ROLE_LABELS: Record<Role, string> = {
   nutricionista: "Nutricionista",
   setter: "Setter",
   closer: "Closer",
+  marketing: "Marketing",
 };
 
 // Managers ven todo y ciertas métricas sensibles.
 export function isManager(role: string): boolean {
   return role === ROLES.ceo || role === ROLES.head_coach;
+}
+
+// Puede gestionar el módulo de Contenido (planificación semanal, piezas, métricas).
+export function canManageContent(role: string): boolean {
+  return role === ROLES.ceo || role === ROLES.head_coach || role === ROLES.marketing;
 }
 
 export function isValidRole(role: string): role is Role {
@@ -84,7 +91,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/contenido",
     label: "Contenido",
     icon: Megaphone,
-    roles: ["ceo", "head_coach"],
+    roles: ["ceo", "head_coach", "marketing"],
     description: "Planificación de contenido semanal y métricas.",
   },
   {
@@ -126,5 +133,10 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 export function navForRole(role: string): NavItem[] {
+  // Marketing es un rol enfocado: solo ve items que le incluyan explícitamente
+  // (no Inicio ni Ajustes). Su panel se reduce a Contenido.
+  if (role === ROLES.marketing) {
+    return NAV_ITEMS.filter((item) => item.roles?.includes(ROLES.marketing));
+  }
   return NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(role as Role));
 }

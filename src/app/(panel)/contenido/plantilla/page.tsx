@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
+import { canManageContent } from "@/lib/roles";
 import { ContentNav } from "@/components/ContentNav";
 import { ScriptTemplatesManager } from "@/components/ScriptTemplatesManager";
 import { WeeklyTemplatesManager } from "@/components/WeeklyTemplatesManager";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function ContentTemplatePage() {
   const user = await getActiveProfessional();
   if (!user) redirect("/login");
-  if (user.role !== "ceo" && user.role !== "head_coach") redirect("/");
+  if (!canManageContent(user.role)) redirect("/");
 
   const [scriptTemplates, weeklyTemplates] = await Promise.all([
     prisma.scriptTemplate.findMany({ orderBy: [{ format: "asc" }, { name: "asc" }] }),

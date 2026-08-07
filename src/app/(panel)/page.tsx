@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Users, UserCheck, Clock, ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
@@ -18,6 +19,8 @@ const WEEKLY_TASKS_VIEWERS = ["nutricionista", "head_coach"];
 
 export default async function DashboardPage() {
   const prof = await requireProfessional();
+  // Marketing solo tiene acceso a Contenido: es su pantalla de aterrizaje.
+  if (prof.role === "marketing") redirect("/contenido");
   const shortcuts = navForRole(prof.role).filter((i) => i.href !== "/");
   const firstName = prof.fullName.split(" ")[0];
 

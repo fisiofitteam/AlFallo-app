@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
+import { canManageContent } from "@/lib/roles";
 import { piecePublishDate, pieceHookFromBlocks } from "@/lib/content-formats";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await getActiveProfessional();
   if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  if (user.role !== "ceo" && user.role !== "head_coach") {
+  if (!canManageContent(user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

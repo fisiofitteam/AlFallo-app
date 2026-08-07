@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
+import { canManageContent } from "@/lib/roles";
 import { ContentNav } from "@/components/ContentNav";
 import { ThisWeekView } from "@/components/ThisWeekView";
 import { isoWeekFromDate } from "@/lib/content-templates";
@@ -12,7 +13,7 @@ export default async function ContentPage({
   searchParams: { week?: string };
 }) {
   const user = (await getActiveProfessional())!;
-  if (user.role !== "ceo" && user.role !== "head_coach") redirect("/");
+  if (!canManageContent(user.role)) redirect("/");
 
   // Lista de TODAS las semanas para el selector (más reciente primero)
   const allWeeks = await prisma.contentWeek.findMany({

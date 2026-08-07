@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
+import { canManageContent } from "@/lib/roles";
 import { ContentNav } from "@/components/ContentNav";
 import { BankView } from "@/components/BankView";
 
@@ -10,7 +11,7 @@ export default async function BankPage({
   searchParams: { tab?: string };
 }) {
   const user = (await getActiveProfessional())!;
-  if (user.role !== "ceo" && user.role !== "head_coach") redirect("/");
+  if (!canManageContent(user.role)) redirect("/");
 
   const tab = ["ideas", "hooks", "cases", "leadmagnets"].includes(searchParams.tab ?? "")
     ? (searchParams.tab as "ideas" | "hooks" | "cases" | "leadmagnets")

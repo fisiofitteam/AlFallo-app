@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-
-function canAccess(role: string): boolean {
-  return role === "ceo" || role === "head_coach";
-}
+import { canManageContent } from "@/lib/roles";
 
 // POST: cerrar la semana
 export async function POST(req: NextRequest) {
   const user = await getActiveProfessional();
-  if (!user || !canAccess(user.role)) {
+  if (!user || !canManageContent(user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -33,7 +30,7 @@ export async function POST(req: NextRequest) {
 // GET: stats agregadas de la semana (totales del KPI + sumatorios)
 export async function GET(req: NextRequest) {
   const user = await getActiveProfessional();
-  if (!user || !canAccess(user.role)) {
+  if (!user || !canManageContent(user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

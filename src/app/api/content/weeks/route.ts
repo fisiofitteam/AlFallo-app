@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
+import { canManageContent } from "@/lib/roles";
 import { isoWeekRange } from "@/lib/content-templates";
-
-function canAccess(role: string): boolean {
-  return role === "ceo" || role === "head_coach";
-}
 
 export async function POST(req: NextRequest) {
   const user = await getActiveProfessional();
-  if (!user || !canAccess(user.role)) {
+  if (!user || !canManageContent(user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -93,7 +90,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const user = await getActiveProfessional();
-  if (!user || !canAccess(user.role)) {
+  if (!user || !canManageContent(user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
