@@ -5,6 +5,7 @@ import Link from "next/link";
 import { isoWeekFromDate } from "@/lib/content-templates";
 
 type GoalKey = "atraer" | "conectar" | "educar" | "convertir" | "lanzamiento";
+type ScriptBlock = { label: string; content: string };
 type Piece = {
   dayOfWeek: number;
   format: string;
@@ -12,6 +13,7 @@ type Piece = {
   hook: string;
   goals: GoalKey[];
   rationale: string;
+  script?: ScriptBlock[];
 };
 type Week = {
   weekOffset: number;
@@ -139,7 +141,14 @@ export function MarketerIAView() {
             weekType: week.weekType,
             limitingBeliefs: week.limitingBeliefs ?? [],
           },
-          piece,
+          piece: {
+            dayOfWeek: piece.dayOfWeek,
+            format: piece.format,
+            title: piece.title,
+            hook: piece.hook,
+            goals: piece.goals,
+            script: piece.script ?? [],
+          },
         }),
       });
       const d = await r.json();
@@ -325,6 +334,25 @@ export function MarketerIAView() {
                               <b>Idea:</b> {p.hook}
                             </div>
                             <div className="mt-1 text-xs italic text-muted">{p.rationale}</div>
+                            {p.format === "reel" && p.script && p.script.length > 0 && (
+                              <details className="mt-2 rounded-lg border border-neutral-200 bg-white p-2 text-xs">
+                                <summary className="cursor-pointer font-medium text-neutral-700">
+                                  🎬 Guion del reel ({p.script.length} bloques)
+                                </summary>
+                                <div className="mt-2 space-y-2">
+                                  {p.script.map((b, si) => (
+                                    <div key={si}>
+                                      <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                        {b.label}
+                                      </div>
+                                      <p className="mt-0.5 whitespace-pre-wrap leading-snug text-neutral-800">
+                                        {b.content}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            )}
                           </div>
                           <button
                             onClick={() => addPiece(w, p, key)}

@@ -73,10 +73,20 @@ function systemPrompt(brief: AiBrief): string {
     "- Si el usuario especifica una fecha de lanzamiento, alinea la semana de lanzamiento con esa fecha.",
     "- Si el usuario pide una mezcla concreta (ej. 3 reels + 1 carrusel/semana), respétala EXACTAMENTE.",
     "- Títulos cortos y específicos (nunca genéricos tipo 'Sobre los hidratos').",
-    "- 'hook' = IDEA PRINCIPAL de la pieza en 1-2 frases (qué se cuenta + ángulo/tono). NO es el gancho literal del vídeo — el creador escribirá los planos concretos después. Ej: 'Reel confrontacional sobre por qué el descanso no cura el hombro. Termina con CTA a Performance.'",
+    "- 'hook' = IDEA PRINCIPAL de la pieza en 1-2 frases (qué se cuenta + ángulo/tono). NO es el gancho literal del vídeo — para reels ese gancho vive en el primer bloque de `script`. Ej. de hook: 'Reel confrontacional sobre por qué quitar hidratos te está dejando sin chispa. Termina con CTA a Performance.'",
     "- Rationale en 1-2 frases explicando por qué esa pieza en ese slot dentro del arco.",
     "- En piezas de venta, menciona AL FALLO NUTRITION PERFORMANCE y CTA 'Escribe PERFORMANCE' en el rationale/hook.",
     "- Nunca prometas resultados garantizados. Nunca uses lenguaje fitness genérico ni cursi.",
+    "",
+    "GUION DE REEL (SOLO cuando format === 'reel', OBLIGATORIO):",
+    "- Devuelve el campo `script` con EXACTAMENTE 3 bloques, en este orden:",
+    "  1. { label: 'Hook (0-3s)',        content: '<8-15 palabras, frase rompedora, la que se dice a cámara en los primeros 3 segundos>' }",
+    "  2. { label: 'Cuerpo (3-38s)',     content: '<70-100 palabras habladas, frases cortas, una idea concreta con ejemplos reales del cliente ideal>' }",
+    "  3. { label: 'Cierre + CTA (38-45s)', content: '<10-20 palabras, cierre con CTA claro: guardar / comentar / o Escribe PERFORMANCE si es venta>' }",
+    "- Total del reel: 90-135 palabras habladas → dura 40-45 segundos en español (~140-160 palabras/minuto).",
+    "- El content de cada bloque es lo que se DICE (guion locutado). No metas indicaciones tipo '(pausa)' o descripciones de plano — solo texto para leer a cámara.",
+    "- Aplica la voz y las reglas del brief a cada frase. Frases cortas. Nada de tecnicismos sin traducir. Nada de cursi. Alguna palabrota suelta permitida (joder, hostia, mierda) SIN abusar.",
+    "- En carruseles, infografías, imagen y live NO devuelvas `script`.",
   ].join("\n");
 }
 
@@ -203,6 +213,19 @@ async function runGenerate(req: NextRequest) {
                       },
                     },
                     rationale: { type: "string" },
+                    script: {
+                      type: "array",
+                      description:
+                        "OBLIGATORIO cuando format='reel'. 3 bloques (Hook 0-3s, Cuerpo 3-38s, Cierre+CTA 38-45s) con el texto locutado. Total 90-135 palabras. Omite este campo en carruseles, infografías, imagen y live.",
+                      items: {
+                        type: "object",
+                        required: ["label", "content"],
+                        properties: {
+                          label: { type: "string" },
+                          content: { type: "string" },
+                        },
+                      },
+                    },
                   },
                 },
               },

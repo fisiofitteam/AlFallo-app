@@ -51,6 +51,22 @@ export async function POST(req: NextRequest) {
     .map((g: unknown) => String(g))
     .filter((g: string) => (ALLOWED_GOALS as readonly string[]).includes(g));
 
+  // Guion: solo llega en reels y solo cuando la IA lo generó. Lo serializamos
+  // con el shape del editor de piezas ({id, label, content, order}) para que
+  // el creador humano encuentre el guion ya redactado en /contenido/pieza/[id].
+  type Block = { id: string; label: string; content: string; order: number };
+  const scriptRaw: unknown[] = Array.isArray(pieceIn.script) ? pieceIn.script : [];
+  const blocks: Block[] = scriptRaw
+    .map((b, i): Block | null => {
+      if (!b || typeof b !== "object") return null;
+      const rec = b as Record<string, unknown>;
+      const label = String(rec.label ?? "").trim();
+      const content = String(rec.content ?? "").trim();
+      if (!label && !content) return null;
+      return { id: `s${i + 1}`, label, content, order: i };
+    })
+    .filter((b): b is Block => b !== null);
+
   // Reutiliza la semana si ya existe (mismo year + weekNumber) o la crea con
   // los datos que la IA propuso. Así se pueden añadir varias piezas de la
   // propuesta sin duplicar semanas.
@@ -95,7 +111,7 @@ export async function POST(req: NextRequest) {
       goal: "",
       ctaType: "",
       dmKeyword: week.leadMagnetKeyword ?? null,
-      blocks: "[]",
+      blocks: JSON.stringify(blocks),
       status: "idea",
     },
   });
