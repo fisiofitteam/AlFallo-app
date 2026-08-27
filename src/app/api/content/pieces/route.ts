@@ -75,3 +75,20 @@ export async function PATCH(req: NextRequest) {
   const piece = await prisma.contentPiece.update({ where: { id }, data: update });
   return NextResponse.json(piece);
 }
+
+export async function DELETE(req: NextRequest) {
+  const user = await getActiveProfessional();
+  if (!user || !canManageContent(user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const id = req.nextUrl.searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 });
+
+  try {
+    await prisma.contentPiece.delete({ where: { id } });
+  } catch {
+    return NextResponse.json({ error: "Pieza no encontrada" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true });
+}

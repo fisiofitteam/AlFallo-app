@@ -216,6 +216,13 @@ async function movePiece(pieceId: string, weekId: string, dayOfWeek: number) {
   return res.ok;
 }
 
+async function deletePiece(pieceId: string): Promise<boolean> {
+  const res = await fetch(`/api/content/pieces?id=${encodeURIComponent(pieceId)}`, {
+    method: "DELETE",
+  });
+  return res.ok;
+}
+
 function MonthGrid({
   month,
   year,
@@ -424,10 +431,8 @@ function MonthGrid({
                         const statusIcon = dp.piece.status === "published" ? "✓" : dp.piece.status === "scheduled" ? "📅" : "";
                         const goals = parseGoals(dp.piece.goals);
                         return (
-                          <Link
+                          <div
                             key={dp.piece.id}
-                            href={`/contenido/pieza/${dp.piece.id}`}
-                            onClick={(e) => e.stopPropagation()}
                             draggable
                             onDragStart={(e) => {
                               e.dataTransfer.setData("text/piece-id", dp.piece.id);
@@ -435,30 +440,57 @@ function MonthGrid({
                               e.dataTransfer.setData("text/source-dayofweek", String(dp.piece.dayOfWeek));
                               e.dataTransfer.effectAllowed = "move";
                             }}
-                            className="relative flex flex-col gap-0.5 text-[10px] px-1.5 py-1 rounded bg-neutral-100 hover:bg-neutral-200 leading-tight cursor-move overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                            className="group relative rounded bg-neutral-100 hover:bg-neutral-200 cursor-move overflow-hidden"
                             title={`${fmtLabel}${dp.piece.hook ? " · " + dp.piece.hook : ""}${dp.weekTheme ? " · " + dp.weekTheme : ""}`}
                           >
+                            <Link
+                              href={`/contenido/pieza/${dp.piece.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="block px-1.5 py-1 text-[10px] leading-tight"
+                            >
+                              <div className="flex items-start gap-1 pr-8">
+                                <span className="flex-shrink-0">{fmtIcon}</span>
+                                <span className="line-clamp-2 break-words flex-1 min-w-0">
+                                  {label}
+                                </span>
+                              </div>
+                              {goals.length > 0 && (
+                                <div className="flex flex-wrap gap-0.5 mt-0.5">
+                                  {goals.map((g) => (
+                                    <span key={g} className={`text-[8px] px-1 rounded ${GOAL_COLOR_CLASSES[goalColor(g)]}`}>
+                                      {goalLabel(g)}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </Link>
                             {statusIcon && (
-                              <span className="absolute top-0.5 right-0.5 text-emerald-700 font-bold text-[11px] leading-none">
+                              <span className="pointer-events-none absolute top-0.5 right-6 text-emerald-700 font-bold text-[11px] leading-none">
                                 {statusIcon}
                               </span>
                             )}
-                            <div className="flex items-start gap-1 pr-3">
-                              <span className="flex-shrink-0">{fmtIcon}</span>
-                              <span className="line-clamp-2 break-words flex-1 min-w-0">
-                                {label}
-                              </span>
-                            </div>
-                            {goals.length > 0 && (
-                              <div className="flex flex-wrap gap-0.5 mt-0.5">
-                                {goals.map((g) => (
-                                  <span key={g} className={`text-[8px] px-1 rounded ${GOAL_COLOR_CLASSES[goalColor(g)]}`}>
-                                    {goalLabel(g)}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </Link>
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                if (!confirm(`Eliminar "${label}"?`)) return;
+                                const ok = await deletePiece(dp.piece.id);
+                                if (ok) router.refresh();
+                                else alert("No se pudo eliminar la pieza");
+                              }}
+                              className="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded text-neutral-500 opacity-0 transition group-hover:opacity-100 hover:bg-red-100 hover:text-red-700"
+                              title="Eliminar pieza"
+                              aria-label="Eliminar pieza"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                                <path d="M3 6h18" />
+                                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                              </svg>
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
