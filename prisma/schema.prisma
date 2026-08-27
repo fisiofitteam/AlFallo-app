@@ -1583,3 +1583,18 @@ model NutritionTemplate {
 
   @@index([sex, goal])
 }
+
+// Brief editable con la voz de marca que se inyecta como system prompt del
+// Marketer IA. Singleton (id fijo = "singleton"). Ver src/lib/ai-brief.ts.
+model AiContentBrief {
+  id             String   @id @default("singleton")
+  brand          String   @default("")
+  voiceTone      String   @default("")
+  dos            String   @default("")
+  donts          String   @default("")
+  structureHints String   @default("")
+  goodExamples   String   @default("")
+  badExamples    String   @default("")
+  updatedAt      DateTime @updatedAt @default(now())
+  updatedById    String?
+}

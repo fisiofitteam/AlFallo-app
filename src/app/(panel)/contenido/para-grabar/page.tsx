@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
 import { canManageContent } from "@/lib/roles";
+import { canUseMarketerIA } from "@/lib/marketer-access";
 import { ContentNav } from "@/components/ContentNav";
 import { DAY_LABELS } from "@/lib/content-templates";
 import { formatLabelOnly, formatIcon, piecePublishDate, parseGoals, goalColor, goalLabel, GOAL_COLOR_CLASSES, pieceHookFromBlocks } from "@/lib/content-formats";
@@ -58,7 +59,7 @@ export default async function ToRecordPage() {
         </p>
       </header>
 
-      <ContentNav active="to-record" />
+      <ContentNav active="to-record" showMarketer={canUseMarketerIA(user.email)} />
 
       {pieces.length === 0 ? (
         <section className="card text-center py-12">

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
 import { canManageContent } from "@/lib/roles";
+import { canUseMarketerIA } from "@/lib/marketer-access";
 import { ContentNav } from "@/components/ContentNav";
 import { CalendarView } from "@/components/CalendarView";
 import { pieceHookFromBlocks } from "@/lib/content-formats";
@@ -51,7 +52,7 @@ export default async function CalendarPage({
 
   return (
     <main>
-      <ContentNav active="calendar" />
+      <ContentNav active="calendar" showMarketer={canUseMarketerIA(user.email)} />
       <CalendarView
         view={view}
         month={month}

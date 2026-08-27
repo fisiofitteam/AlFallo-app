@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
 import { canManageContent } from "@/lib/roles";
+import { canUseMarketerIA } from "@/lib/marketer-access";
 import { ContentNav } from "@/components/ContentNav";
 import { BankView } from "@/components/BankView";
 
@@ -27,7 +28,7 @@ export default async function BankPage({
 
   return (
     <main>
-      <ContentNav active="bank" />
+      <ContentNav active="bank" showMarketer={canUseMarketerIA(user.email)} />
       <BankView
         activeTab={tab}
         ideas={ideas.map((i) => ({

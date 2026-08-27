@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
 import { canManageContent } from "@/lib/roles";
+import { canUseMarketerIA } from "@/lib/marketer-access";
 import { ContentNav } from "@/components/ContentNav";
 import { ScriptTemplatesManager } from "@/components/ScriptTemplatesManager";
 import { WeeklyTemplatesManager } from "@/components/WeeklyTemplatesManager";
@@ -46,7 +47,7 @@ export default async function ContentTemplatePage() {
         </p>
       </header>
 
-      <ContentNav active="template" />
+      <ContentNav active="template" showMarketer={canUseMarketerIA(user.email)} />
 
       <WeeklyTemplatesManager initialTemplates={serializedWeekly} canEdit={canEdit} />
 

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
 import { canManageContent } from "@/lib/roles";
+import { canUseMarketerIA } from "@/lib/marketer-access";
 import { ContentNav } from "@/components/ContentNav";
 import { MetricsView } from "@/components/MetricsView";
 import { pieceHookFromBlocks } from "@/lib/content-formats";
@@ -260,7 +261,7 @@ export default async function MetricsPage({
 
   return (
     <main>
-      <ContentNav active="metrics" />
+      <ContentNav active="metrics" showMarketer={canUseMarketerIA(user.email)} />
       <MetricsView
         range={range}
         rangeLabel={label}

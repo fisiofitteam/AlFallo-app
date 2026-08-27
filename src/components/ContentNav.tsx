@@ -13,10 +13,22 @@ const TABS: Tab[] = [
   { key: "bank", label: "🗂 Banco recursos", href: "/contenido/banco" },
 ];
 
-export function ContentNav({ active }: { active: string }) {
+// Tab extra que solo se pinta si `showMarketer` es true (la CEO decide en
+// server component según canUseMarketerIA). Se mantiene fuera de TABS para
+// no leak-earla en el layout de otros roles.
+const MARKETER_TAB: Tab = { key: "marketer", label: "🧠 Marketer IA", href: "/contenido/marketer" };
+
+export function ContentNav({
+  active,
+  showMarketer = false,
+}: {
+  active: string;
+  showMarketer?: boolean;
+}) {
+  const tabs = showMarketer ? [...TABS, MARKETER_TAB] : TABS;
   return (
     <div className="mb-4 flex gap-1 border-b border-neutral-200 overflow-x-auto">
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const isActive = active === tab.key;
         return (
           <Link

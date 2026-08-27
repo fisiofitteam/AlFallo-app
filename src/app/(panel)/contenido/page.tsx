@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
 import { canManageContent } from "@/lib/roles";
+import { canUseMarketerIA } from "@/lib/marketer-access";
 import { ContentNav } from "@/components/ContentNav";
 import { ThisWeekView } from "@/components/ThisWeekView";
 import { isoWeekFromDate } from "@/lib/content-templates";
@@ -53,7 +54,7 @@ export default async function ContentPage({
   if (!selectedId) {
     return (
       <main>
-        <ContentNav active="this-week" />
+        <ContentNav active="this-week" showMarketer={canUseMarketerIA(user.email)} />
         <ThisWeekView
           week={null}
           weekList={[]}
@@ -141,7 +142,7 @@ export default async function ContentPage({
 
   return (
     <main>
-      <ContentNav active="this-week" />
+      <ContentNav active="this-week" showMarketer={canUseMarketerIA(user.email)} />
       <ThisWeekView
         week={{
           id: week.id,
