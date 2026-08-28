@@ -28,6 +28,7 @@ import { FichaForm } from "./ficha-form";
 import { DeleteClientButton } from "./delete-client-button";
 import { CheckInsTab } from "./checkins-tab";
 import { EvolucionTab } from "./evolucion-tab";
+import { hasCheckInThisWeek } from "@/lib/weeklyCheckin";
 import {
   reassignNutritionist,
   setClientPassword,
@@ -370,7 +371,12 @@ export default async function ClientDetailPage({
               customMetrics={customSeries}
             />
           ) : active === "checkins" ? (
-            <CheckInsTab checkIns={client.checkIns} />
+            <CheckInsTab
+              clientId={client.id}
+              checkIns={client.checkIns}
+              checkInDayOfWeek={client.checkInDayOfWeek}
+              hasCheckInThisWeek={await hasCheckInThisWeek(client.id)}
+            />
           ) : active === "marcas" ? (
             <MarksSection clientId={client.id} />
           ) : active === "acceso" ? (

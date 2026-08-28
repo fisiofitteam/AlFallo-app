@@ -76,6 +76,21 @@ export async function setUseAdvancedCheckIn(formData: FormData) {
   revalidatePath(`/clientes/${clientId}`);
 }
 
+/** Cambia el día de la semana en que le aparece al atleta el aviso de check-in.
+ *  Valor 1..7 (1=Lunes, 7=Domingo). Cualquier otro se ignora. */
+export async function setCheckInDayOfWeek(formData: FormData) {
+  const prof = await requireClientAccess();
+  const clientId = String(formData.get("clientId"));
+  await loadClientForEdit(clientId, prof);
+  const day = Number(formData.get("day"));
+  if (!Number.isInteger(day) || day < 1 || day > 7) return;
+  await prisma.client.update({
+    where: { id: clientId },
+    data: { checkInDayOfWeek: day },
+  });
+  revalidatePath(`/clientes/${clientId}`);
+}
+
 /** Actualiza las notas internas del nutri sobre el cliente. Texto libre
  *  que solo ve el equipo. Autosave desde el popover del header. */
 export async function updateClientInternalNotes(formData: FormData) {
