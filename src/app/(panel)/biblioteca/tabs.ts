@@ -18,5 +18,7 @@ export const LIBRARY_TABS: LibraryTab[] = [
   { href: "/biblioteca/marcas", label: "Marcas de fuerza", emoji: "🏋️" },
   { href: "/biblioteca/brief-ia", label: "Consideraciones especiales", emoji: "🧾" },
   { href: "/biblioteca/competicion", label: "Plantillas de competición", emoji: "🏆" },
+  { href: "/biblioteca/programas", label: "Programas de entrenamiento", emoji: "🏋🏻‍♀️" },
+  { href: "/biblioteca/programa-brief-ia", label: "Brief programador IA", emoji: "🧠" },
   { href: "/biblioteca/landings", label: "Landings", emoji: "🌐" },
 ];

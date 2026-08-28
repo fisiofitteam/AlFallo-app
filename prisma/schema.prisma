@@ -147,6 +147,8 @@ model Client {
   communityReactions CommunityReaction[]        @relation("FeedReactionAuthorClient")
   communityProgress  CommunityLessonProgress[]
 
+  programAssignments ProgramAssignment[]
+
   @@index([nutritionistId])
   @@index([status])
 }
@@ -1603,4 +1605,146 @@ model AiContentBrief {
   badExamples    String   @default("")
   updatedAt      DateTime @updatedAt @default(now())
   updatedById    String?
+}
+
+// ─── PROGRAMADOR IA — PROGRAMAS DE ENTRENAMIENTO ────────────────────────────
+
+// Programa fijo (plantilla reutilizable). El programa es POSICIONAL: semanas
+// y días numerados 1..N/1..7. Sin fechas — las fechas solo aparecen al
+// asignarlo a un cliente concreto (ProgramAssignment/ProgramSession).
+model Program {
+  id           String   @id @default(cuid())
+  name         String
+  type         String   // Foco: "Fuerza" | "Metcon" | "Hipertrofia" | "Híbrido" | "Técnica" | "Resistencia"
+  level        Int      @default(1)
+  description  String?
+  weeksCount   Int      @default(4)
+  isStandalone Boolean  @default(false) // true = sesión suelta, se oculta de la biblioteca
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  weeks       ProgramWeek[]
+  assignments ProgramAssignment[]
+}
+
+model ProgramWeek {
+  id         String  @id @default(cuid())
+  programId  String
+  program    Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  weekNumber Int
+  notes      String?
+
+  days ProgramDay[]
+
+  @@unique([programId, weekNumber])
+}
+
+model ProgramDay {
+  id        String      @id @default(cuid())
+  weekId    String
+  week      ProgramWeek @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  dayOfWeek Int         // POSICIONAL 1..7
+
+  tasks ProgramTask[]
+
+  @@unique([weekId, dayOfWeek])
+}
+
+// Tarea genérica. En este proyecto solo usamos WORKOUT (bloque de texto libre);
+// dejamos `type` para que el modelo sea extensible sin migrar.
+model ProgramTask {
+  id    String     @id @default(cuid())
+  dayId String
+  day   ProgramDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+
+  type  String     // "WORKOUT" (por ahora único tipo)
+  order Int        @default(0)
+  title String
+
+  workout TaskWorkout?
+
+  @@index([dayId, order])
+}
+
+model TaskWorkout {
+  id       String      @id @default(cuid())
+  taskId   String      @unique
+  task     ProgramTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  bodyText String
+}
+
+// Sesiones materializadas: aparecen al asignar el programa a un cliente con
+// startDate. Cada sesión congela un snapshot de las tareas del día original
+// para que el atleta vea su copia aunque después edites el Program.
+model ProgramAssignment {
+  id         String   @id @default(cuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  programId  String
+  program    Program  @relation(fields: [programId], references: [id])
+  startDate  DateTime
+  weeksCount Int
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  sessions ProgramSession[]
+
+  @@index([clientId])
+}
+
+model ProgramSession {
+  id             String            @id @default(cuid())
+  assignmentId   String
+  assignment     ProgramAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  scheduledDate  DateTime
+  weekNumber     Int
+  dayOfWeek      Int
+  tasksSnapshot  String            // JSON congelado de las tareas del día
+
+  completedAt    DateTime?
+  responses      String?           // JSON con respuestas del atleta
+  athleteNotes   String?
+
+  @@index([scheduledDate])
+  @@index([assignmentId, scheduledDate])
+}
+
+// Brief de estilo del Programador IA: uno por modalidad (kind = crossfit /
+// hyrox / hybrid). Es la voz estable que el motor inyecta como system prompt.
+model AiTrainingBrief {
+  id             String   @id            // = kind (id de la modalidad)
+  systemPrompt   String   @default("")   // Override total: si no está vacío, se usa TAL CUAL como system
+  philosophy     String   @default("")
+  voiceTone      String   @default("")
+  structureHints String   @default("")
+  formats        String   @default("")
+  intensityRules String   @default("")
+  vocabulary     String   @default("")
+  dos            String   @default("")
+  donts          String   @default("")
+  goodExamples   String   @default("")
+  badExamples    String   @default("")
+  updatedAt      DateTime @updatedAt @default(now())
+  updatedById    String?
+}
+
+// Banco de sesiones históricas para el few-shot (retrieval por keywords).
+model AiSessionExample {
+  id            String   @id @default(cuid())
+  kind          String   @default("crossfit")
+  source        String   @default("manual")
+  weekNumber    Int?
+  dayNumber     Int?
+  title         String
+  summary       String   @default("")
+  focusTags     String   @default("")
+  description   String?
+  blocksJSON    String   @default("[]")   // JSON [{heading, body, exercises?}]
+  exerciseNames String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([kind])
+  @@index([title])
+  @@index([focusTags])
 }
