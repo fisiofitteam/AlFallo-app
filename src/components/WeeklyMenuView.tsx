@@ -92,6 +92,11 @@ export function WeeklyMenuView({
                           </span>
                         ) : null}
                         <div className="flex-1 leading-snug">
+                          {it.dayContextLabel ? (
+                            <span className="mr-1.5 inline-block rounded border border-border/70 bg-surface-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted">
+                              {it.dayContextLabel}
+                            </span>
+                          ) : null}
                           <span>{it.text || "—"}</span>
                           {it.note ? (
                             <p className="mt-0.5 whitespace-pre-line border-l-2 border-primary/40 pl-2 text-[11px] italic text-muted">
