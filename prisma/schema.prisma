@@ -108,11 +108,18 @@ model Client {
   // Se activa/desactiva desde la ficha del cliente. Por defecto: básico.
   useAdvancedCheckIn Boolean @default(false)
 
-  // Día de la semana en que le aparece el aviso de check-in al atleta.
-  // 1=Lunes ... 5=Viernes ... 7=Domingo. El banner aparece desde ese día
-  // en adelante y persiste como "pendiente" hasta que el atleta lo envía o
-  // hasta que empieza la siguiente semana ISO (lunes en Europe/Madrid).
-  checkInDayOfWeek Int @default(5)
+  // Días de la semana en que le pedimos check-in al atleta (recurrente
+  // semanal). Array de días ISO (1=Lunes ... 7=Domingo). Se admiten varios
+  // — p. ej. [1, 5] = check-in cada lunes y cada viernes. Cada día
+  // configurado abre una petición: el banner aparece desde ese día hasta que
+  // el atleta rellena UN check-in a partir de ese día. Al llegar el siguiente
+  // día configurado, empieza una nueva petición aunque no haya cumplido la
+  // anterior. Por defecto viernes (5).
+  //
+  // La columna antigua `checkInDayOfWeek` queda por compat: si el array llega
+  // vacío se usa ese valor (o el default 5) como único día.
+  checkInDaysOfWeek Int[] @default([5])
+  checkInDayOfWeek  Int   @default(5)
 
   // Se marca en cuanto el atleta envía su PRIMER check-in tras registrarse.
   // Mientras esté false, la home del cliente muestra un banner "Registra tu

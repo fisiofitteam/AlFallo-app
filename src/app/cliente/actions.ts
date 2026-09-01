@@ -144,8 +144,8 @@ export async function submitCheckIn(formData: FormData) {
   // Anti-doble-submit: si el atleta ya envió un check-in esta semana
   // (sin querer le dio dos veces, o vuelve a entrar más tarde), no creamos
   // otro registro. Para editar las respuestas usa updateCheckIn.
-  const { hasCheckInThisWeek } = await import("@/lib/weeklyCheckin");
-  if (await hasCheckInThisWeek(client.id)) {
+  const { hasFulfilledLatestRequest } = await import("@/lib/weeklyCheckin");
+  if (await hasFulfilledLatestRequest(client.id)) {
     revalidatePath("/cliente/checkin");
     return;
   }
@@ -191,9 +191,9 @@ export async function updateCheckIn(formData: FormData) {
   const existing = await prisma.checkIn.findUnique({ where: { id } });
   if (!existing || existing.clientId !== client.id) return;
 
-  // Solo permitimos editar el check-in de ESTA semana (no historicos).
-  const { hasCheckInThisWeek } = await import("@/lib/weeklyCheckin");
-  if (!(await hasCheckInThisWeek(client.id))) return;
+  // Solo permitimos editar el check-in de la petición vigente (no historicos).
+  const { hasFulfilledLatestRequest } = await import("@/lib/weeklyCheckin");
+  if (!(await hasFulfilledLatestRequest(client.id))) return;
 
   const { coreData, extraAnswers } = await extractCheckInFieldsFromForm(formData);
 

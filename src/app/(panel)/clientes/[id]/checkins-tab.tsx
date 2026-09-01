@@ -3,7 +3,7 @@ import { CheckCircle2, Clock, CalendarDays, AlertCircle } from "lucide-react";
 import { TextArea } from "@/components/form-ui";
 import { listMetricDefinitions } from "@/lib/metricDefinitions";
 import { CHECKIN_DAY_OPTIONS } from "@/lib/weeklyCheckin";
-import { reviewCheckIn, setCheckInDayOfWeek } from "../actions";
+import { reviewCheckIn, setCheckInDaysOfWeek } from "../actions";
 
 function Metric({ label, value, unit = "" }: { label: string; value: number | null; unit?: string }) {
   if (value == null) return null;
@@ -18,13 +18,13 @@ function Metric({ label, value, unit = "" }: { label: string; value: number | nu
 export async function CheckInsTab({
   clientId,
   checkIns,
-  checkInDayOfWeek,
-  hasCheckInThisWeek,
+  checkInDaysOfWeek,
+  latestRequestFulfilled,
 }: {
   clientId: string;
   checkIns: CheckIn[];
-  checkInDayOfWeek: number;
-  hasCheckInThisWeek: boolean;
+  checkInDaysOfWeek: number[];
+  latestRequestFulfilled: boolean;
 }) {
   // Cargamos el catálogo para poder mostrar los labels bonitos de las
   // métricas custom (extraAnswers) que aparezcan en algún check-in.
@@ -37,12 +37,16 @@ export async function CheckInsTab({
     metricDefs.map((m) => [m.id, { label: m.name, unit: m.unit }]),
   );
 
-  const dayLabel =
-    CHECKIN_DAY_OPTIONS.find((d) => d.value === checkInDayOfWeek)?.label ?? "Viernes";
+  const activeDays = new Set(checkInDaysOfWeek);
+  const daysLabel =
+    checkInDaysOfWeek
+      .map((d) => CHECKIN_DAY_OPTIONS.find((o) => o.value === d)?.label ?? "")
+      .filter(Boolean)
+      .join(" · ") || "Viernes";
 
   return (
     <div className="space-y-4">
-      {/* Configuración: día del recordatorio semanal + estado de esta semana */}
+      {/* Configuración: días del recordatorio semanal + estado de la petición vigente */}
       <div className="rounded-2xl border border-border bg-surface p-5">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
@@ -51,46 +55,57 @@ export async function CheckInsTab({
               Recordatorio semanal
             </p>
             <p className="mt-0.5 text-xs text-muted">
-              El atleta ve el aviso desde el día elegido y persiste todo el fin de semana si no lo
-              rellena.
+              Cada día marcado abre una petición: el atleta ve el aviso desde ese día hasta que
+              envía un check-in. Puedes marcar varios (p. ej. lunes y viernes).
             </p>
           </div>
-          {hasCheckInThisWeek ? (
+          {latestRequestFulfilled ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-              <CheckCircle2 size={13} /> Esta semana enviado
+              <CheckCircle2 size={13} /> Al día
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-              <AlertCircle size={13} /> Pendiente esta semana
+              <AlertCircle size={13} /> Pendiente
             </span>
           )}
         </div>
-        <form action={setCheckInDayOfWeek} className="flex flex-wrap items-center gap-2">
+        <form action={setCheckInDaysOfWeek} className="space-y-2">
           <input type="hidden" name="clientId" value={clientId} />
-          <label htmlFor="day" className="text-xs text-muted">
-            Día del aviso:
-          </label>
-          <select
-            id="day"
-            name="day"
-            defaultValue={checkInDayOfWeek}
-            className="rounded-lg border border-border bg-bg px-3 py-1.5 text-sm outline-none focus:border-primary"
-          >
-            {CHECKIN_DAY_OPTIONS.map((d) => (
-              <option key={d.value} value={d.value}>
-                {d.label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg hover:opacity-90"
-          >
-            Guardar
-          </button>
-          <span className="ml-auto text-xs text-muted">
-            Actual: <strong>{dayLabel}</strong>
-          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {CHECKIN_DAY_OPTIONS.map((d) => {
+              const checked = activeDays.has(d.value);
+              return (
+                <label
+                  key={d.value}
+                  className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${
+                    checked
+                      ? "border-primary bg-primary-soft font-semibold text-primary"
+                      : "border-border bg-bg text-muted hover:border-primary/50"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    name="days"
+                    value={d.value}
+                    defaultChecked={checked}
+                    className="h-3.5 w-3.5 accent-primary"
+                  />
+                  {d.label}
+                </label>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <span className="text-xs text-muted">
+              Actual: <strong>{daysLabel}</strong>
+            </span>
+            <button
+              type="submit"
+              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg hover:opacity-90"
+            >
+              Guardar
+            </button>
+          </div>
         </form>
       </div>
 
@@ -98,7 +113,8 @@ export async function CheckInsTab({
         <div className="rounded-2xl border border-dashed border-border p-12 text-center">
           <p className="font-medium">Sin check-ins todavía</p>
           <p className="mt-1 text-sm text-muted">
-            Aparecerán aquí cuando el atleta los envíe desde su app (cada {dayLabel.toLowerCase()}).
+            Aparecerán aquí cuando el atleta los envíe desde su app. Los días marcados arriba son
+            cuándo se le pedirá.
           </p>
         </div>
       ) : (

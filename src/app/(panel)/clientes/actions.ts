@@ -76,17 +76,21 @@ export async function setUseAdvancedCheckIn(formData: FormData) {
   revalidatePath(`/clientes/${clientId}`);
 }
 
-/** Cambia el día de la semana en que le aparece al atleta el aviso de check-in.
- *  Valor 1..7 (1=Lunes, 7=Domingo). Cualquier otro se ignora. */
-export async function setCheckInDayOfWeek(formData: FormData) {
+/** Cambia los días de la semana en los que le pedimos check-in al atleta.
+ *  Acepta N valores (1..7). Deduplicados y ordenados. Si no llega ninguno
+ *  válido, no se aplica el cambio (se preserva la config anterior). */
+export async function setCheckInDaysOfWeek(formData: FormData) {
   const prof = await requireClientAccess();
   const clientId = String(formData.get("clientId"));
   await loadClientForEdit(clientId, prof);
-  const day = Number(formData.get("day"));
-  if (!Number.isInteger(day) || day < 1 || day > 7) return;
+  const raw = formData.getAll("days").map((v) => Number(v));
+  const days = Array.from(
+    new Set(raw.filter((n) => Number.isInteger(n) && n >= 1 && n <= 7)),
+  ).sort((a, b) => a - b);
+  if (days.length === 0) return;
   await prisma.client.update({
     where: { id: clientId },
-    data: { checkInDayOfWeek: day },
+    data: { checkInDaysOfWeek: days },
   });
   revalidatePath(`/clientes/${clientId}`);
 }
