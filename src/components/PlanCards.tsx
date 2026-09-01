@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Pencil, Trash2, Trophy, UtensilsCrossed, Check, X } from "lucide-react";
+import { Copy, Loader2, Pencil, Trash2, Trophy, UtensilsCrossed, Check, X } from "lucide-react";
 import type { PlanCardData } from "@/lib/planSummary";
-import { deletePlan, updatePlanDescription } from "@/app/(panel)/planes/actions";
+import { deletePlan, duplicatePlan, updatePlanDescription } from "@/app/(panel)/planes/actions";
 
 /**
  * Galería de planes. Sirve tanto al cliente (modo "cliente": solo lectura,
@@ -118,8 +118,13 @@ function PlanCard({
         ) : null}
       </div>
 
-      {/* Acción borrar — solo panel. z-10 para sentarse encima del Link. */}
-      {mode === "panel" ? <DeleteButton planId={plan.id} planName={plan.name} /> : null}
+      {/* Acciones — solo panel. z-10 para sentarse encima del Link. */}
+      {mode === "panel" ? (
+        <div className="pointer-events-auto absolute right-2 top-2 z-10 flex gap-1">
+          <DuplicateButton planId={plan.id} />
+          <DeleteButton planId={plan.id} planName={plan.name} />
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -235,12 +240,33 @@ function DescriptionEditor({ planId, initial }: { planId: string; initial: strin
   );
 }
 
+function DuplicateButton({ planId }: { planId: string }) {
+  const [pending, start] = useTransition();
+  return (
+    <form
+      action={(fd) => {
+        fd.set("planId", planId);
+        // No pedimos confirmación: duplicar es reversible (borrando la copia).
+        start(async () => {
+          await duplicatePlan(fd);
+        });
+      }}
+    >
+      <button
+        type="submit"
+        disabled={pending}
+        title="Duplicar plan para editarlo"
+        className="rounded-md border border-transparent p-1.5 text-muted opacity-0 transition group-hover:opacity-100 hover:border-primary/40 hover:bg-primary-soft hover:text-primary disabled:opacity-50"
+      >
+        {pending ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
+      </button>
+    </form>
+  );
+}
+
 function DeleteButton({ planId, planName }: { planId: string; planName: string }) {
   return (
     <form
-      // pointer-events-auto para que el botón papelera reciba su propio click
-      // por encima del Link de fondo.
-      className="pointer-events-auto absolute right-2 top-2 z-10"
       action={async (fd) => {
         if (
           !confirm(

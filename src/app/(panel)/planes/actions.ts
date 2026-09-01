@@ -95,6 +95,90 @@ export async function deletePlan(formData: FormData) {
   redirect(`/clientes/${plan.clientId}?tab=plan`);
 }
 
+/** Duplica un plan del cliente (incluyendo días, comidas y opciones) y abre
+ *  la copia lista para editar. El nombre nuevo lleva sufijo "(copia)"; si el
+ *  cliente pide un nombre propio se puede pasar por `name` en el formData.
+ *  Preserva overrides de macros, instrucciones, notas, suplementación y las
+ *  consideraciones especiales — el nutri parte de una copia idéntica y la
+ *  toca sin miedo a romper el plan original. */
+export async function duplicatePlan(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  const overrideName = parseStr(formData.get("name"));
+
+  const source = await prisma.nutritionPlan.findUnique({
+    where: { id: planId },
+    include: {
+      days: {
+        orderBy: { order: "asc" },
+        include: {
+          meals: {
+            orderBy: { order: "asc" },
+            include: { items: { orderBy: { order: "asc" } } },
+          },
+        },
+      },
+    },
+  });
+  if (!source) redirect("/clientes");
+  await assertClientAccess(source.clientId, prof);
+
+  const newPlan = await prisma.nutritionPlan.create({
+    data: {
+      clientId: source.clientId,
+      createdById: prof.id,
+      name: overrideName?.trim() || `${source.name} (copia)`,
+      description: source.description,
+      goal: source.goal,
+      notes: source.notes,
+      supplementation: source.supplementation,
+      kind: source.kind,
+      competitionName: source.competitionName,
+      competitionContext: source.competitionContext,
+      instructions: source.instructions,
+      goalOverride: source.goalOverride,
+      specialConsiderationOverrideIds: source.specialConsiderationOverrideIds,
+      kcalOverride: source.kcalOverride,
+      proteinOverride: source.proteinOverride,
+      carbsOverride: source.carbsOverride,
+      fatOverride: source.fatOverride,
+    },
+  });
+
+  for (const d of source.days) {
+    const newDay = await prisma.planDay.create({
+      data: { planId: newPlan.id, name: d.name, dayType: d.dayType, order: d.order },
+    });
+    for (const m of d.meals) {
+      const newMeal = await prisma.meal.create({
+        data: { planDayId: newDay.id, name: m.name, order: m.order },
+      });
+      if (m.items.length > 0) {
+        await prisma.mealItem.createMany({
+          data: m.items.map((it) => ({
+            mealId: newMeal.id,
+            foodId: it.foodId,
+            nameSnapshot: it.nameSnapshot,
+            quantityG: it.quantityG,
+            kcalPer100: it.kcalPer100,
+            proteinPer100: it.proteinPer100,
+            carbsPer100: it.carbsPer100,
+            fatPer100: it.fatPer100,
+            subType: it.subType,
+            dayContext: it.dayContext,
+            selected: it.selected,
+            order: it.order,
+            note: it.note,
+            ingredients: it.ingredients ?? Prisma.JsonNull,
+          })),
+        });
+      }
+    }
+  }
+
+  redirect(`/clientes/${source.clientId}?tab=plan&planId=${newPlan.id}`);
+}
+
 export async function renamePlan(formData: FormData) {
   const prof = await requireAccess();
   const planId = String(formData.get("planId"));
