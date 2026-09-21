@@ -223,6 +223,17 @@ async function deletePiece(pieceId: string): Promise<boolean> {
   return res.ok;
 }
 
+async function createPiece(weekId: string, dayOfWeek: number): Promise<string | null> {
+  const res = await fetch("/api/content/pieces", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ weekId, dayOfWeek }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => null);
+  return data?.id ?? null;
+}
+
 function MonthGrid({
   month,
   year,
@@ -397,7 +408,7 @@ function MonthGrid({
                         alert("Error al mover la pieza");
                       }
                     }}
-                    className={`min-h-[120px] p-1.5 border-r border-neutral-100 last:border-r-0 cursor-pointer hover:bg-amber-50/30 transition-colors ${
+                    className={`group/day min-h-[120px] p-1.5 border-r border-neutral-100 last:border-r-0 cursor-pointer hover:bg-amber-50/30 transition-colors ${
                       isOtherMonth ? "bg-neutral-50/50" : "bg-white"
                     } ${isToday ? "bg-amber-50" : ""}`}
                     title="Click para añadir evento · Arrastra piezas aquí"
@@ -406,6 +417,25 @@ function MonthGrid({
                       <span className={`text-[11px] ${isOtherMonth ? "text-neutral-300" : isToday ? "text-amber-800 font-bold" : "text-neutral-500"}`}>
                         {day.getUTCDate()}
                       </span>
+                      {rowWeek && (
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const id = await createPiece(rowWeek.id, colIdx + 1);
+                            if (id) router.push(`/contenido/pieza/${id}`);
+                            else alert("No se pudo crear la pieza");
+                          }}
+                          className="flex h-4 w-4 items-center justify-center rounded text-neutral-400 opacity-0 transition group-hover/day:opacity-100 hover:bg-emerald-100 hover:text-emerald-700"
+                          title="Añadir pieza en este día"
+                          aria-label="Añadir pieza"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                            <path d="M12 5v14" />
+                            <path d="M5 12h14" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
 
                     {/* Eventos custom */}

@@ -3,6 +3,39 @@ import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
 import { canManageContent } from "@/lib/roles";
 
+export async function POST(req: NextRequest) {
+  const user = await getActiveProfessional();
+  if (!user || !canManageContent(user.role)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const data = await req.json();
+  const weekId = typeof data.weekId === "string" ? data.weekId : "";
+  const dayOfWeek = Number(data.dayOfWeek);
+  if (!weekId) return NextResponse.json({ error: "weekId requerido" }, { status: 400 });
+  if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7) {
+    return NextResponse.json({ error: "dayOfWeek debe ser 1-7" }, { status: 400 });
+  }
+
+  const week = await prisma.contentWeek.findUnique({ where: { id: weekId } });
+  if (!week) return NextResponse.json({ error: "Semana no existe" }, { status: 404 });
+
+  const piece = await prisma.contentPiece.create({
+    data: {
+      weekId,
+      dayOfWeek,
+      format: "",
+      goal: "",
+      goals: "[]",
+      ctaType: "",
+      dmKeyword: week.leadMagnetKeyword ?? null,
+      blocks: "[]",
+      status: "idea",
+    },
+  });
+  return NextResponse.json({ id: piece.id });
+}
+
 export async function PATCH(req: NextRequest) {
   const user = await getActiveProfessional();
   if (!user || !canManageContent(user.role)) {
