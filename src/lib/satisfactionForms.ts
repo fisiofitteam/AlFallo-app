@@ -10,6 +10,8 @@ export type SatisfactionQuestion =
       scaleMax: number;
       scaleMinLabel?: string;
       scaleMaxLabel?: string;
+      /** Si es true, la respuesta cuenta para la media global "Satisfacción". */
+      isSatisfactionScore?: boolean;
     }
   | {
       id: string;
@@ -39,6 +41,7 @@ export function parseQuestions(raw: unknown): SatisfactionQuestion[] {
         scaleMax: Number.isFinite(o.scaleMax) ? Number(o.scaleMax) : 10,
         scaleMinLabel: typeof o.scaleMinLabel === "string" ? o.scaleMinLabel : undefined,
         scaleMaxLabel: typeof o.scaleMaxLabel === "string" ? o.scaleMaxLabel : undefined,
+        isSatisfactionScore: !!o.isSatisfactionScore,
       });
     } else if (type === "text") {
       out.push({

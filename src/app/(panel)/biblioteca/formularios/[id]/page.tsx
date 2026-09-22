@@ -168,17 +168,34 @@ export default async function EditFormPage({ params }: { params: { id: string } 
                     />
                   </label>
                 )}
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label className="inline-flex items-center gap-1 text-xs">
-                    <input
-                      type="checkbox"
-                      name="required"
-                      value="1"
-                      defaultChecked={!!q.required}
-                      className="rounded border-border text-primary"
-                    />{" "}
-                    Obligatoria
-                  </label>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="inline-flex items-center gap-1 text-xs">
+                      <input
+                        type="checkbox"
+                        name="required"
+                        value="1"
+                        defaultChecked={!!q.required}
+                        className="rounded border-border text-primary"
+                      />{" "}
+                      Obligatoria
+                    </label>
+                    {q.type === "scale" ? (
+                      <label
+                        className="inline-flex items-center gap-1 text-xs"
+                        title="Si se marca, las respuestas cuentan en la media global de Satisfacción del panel"
+                      >
+                        <input
+                          type="checkbox"
+                          name="isSatisfactionScore"
+                          value="1"
+                          defaultChecked={!!q.isSatisfactionScore}
+                          className="rounded border-border text-primary"
+                        />{" "}
+                        Cuenta para <strong>Satisfacción</strong>
+                      </label>
+                    ) : null}
+                  </div>
                   <button
                     type="submit"
                     className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg hover:opacity-90"

@@ -9,6 +9,10 @@ import { WeeklyTasksCard, type WeeklyTaskItem } from "@/components/WeeklyTasksCa
 import { OneOffTasksCard, type OneOffCardItem } from "@/components/OneOffTasksCard";
 import { weekStartFor } from "@/lib/weekly-tasks";
 import { activeInstanceFor, shortDueLabel, todayInMadrid } from "@/lib/oneoff-tasks";
+import { PanelTabs, type PanelTab } from "@/components/panel/PanelTabs";
+import { TabMetricasEquipo } from "@/components/panel/TabMetricasEquipo";
+import { TabPlaceholder } from "@/components/panel/TabPlaceholder";
+import type { PeriodPreset } from "@/lib/teamMetrics";
 
 export const metadata = { title: "Panel · Al Fallo Nutrition" };
 export const dynamic = "force-dynamic";
@@ -17,14 +21,66 @@ export const dynamic = "force-dynamic";
 // no aparece aquí porque no tiene tareas operativas: las gestiona desde /tareas.
 const WEEKLY_TASKS_VIEWERS = ["nutricionista", "head_coach"];
 
-export default async function DashboardPage() {
+const VALID_TABS = new Set<PanelTab>(["tareas", "metricas-equipo", "metricas-programa", "ventas"]);
+const VALID_PERIODS = new Set<PeriodPreset>(["mensual", "trimestral", "anual", "custom"]);
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: { tab?: string; period?: string };
+}) {
   const prof = await requireProfessional();
   // Marketing solo tiene acceso a Contenido: es su pantalla de aterrizaje.
   if (prof.role === "marketing") redirect("/contenido");
-  const shortcuts = navForRole(prof.role).filter((i) => i.href !== "/");
   const firstName = prof.fullName.split(" ")[0];
 
-  // Cargamos las tareas con targetRole === su rol y assignee compatible.
+  const rawTab = searchParams?.tab;
+  const tab: PanelTab = rawTab && VALID_TABS.has(rawTab as PanelTab) ? (rawTab as PanelTab) : "tareas";
+  const rawPeriod = searchParams?.period;
+  const period: PeriodPreset =
+    rawPeriod && VALID_PERIODS.has(rawPeriod as PeriodPreset) ? (rawPeriod as PeriodPreset) : "mensual";
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      <header className="mb-5">
+        <h1 className="text-2xl font-bold md:text-3xl">Panel de {firstName}</h1>
+        <p className="mt-1 text-muted">
+          Panel de gestión de Al Fallo Nutrition
+          {isManager(prof.role) && " · acceso completo como manager"}
+        </p>
+      </header>
+
+      <PanelTabs active={tab} />
+
+      {tab === "tareas" ? <TareasTabContent prof={prof} /> : null}
+      {tab === "metricas-equipo" ? <TabMetricasEquipo period={period} /> : null}
+      {tab === "metricas-programa" ? (
+        <TabPlaceholder
+          title="Métricas de programa"
+          hint="Adherencia, evolución de peso/composición y cumplimiento. En construcción."
+        />
+      ) : null}
+      {tab === "ventas" ? (
+        <TabPlaceholder
+          title="Ventas"
+          hint="Renovaciones, tasas y facturación del equipo. En construcción."
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tab Tareas: contenido original del dashboard (tareas + stats + accesos).
+// ---------------------------------------------------------------------------
+
+async function TareasTabContent({
+  prof,
+}: {
+  prof: Awaited<ReturnType<typeof requireProfessional>>;
+}) {
+  const shortcuts = navForRole(prof.role).filter((i) => i.href !== "/");
+
   const showTasksCard = WEEKLY_TASKS_VIEWERS.includes(prof.role);
   const weekStart = weekStartFor();
   let weeklyTasks: WeeklyTaskItem[] = [];
@@ -49,9 +105,6 @@ export default async function DashboardPage() {
     }));
   }
 
-  // Puntuales: misma audiencia que las semanales. Filtramos en el servidor a
-  // las que (a) están activas hoy según su regla y (b) no han sido marcadas
-  // en su instancia actual por este profesional.
   let oneOffItems: OneOffCardItem[] = [];
   if (showTasksCard) {
     const today = todayInMadrid();
@@ -89,8 +142,6 @@ export default async function DashboardPage() {
     }
   }
 
-  // Conteos reales de clientes (alcance según rol). Los roles sin acceso a
-  // clientes (setter/closer) no ven estas tarjetas.
   const canSeeClients = CLIENT_ACCESS_ROLES.includes(prof.role);
   const scope = canSeeClients ? clientScopeWhere(prof) : null;
   const [total, pendientes, activos] = scope
@@ -108,22 +159,10 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <header className="mb-7">
-        <h1 className="text-2xl font-bold md:text-3xl">Panel de {firstName}</h1>
-        <p className="mt-1 text-muted">
-          Panel de gestión de Al Fallo Nutrition
-          {isManager(prof.role) && " · acceso completo como manager"}
-        </p>
-      </header>
-
-      {/* Tareas semanales del equipo (nutris + head_coach) */}
+    <>
       {showTasksCard && <WeeklyTasksCard tasks={weeklyTasks} />}
-
-      {/* Tareas puntuales pendientes hoy */}
       {showTasksCard && <OneOffTasksCard items={oneOffItems} />}
 
-      {/* Tarjetas de resumen */}
       {canSeeClients && (
         <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
           {STATS.map((s) => {
@@ -141,7 +180,6 @@ export default async function DashboardPage() {
         </section>
       )}
 
-      {/* Accesos rápidos a los módulos disponibles según el rol */}
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
           Accesos rápidos
@@ -149,9 +187,6 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {shortcuts.map((item) => {
             const Icon = item.icon;
-            // Los items con `description` definida son módulos activos y se
-            // renderizan como <Link>. El resto (solo /ajustes ahora mismo)
-            // queda como tarjeta inerte con leyenda 'Próximamente'.
             const active = !!item.description;
             const className =
               "group rounded-2xl border border-border bg-surface p-5 transition hover:border-primary";
@@ -186,6 +221,6 @@ export default async function DashboardPage() {
           })}
         </div>
       </section>
-    </div>
+    </>
   );
 }

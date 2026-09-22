@@ -135,6 +135,7 @@ export async function updateQuestion(formData: FormData) {
         const scaleMaxLabel = parseStr(formData.get("scaleMaxLabel")) ?? "";
         const scaleMin = scaleMinRaw ? Number(scaleMinRaw) : 1;
         const scaleMax = scaleMaxRaw ? Number(scaleMaxRaw) : 10;
+        const isSatisfactionScore = String(formData.get("isSatisfactionScore")) === "1";
         return {
           ...q,
           label,
@@ -143,6 +144,7 @@ export async function updateQuestion(formData: FormData) {
           scaleMax: Number.isFinite(scaleMax) ? scaleMax : 10,
           scaleMinLabel,
           scaleMaxLabel,
+          isSatisfactionScore,
         };
       }
       return {
