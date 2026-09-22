@@ -14,6 +14,7 @@ export const LIBRARY_TABS: LibraryTab[] = [
   { href: "/biblioteca/brief-macros", label: "Brief macros IA", emoji: "🧠" },
   { href: "/biblioteca/videos", label: "Vídeos", emoji: "🎥" },
   { href: "/biblioteca/onboarding", label: "Formulario inicial", emoji: "📋" },
+  { href: "/biblioteca/formularios", label: "Formularios de satisfacción", emoji: "💬" },
   { href: "/biblioteca/metricas", label: "Métricas de check-in", emoji: "📊" },
   { href: "/biblioteca/marcas", label: "Marcas de fuerza", emoji: "🏋️" },
   { href: "/biblioteca/brief-ia", label: "Consideraciones especiales", emoji: "🧾" },

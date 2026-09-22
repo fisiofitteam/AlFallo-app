@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
 import { getDailyQuote } from "@/lib/dailyQuote";
 import { shouldShowCheckInReminder } from "@/lib/weeklyCheckin";
+import { getDueSatisfactionForm } from "@/lib/satisfactionForms";
 
 export const metadata = { title: "Al Fallo" };
 
@@ -94,6 +95,7 @@ export default async function ClientHomePage() {
     select: { initialCheckInDone: true },
   });
   const showInitialCheckIn = clientState && !clientState.initialCheckInDone;
+  const dueForm = await getDueSatisfactionForm(me.id);
 
   return (
     <div className="relative pt-1">
@@ -129,6 +131,12 @@ export default async function ClientHomePage() {
           robarle la portada a la frase. Ocultamos si aún no ha hecho la
           medida inicial para no duplicar avisos. */}
       {!showInitialCheckIn && showCheckInReminder ? <CheckInReminderCard /> : null}
+
+      {/* Formulario de satisfacción disparado por semana del programa. Se
+          oculta si ya toca el check-in inicial para no acumular banners. */}
+      {!showInitialCheckIn && dueForm ? (
+        <SatisfactionCard href={`/cliente/formulario/${dueForm.id}`} title={dueForm.name} />
+      ) : null}
 
       {/* Mosaico de secciones — solo las "ready". Las que no, se ocultan
           hasta que estén montadas (sin badges "Pronto" que ensucien la UI). */}
@@ -196,6 +204,29 @@ function InitialCheckInCard() {
         </p>
       </div>
       <ArrowRight size={18} className="shrink-0 text-amber-800" />
+    </Link>
+  );
+}
+
+/** Banner para el formulario de satisfacción disparado por semana del
+ *  programa. Estilo similar al del check-in pero con acento distinto para
+ *  que no se confunda con un check-in normal. */
+function SatisfactionCard({ href, title }: { href: string; title: string }) {
+  return (
+    <Link
+      href={href}
+      className="relative mt-5 flex items-center gap-3 rounded-2xl border border-sky-300 bg-sky-50 p-4 shadow-sm transition hover:bg-sky-100"
+    >
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-500 text-white shadow-md">
+        <ClipboardCheck size={22} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold text-sky-900">{title}</p>
+        <p className="text-xs leading-snug text-sky-900/80">
+          Un minuto para contarnos cómo lo estás llevando.
+        </p>
+      </div>
+      <ArrowRight size={18} className="shrink-0 text-sky-800" />
     </Link>
   );
 }

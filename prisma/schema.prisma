@@ -156,6 +156,8 @@ model Client {
 
   programAssignments ProgramAssignment[]
 
+  satisfactionResponses SatisfactionResponse[]
+
   @@index([nutritionistId])
   @@index([status])
 }
@@ -1449,6 +1451,39 @@ model MacroCalcConfig {
   // por si en el futuro queremos elegir mifflin-st-jeor u otra.
   formula             String   @default("roza-shizgal")
   updatedAt           DateTime @updatedAt
+}
+
+// Formulario de satisfacción configurable. Cada uno se dispara automáticamente
+// cuando el cliente alcanza `weekOffset` semanas desde el startDate de su
+// venta más antigua. Editable desde /biblioteca/formularios.
+model SatisfactionForm {
+  id         String   @id @default(cuid())
+  name       String
+  weekOffset Int
+  active     Boolean  @default(true)
+  // [{ id, label, type: "scale" | "text", scaleMin?, scaleMax?, scaleMinLabel?, scaleMaxLabel?, required? }]
+  questions  Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  responses SatisfactionResponse[]
+
+  @@index([weekOffset])
+}
+
+model SatisfactionResponse {
+  id          String           @id @default(cuid())
+  clientId    String
+  client      Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  formId      String
+  form        SatisfactionForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  // { [questionId]: number | string }
+  answers     Json
+  submittedAt DateTime         @default(now())
+
+  @@unique([clientId, formId])
+  @@index([formId])
+  @@index([clientId])
 }
 
 // Vídeo educativo / motivacional para reutilizar (YouTube, Vimeo, etc.).
