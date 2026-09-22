@@ -139,6 +139,31 @@ export async function updateClientName(formData: FormData) {
   revalidatePath("/clientes");
 }
 
+export async function updateClientEmail(formData: FormData) {
+  const prof = await requireClientAccess();
+  const clientId = String(formData.get("clientId"));
+  await loadClientForEdit(clientId, prof);
+
+  const raw = parseStr(formData.get("email"));
+  const email = raw ? raw.toLowerCase() : null;
+
+  if (email) {
+    const clash = await prisma.client.findFirst({
+      where: { email, NOT: { id: clientId } },
+      select: { id: true },
+    });
+    if (clash) redirect(`/clientes/${clientId}?tab=ajustes&error=email-taken`);
+  }
+
+  await prisma.client.update({
+    where: { id: clientId },
+    data: { email },
+  });
+
+  revalidatePath(`/clientes/${clientId}`);
+  revalidatePath("/clientes");
+}
+
 export async function updateClientStatus(formData: FormData) {
   const prof = await requireClientAccess();
   const clientId = String(formData.get("clientId"));

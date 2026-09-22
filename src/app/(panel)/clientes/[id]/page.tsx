@@ -33,6 +33,7 @@ import {
   reassignNutritionist,
   setClientPassword,
   setUseAdvancedCheckIn,
+  updateClientEmail,
   updateClientName,
   updateClientStatus,
 } from "../actions";
@@ -85,7 +86,7 @@ export default async function ClientDetailPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { tab?: string; planId?: string };
+  searchParams: { tab?: string; planId?: string; error?: string };
 }) {
   const prof = await requireProfessional();
   if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/");
@@ -390,6 +391,8 @@ export default async function ClientDetailPage({
             <AjustesSection
               clientId={client.id}
               clientName={client.fullName}
+              clientEmail={client.email}
+              emailError={searchParams.error === "email-taken"}
               status={client.status}
               nutritionistId={client.nutritionistId}
               nutritionistName={client.nutritionist?.fullName ?? null}
@@ -457,6 +460,8 @@ function AccesoSection({
 function AjustesSection({
   clientId,
   clientName,
+  clientEmail,
+  emailError,
   status,
   nutritionistId,
   nutritionistName,
@@ -467,6 +472,8 @@ function AjustesSection({
 }: {
   clientId: string;
   clientName: string;
+  clientEmail: string | null;
+  emailError: boolean;
   status: string;
   nutritionistId: string | null;
   nutritionistName: string | null;
@@ -494,6 +501,34 @@ function AjustesSection({
             Guardar
           </button>
         </form>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-surface p-5">
+        <h2 className="font-semibold">Email del cliente</h2>
+        <p className="mt-1 text-xs text-muted">
+          El email es la clave con la que el atleta entra en su app.
+        </p>
+        <form action={updateClientEmail} className="mt-3 flex flex-wrap items-end gap-2">
+          <input type="hidden" name="clientId" value={clientId} />
+          <label className="flex-1 min-w-[220px]">
+            <span className="mb-1 block text-xs font-medium text-muted">Email</span>
+            <input
+              type="email"
+              name="email"
+              defaultValue={clientEmail ?? ""}
+              placeholder="atleta@correo.com"
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </label>
+          <button className="rounded-xl border border-border px-3 py-2 text-sm font-medium hover:bg-surface-2">
+            Guardar
+          </button>
+        </form>
+        {emailError ? (
+          <p className="mt-2 text-xs text-red-600">
+            Ese email ya está en uso por otro cliente. Elige otro.
+          </p>
+        ) : null}
       </div>
 
       <div className="rounded-2xl border border-border bg-surface p-5">
