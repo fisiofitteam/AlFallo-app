@@ -122,6 +122,23 @@ export async function reassignNutritionist(formData: FormData) {
   revalidatePath(`/clientes/${clientId}`);
 }
 
+export async function updateClientName(formData: FormData) {
+  const prof = await requireClientAccess();
+  const clientId = String(formData.get("clientId"));
+  await loadClientForEdit(clientId, prof);
+
+  const fullName = parseStr(formData.get("fullName"));
+  if (!fullName) return;
+
+  await prisma.client.update({
+    where: { id: clientId },
+    data: { fullName: fullName.slice(0, 120) },
+  });
+
+  revalidatePath(`/clientes/${clientId}`);
+  revalidatePath("/clientes");
+}
+
 export async function updateClientStatus(formData: FormData) {
   const prof = await requireClientAccess();
   const clientId = String(formData.get("clientId"));

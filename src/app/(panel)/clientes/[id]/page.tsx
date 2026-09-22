@@ -33,6 +33,7 @@ import {
   reassignNutritionist,
   setClientPassword,
   setUseAdvancedCheckIn,
+  updateClientName,
   updateClientStatus,
 } from "../actions";
 import { ClientNotesButton } from "@/components/ClientNotesButton";
@@ -476,6 +477,25 @@ function AjustesSection({
 }) {
   return (
     <div className="space-y-4">
+      <div className="rounded-2xl border border-border bg-surface p-5">
+        <h2 className="font-semibold">Nombre del cliente</h2>
+        <form action={updateClientName} className="mt-3 flex flex-wrap items-end gap-2">
+          <input type="hidden" name="clientId" value={clientId} />
+          <label className="flex-1 min-w-[220px]">
+            <span className="mb-1 block text-xs font-medium text-muted">Nombre completo</span>
+            <input
+              name="fullName"
+              defaultValue={clientName}
+              required
+              className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </label>
+          <button className="rounded-xl border border-border px-3 py-2 text-sm font-medium hover:bg-surface-2">
+            Guardar
+          </button>
+        </form>
+      </div>
+
       <div className="rounded-2xl border border-border bg-surface p-5">
         <h2 className="font-semibold">Estado del cliente</h2>
         <form action={updateClientStatus} className="mt-3 flex flex-wrap items-end gap-2">
