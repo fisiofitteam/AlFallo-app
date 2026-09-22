@@ -14,6 +14,11 @@ import { TabMetricasEquipo } from "@/components/panel/TabMetricasEquipo";
 import { TabPlaceholder } from "@/components/panel/TabPlaceholder";
 import type { PeriodPreset } from "@/lib/teamMetrics";
 
+const TAB_ALIASES: Record<string, PanelTab> = {
+  "metricas-equipo": "metricas",
+  "metricas-programa": "metricas",
+};
+
 export const metadata = { title: "Panel · Al Fallo Nutrition" };
 export const dynamic = "force-dynamic";
 
@@ -21,7 +26,7 @@ export const dynamic = "force-dynamic";
 // no aparece aquí porque no tiene tareas operativas: las gestiona desde /tareas.
 const WEEKLY_TASKS_VIEWERS = ["nutricionista", "head_coach"];
 
-const VALID_TABS = new Set<PanelTab>(["tareas", "metricas-equipo", "metricas-programa", "ventas"]);
+const VALID_TABS = new Set<PanelTab>(["tareas", "metricas", "ventas"]);
 const VALID_PERIODS = new Set<PeriodPreset>(["mensual", "trimestral", "anual", "custom"]);
 
 export default async function DashboardPage({
@@ -35,7 +40,10 @@ export default async function DashboardPage({
   const firstName = prof.fullName.split(" ")[0];
 
   const rawTab = searchParams?.tab;
-  const tab: PanelTab = rawTab && VALID_TABS.has(rawTab as PanelTab) ? (rawTab as PanelTab) : "tareas";
+  const aliased = rawTab ? TAB_ALIASES[rawTab] : undefined;
+  const tab: PanelTab =
+    aliased ??
+    (rawTab && VALID_TABS.has(rawTab as PanelTab) ? (rawTab as PanelTab) : "tareas");
   const rawPeriod = searchParams?.period;
   const period: PeriodPreset =
     rawPeriod && VALID_PERIODS.has(rawPeriod as PeriodPreset) ? (rawPeriod as PeriodPreset) : "mensual";
@@ -53,13 +61,7 @@ export default async function DashboardPage({
       <PanelTabs active={tab} />
 
       {tab === "tareas" ? <TareasTabContent prof={prof} /> : null}
-      {tab === "metricas-equipo" ? <TabMetricasEquipo period={period} /> : null}
-      {tab === "metricas-programa" ? (
-        <TabPlaceholder
-          title="Métricas de programa"
-          hint="Adherencia, evolución de peso/composición y cumplimiento. En construcción."
-        />
-      ) : null}
+      {tab === "metricas" ? <TabMetricasEquipo period={period} /> : null}
       {tab === "ventas" ? (
         <TabPlaceholder
           title="Ventas"

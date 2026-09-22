@@ -1,12 +1,11 @@
 import Link from "next/link";
-import { ClipboardCheck, BarChart3, TrendingUp, Wallet, type LucideIcon } from "lucide-react";
+import { ClipboardCheck, BarChart3, Wallet, type LucideIcon } from "lucide-react";
 
-export type PanelTab = "tareas" | "metricas-equipo" | "metricas-programa" | "ventas";
+export type PanelTab = "tareas" | "metricas" | "ventas";
 
 const TABS: Array<{ key: PanelTab; label: string; icon: LucideIcon }> = [
   { key: "tareas", label: "Tareas", icon: ClipboardCheck },
-  { key: "metricas-equipo", label: "Métricas equipo", icon: BarChart3 },
-  { key: "metricas-programa", label: "Métricas programa", icon: TrendingUp },
+  { key: "metricas", label: "Métricas equipo y programa", icon: BarChart3 },
   { key: "ventas", label: "Ventas", icon: Wallet },
 ];
 
