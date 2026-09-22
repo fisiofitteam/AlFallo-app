@@ -12,6 +12,9 @@ import { activeInstanceFor, shortDueLabel, todayInMadrid } from "@/lib/oneoff-ta
 import { PanelTabs, type PanelTab } from "@/components/panel/PanelTabs";
 import { TabMetricasEquipo } from "@/components/panel/TabMetricasEquipo";
 import { TabPlaceholder } from "@/components/panel/TabPlaceholder";
+import { PanelKpiRow } from "@/components/panel/PanelKpiRow";
+import { ObjectivesBlock } from "@/components/panel/ObjectivesBlock";
+import { getPanelKpis } from "@/lib/panelKpis";
 import type { PeriodPreset } from "@/lib/teamMetrics";
 
 const TAB_ALIASES: Record<string, PanelTab> = {
@@ -38,6 +41,13 @@ export default async function DashboardPage({
   // Marketing solo tiene acceso a Contenido: es su pantalla de aterrizaje.
   if (prof.role === "marketing") redirect("/contenido");
   const firstName = prof.fullName.split(" ")[0];
+  const today = new Date();
+  const todayLabel = today.toLocaleDateString("es-ES", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  const kpis = await getPanelKpis(today);
 
   const rawTab = searchParams?.tab;
   const aliased = rawTab ? TAB_ALIASES[rawTab] : undefined;
@@ -50,13 +60,21 @@ export default async function DashboardPage({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <header className="mb-5">
-        <h1 className="text-2xl font-bold md:text-3xl">Panel de {firstName}</h1>
-        <p className="mt-1 text-muted">
-          Panel de gestión de Al Fallo Nutrition
-          {isManager(prof.role) && " · acceso completo como manager"}
-        </p>
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold md:text-3xl">Panel de control</h1>
+          <p className="mt-1 text-sm text-muted capitalize">
+            Hola {firstName} · {todayLabel}
+          </p>
+        </div>
+        {isManager(prof.role) ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+            🔥 Vista {prof.role === "ceo" ? "CEO" : "manager"}
+          </span>
+        ) : null}
       </header>
+
+      <PanelKpiRow kpis={kpis} />
 
       <PanelTabs active={tab} />
 
@@ -162,6 +180,8 @@ async function TareasTabContent({
 
   return (
     <>
+      <ObjectivesBlock professionalId={prof.id} />
+
       {showTasksCard && <WeeklyTasksCard tasks={weeklyTasks} />}
       {showTasksCard && <OneOffTasksCard items={oneOffItems} />}
 

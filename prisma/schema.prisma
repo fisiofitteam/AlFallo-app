@@ -74,6 +74,8 @@ model Professional {
   // Última edición del brief de macros (singleton).
   macroBriefEdits MacroBrief[] @relation("MacroBriefEditor")
 
+  objectives ProfessionalObjective[]
+
   @@index([role])
 }
 
@@ -1451,6 +1453,27 @@ model MacroCalcConfig {
   // por si en el futuro queremos elegir mifflin-st-jeor u otra.
   formula             String   @default("roza-shizgal")
   updatedAt           DateTime @updatedAt
+}
+
+// Objetivos personales del profesional en distintas ventanas temporales:
+// - kind="quarter" periodKey="2026-Q3": tema + 4 sub-cards por rol.
+// - kind="month"   periodKey="2026-09": 1-3 frases de foco.
+// - kind="week"    periodKey="2026-W39": hasta 3 objetivos accionables.
+// - kind="day"     periodKey="2026-09-22": las 3 dianas de hoy.
+// La forma de `content` depende de `kind` — es JSON libre para no bloquear
+// iteraciones del panel.
+model ProfessionalObjective {
+  id             String       @id @default(cuid())
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  kind           String
+  periodKey      String
+  content        Json
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([professionalId, kind, periodKey])
+  @@index([professionalId, kind])
 }
 
 // Formulario de satisfacción configurable. Cada uno se dispara automáticamente
