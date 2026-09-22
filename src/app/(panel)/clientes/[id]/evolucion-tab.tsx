@@ -20,8 +20,10 @@ function ChartCard({
 }) {
   if (points.length === 0) return null;
   return (
-    <section className="rounded-2xl border border-border bg-surface p-5">
-      <h3 className="mb-2 font-semibold">{title}</h3>
+    <section className="rounded-xl border border-border bg-surface p-3">
+      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+        {title}
+      </h3>
       <LineChart points={points} color={color} unit={unit} />
     </section>
   );
@@ -58,7 +60,7 @@ export function EvolucionTab({
   return (
     <div className="space-y-6">
       {hasStandard ? (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <ChartCard title="Peso" points={weight} color="#e6197e" unit=" kg" />
           <ChartCard title="Cintura" points={waist} color="#e07b1a" unit=" cm" />
           <ChartCard title="% Grasa" points={bodyFat} color="#1fa971" unit="%" />

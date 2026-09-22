@@ -219,6 +219,32 @@ export async function setClientPassword(formData: FormData) {
   revalidatePath(`/clientes/${clientId}`);
 }
 
+// Edita los valores numéricos + notas de un check-in en nombre del atleta
+// (por si el atleta lo rellenó mal y avisa por chat). No cambia el estado
+// de revisión ni las respuestas de métricas custom todavía.
+export async function panelEditCheckInFields(formData: FormData) {
+  const prof = await requireClientAccess();
+  const checkInId = String(formData.get("checkInId"));
+  const checkIn = await prisma.checkIn.findUnique({ where: { id: checkInId } });
+  if (!checkIn) redirect("/clientes");
+  await loadClientForEdit(checkIn.clientId, prof);
+
+  await prisma.checkIn.update({
+    where: { id: checkInId },
+    data: {
+      weightKg: parseNumber(formData.get("weightKg")),
+      waistCm: parseNumber(formData.get("waistCm")),
+      hipCm: parseNumber(formData.get("hipCm")),
+      armCm: parseNumber(formData.get("armCm")),
+      bodyFatPct: parseNumber(formData.get("bodyFatPct")),
+      adherencePct: parseIntOrNull(formData.get("adherencePct")),
+      energy: parseIntOrNull(formData.get("energy")),
+      notes: parseStr(formData.get("notes")),
+    },
+  });
+  revalidatePath(`/clientes/${checkIn.clientId}`);
+}
+
 // El nutricionista responde y marca un check-in como revisado.
 export async function reviewCheckIn(formData: FormData) {
   const prof = await requireClientAccess();

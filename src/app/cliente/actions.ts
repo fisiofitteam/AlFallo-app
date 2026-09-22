@@ -138,16 +138,21 @@ export async function submitOnboarding(formData: FormData) {
 // históricos siguen en BD y la pestaña Evolución del panel los sigue
 // mostrando si existían, pero ya no se crean nuevos.
 
-export async function submitCheckIn(formData: FormData) {
+export type CheckInResult = { ok: true } | { ok: false; error: string };
+
+export async function submitCheckIn(formData: FormData): Promise<CheckInResult> {
   const client = await requireOnboardedClient();
 
-  // Anti-doble-submit: si el atleta ya envió un check-in esta semana
-  // (sin querer le dio dos veces, o vuelve a entrar más tarde), no creamos
-  // otro registro. Para editar las respuestas usa updateCheckIn.
+  // Guard defensivo: si ya cumplió la petición vigente, la UI está en un
+  // estado inconsistente (probablemente pestañas duplicadas). No crearlo
+  // un segundo registro pero avisar al front en vez de silenciar.
   const { hasFulfilledLatestRequest } = await import("@/lib/weeklyCheckin");
   if (await hasFulfilledLatestRequest(client.id)) {
     revalidatePath("/cliente/checkin");
-    return;
+    return {
+      ok: false,
+      error: "Ya tienes un check-in registrado para esta petición. Recarga la página para editarlo.",
+    };
   }
 
   const { coreData, extraAnswers } = await extractCheckInFieldsFromForm(formData);
@@ -178,22 +183,20 @@ export async function submitCheckIn(formData: FormData) {
 
   revalidatePath("/cliente/checkin");
   revalidatePath("/cliente");
+  return { ok: true };
 }
 
-/** Edita las respuestas del check-in de esta semana del atleta. Solo lo
- *  permitimos si el check-in pertenece a este cliente y está dentro de la
- *  semana actual (mismo criterio que el aviso del lunes). Si la nutri ya
- *  lo revisó, igualmente se puede tocar; la UI muestra una advertencia. */
-export async function updateCheckIn(formData: FormData) {
+/** Edita cualquier check-in del atleta. El atleta puede corregir errores
+ *  de rellenado también en check-ins pasados. La única guarda es que el
+ *  check-in le pertenezca. */
+export async function updateCheckIn(formData: FormData): Promise<CheckInResult> {
   const client = await requireOnboardedClient();
   const id = parseStr(formData.get("id"));
-  if (!id) return;
+  if (!id) return { ok: false, error: "Falta el identificador del check-in." };
   const existing = await prisma.checkIn.findUnique({ where: { id } });
-  if (!existing || existing.clientId !== client.id) return;
-
-  // Solo permitimos editar el check-in de la petición vigente (no historicos).
-  const { hasFulfilledLatestRequest } = await import("@/lib/weeklyCheckin");
-  if (!(await hasFulfilledLatestRequest(client.id))) return;
+  if (!existing || existing.clientId !== client.id) {
+    return { ok: false, error: "Ese check-in ya no está disponible." };
+  }
 
   const { coreData, extraAnswers } = await extractCheckInFieldsFromForm(formData);
 
@@ -211,6 +214,8 @@ export async function updateCheckIn(formData: FormData) {
   await persistCustomMetricValues(client.id, id, formData);
 
   revalidatePath("/cliente/checkin");
+  revalidatePath(`/cliente/checkin/${id}`);
+  return { ok: true };
 }
 
 /** Lee el FormData del check-in y separa los valores en:

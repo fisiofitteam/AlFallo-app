@@ -1,4 +1,5 @@
-import { CheckCircle2, Clock } from "lucide-react";
+import Link from "next/link";
+import { CheckCircle2, Clock, Pencil } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireOnboardedClient } from "@/lib/client-session";
 import {
@@ -8,33 +9,21 @@ import {
   type MetricInput,
 } from "@/components/cliente/CheckInWeekly";
 import { listMetricsForClient } from "@/lib/metricDefinitions";
+import { getLatestRequestSince } from "@/lib/weeklyCheckin";
 
 export const metadata = { title: "Check-in · Al Fallo" };
 export const dynamic = "force-dynamic";
 
-/** Inicio de la semana (lunes 00:00 zona Madrid) — usado para localizar el
- *  check-in vigente. Replica la lógica de lib/weeklyCheckin sin importarla
- *  directamente para que el render sea predecible. */
-function startOfThisWeek(): Date {
-  const now = new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Europe/Madrid" }),
-  );
-  const day = now.getDay(); // 0=dom, 1=lun, ..., 6=sáb
-  const back = (day + 6) % 7;
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - back);
-  mon.setHours(0, 0, 0, 0);
-  return mon;
-}
-
 export default async function CheckInPage() {
   const me = await requireOnboardedClient();
-  const weekStart = startOfThisWeek();
+  // Criterio único: la petición de check-in vigente empieza en el último
+  // día configurado del cliente (L, V, D...). Antes usábamos el lunes ISO,
+  // lo que hacía que el "check-in activo" y el guard del server action
+  // apuntaran a semanas distintas → check-ins fantasma o silenciosos.
+  const since = (await getLatestRequestSince(me.id)) ?? new Date(0);
 
-  // Check-in de la semana actual (si existe). Solo uno por semana — el
-  // server action submitCheckIn rechaza más allá del primero.
   const activeRaw = await prisma.checkIn.findFirst({
-    where: { clientId: me.id, date: { gte: weekStart } },
+    where: { clientId: me.id, date: { gte: since } },
     orderBy: { date: "desc" },
   });
   const active: CheckInActive | null = activeRaw
@@ -54,10 +43,10 @@ export default async function CheckInPage() {
       }
     : null;
 
-  // Histórico (semanas anteriores). Excluimos el de esta semana porque ya
-  // se muestra arriba con su propio bloque editable.
+  // Histórico (peticiones anteriores). Excluimos el de la petición vigente
+  // porque ya se muestra arriba con su propio bloque editable.
   const previousCheckIns = await prisma.checkIn.findMany({
-    where: { clientId: me.id, date: { lt: weekStart } },
+    where: { clientId: me.id, date: { lt: since } },
     orderBy: { date: "desc" },
     take: 12,
   });
@@ -154,6 +143,14 @@ export default async function CheckInPage() {
                     {c.reviewNotes}
                   </div>
                 )}
+                <div className="mt-3 flex justify-end">
+                  <Link
+                    href={`/cliente/checkin/${c.id}`}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-text hover:bg-surface-2"
+                  >
+                    <Pencil size={12} /> Editar respuestas
+                  </Link>
+                </div>
               </div>
             ))}
           </div>

@@ -1,6 +1,7 @@
 import type { CheckIn } from "@prisma/client";
 import { CheckCircle2, Clock, CalendarDays, AlertCircle } from "lucide-react";
 import { TextArea } from "@/components/form-ui";
+import { PanelCheckInEditor } from "@/components/PanelCheckInEditor";
 import { listMetricDefinitions } from "@/lib/metricDefinitions";
 import { CHECKIN_DAY_OPTIONS } from "@/lib/weeklyCheckin";
 import { reviewCheckIn, setCheckInDaysOfWeek } from "../actions";
@@ -162,6 +163,20 @@ export async function CheckInsTab({
                 })}
               </div>
             ) : null}
+
+            <PanelCheckInEditor
+              checkInId={c.id}
+              initial={{
+                weightKg: c.weightKg,
+                waistCm: c.waistCm,
+                hipCm: c.hipCm,
+                armCm: c.armCm,
+                bodyFatPct: c.bodyFatPct,
+                adherencePct: c.adherencePct,
+                energy: c.energy,
+                notes: c.notes,
+              }}
+            />
 
             <form action={reviewCheckIn} className="mt-3 space-y-2">
               <input type="hidden" name="checkInId" value={c.id} />

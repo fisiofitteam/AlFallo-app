@@ -92,19 +92,25 @@ async function hasCheckInSince(clientId: string, since: Date): Promise<boolean> 
   return count > 0;
 }
 
+/** Momento (00:00 Madrid) desde el que cuenta la petición de check-in
+ *  vigente para este cliente. Es la fuente única de verdad — la usa la
+ *  página de check-in, el histórico y el guard del server action. */
+export async function getLatestRequestSince(clientId: string): Promise<Date | null> {
+  const days = await getCheckInDaysForClient(clientId);
+  return lastDueMomentBefore(days, nowInMadrid());
+}
+
 /** ¿Debe verse el aviso del check-in? Sí cuando ya llegó la petición más
  *  reciente y todavía no ha enviado un check-in desde entonces. */
 export async function shouldShowCheckInReminder(clientId: string): Promise<boolean> {
-  const days = await getCheckInDaysForClient(clientId);
-  const since = lastDueMomentBefore(days, nowInMadrid());
+  const since = await getLatestRequestSince(clientId);
   if (!since) return false;
   return !(await hasCheckInSince(clientId, since));
 }
 
 /** ¿Ha cumplido con la petición vigente (la más reciente ya lanzada)? */
 export async function hasFulfilledLatestRequest(clientId: string): Promise<boolean> {
-  const days = await getCheckInDaysForClient(clientId);
-  const since = lastDueMomentBefore(days, nowInMadrid());
+  const since = await getLatestRequestSince(clientId);
   if (!since) return true;
   return hasCheckInSince(clientId, since);
 }

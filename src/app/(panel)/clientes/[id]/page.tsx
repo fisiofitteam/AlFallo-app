@@ -162,20 +162,36 @@ export default async function ClientDetailPage({
       })
     : [];
 
-  // Series para la pestaña Evolución (orden cronológico).
+  // Series para la pestaña Evolución (orden cronológico). El primer punto
+  // sale de la ficha nutricional (si tiene el dato) — es la foto de partida
+  // que rellena el atleta o el nutri al crear la ficha. Después se apilan
+  // los DailyLog y check-ins.
   const checkInsAsc = [...client.checkIns].reverse();
+  const initialPoint = (value: number | null | undefined): ChartPoint | null => {
+    if (value == null) return null;
+    return { label: "Inicial", value: Math.round(value * 10) / 10 };
+  };
   const weightSeries: ChartPoint[] = [
-    ...client.dailyLogs.map((l) => ({ date: l.date, value: l.weightKg as number })),
-    ...checkInsAsc.filter((c) => c.weightKg != null).map((c) => ({ date: c.date, value: c.weightKg as number })),
-  ]
-    .sort((a, b) => a.date.getTime() - b.date.getTime())
-    .map((p) => ({ label: shortDate(p.date), value: Math.round(p.value * 10) / 10 }));
-  const waistSeries: ChartPoint[] = checkInsAsc
-    .filter((c) => c.waistCm != null)
-    .map((c) => ({ label: shortDate(c.date), value: c.waistCm as number }));
-  const bodyFatSeries: ChartPoint[] = checkInsAsc
-    .filter((c) => c.bodyFatPct != null)
-    .map((c) => ({ label: shortDate(c.date), value: c.bodyFatPct as number }));
+    ...(initialPoint(client.profile?.weightKg) ? [initialPoint(client.profile?.weightKg)!] : []),
+    ...[
+      ...client.dailyLogs.map((l) => ({ date: l.date, value: l.weightKg as number })),
+      ...checkInsAsc.filter((c) => c.weightKg != null).map((c) => ({ date: c.date, value: c.weightKg as number })),
+    ]
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .map((p) => ({ label: shortDate(p.date), value: Math.round(p.value * 10) / 10 })),
+  ];
+  const waistSeries: ChartPoint[] = [
+    ...(initialPoint(client.profile?.waistCm) ? [initialPoint(client.profile?.waistCm)!] : []),
+    ...checkInsAsc
+      .filter((c) => c.waistCm != null)
+      .map((c) => ({ label: shortDate(c.date), value: c.waistCm as number })),
+  ];
+  const bodyFatSeries: ChartPoint[] = [
+    ...(initialPoint(client.profile?.bodyFatPct) ? [initialPoint(client.profile?.bodyFatPct)!] : []),
+    ...checkInsAsc
+      .filter((c) => c.bodyFatPct != null)
+      .map((c) => ({ label: shortDate(c.date), value: c.bodyFatPct as number })),
+  ];
 
   // Métricas personalizadas + sus valores en los check-ins, agrupados por
   // métrica para pintar una gráfica por cada una.

@@ -89,12 +89,19 @@ export function CheckInWeekly({
   active,
   metrics,
   customMetrics,
+  startEditing = false,
+  editOnly = false,
 }: {
   active: CheckInActive | null;
   metrics: MetricInput[];
   customMetrics: CustomMetricInput[];
+  /** Si es true, arranca ya en modo edición (sin pasar por el resumen). */
+  startEditing?: boolean;
+  /** Si es true, no se puede volver al resumen; se usa para la pantalla de
+   *  edición de un check-in pasado, donde el resumen no aporta. */
+  editOnly?: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startEditing);
 
   if (!active) {
     return <CheckInForm mode="new" initial={null} metrics={metrics} customMetrics={customMetrics} />;
@@ -106,7 +113,7 @@ export function CheckInWeekly({
         initial={active}
         metrics={metrics}
         customMetrics={customMetrics}
-        onDone={() => setEditing(false)}
+        onDone={editOnly ? undefined : () => setEditing(false)}
       />
     );
   }
@@ -173,6 +180,7 @@ function CheckInForm({
 }) {
   const [pending, start] = useTransition();
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const blocked = pending || sent;
 
   // Agrupamos métricas por category respetando su order en cada grupo.
@@ -190,18 +198,25 @@ function CheckInForm({
     <form
       action={(fd) => {
         if (blocked) return;
+        setError(null);
         setSent(true);
         start(async () => {
-          if (mode === "new") {
-            await submitCheckIn(fd);
-          } else {
-            await updateCheckIn(fd);
-            onDone?.();
+          const result = mode === "new" ? await submitCheckIn(fd) : await updateCheckIn(fd);
+          if (!result.ok) {
+            setSent(false);
+            setError(result.error);
+            return;
           }
+          if (mode === "edit") onDone?.();
         });
       }}
       className="mt-5 space-y-5 rounded-2xl border border-border bg-surface p-5"
     >
+      {error ? (
+        <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {error}
+        </p>
+      ) : null}
       {mode === "edit" && initial ? <input type="hidden" name="id" value={initial.id} /> : null}
 
       {groups.map((g) => (
