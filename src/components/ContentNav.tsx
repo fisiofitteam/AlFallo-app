@@ -6,8 +6,7 @@ type Tab = { key: string; label: string; href: string };
 
 const TABS: Tab[] = [
   { key: "calendar", label: "📅 Calendario", href: "/contenido/calendario" },
-  { key: "this-week", label: "📍 Esta semana", href: "/contenido" },
-  { key: "to-record", label: "🎬 Para grabar", href: "/contenido/para-grabar" },
+  { key: "dossier", label: "📄 Dossier", href: "/contenido/dossier" },
   { key: "template", label: "🧩 Plantillas", href: "/contenido/plantilla" },
   { key: "metrics", label: "📈 Métricas", href: "/contenido/metricas" },
   { key: "bank", label: "🗂 Banco recursos", href: "/contenido/banco" },
