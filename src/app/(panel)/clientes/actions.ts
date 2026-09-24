@@ -245,6 +245,98 @@ export async function panelEditCheckInFields(formData: FormData) {
   revalidatePath(`/clientes/${checkIn.clientId}`);
 }
 
+// ─── Programa / periodos de suscripción ──────────────────────────────────
+
+export async function createSubscriptionPeriod(formData: FormData) {
+  const prof = await requireClientAccess();
+  const clientId = String(formData.get("clientId"));
+  await loadClientForEdit(clientId, prof);
+
+  const periodMonthsRaw = parseIntOrNull(formData.get("periodMonths"));
+  const startDateRaw = parseStr(formData.get("startDate"));
+  const amountPaid = parseNumber(formData.get("amountPaid"));
+  const paymentMethod = parseStr(formData.get("paymentMethod"));
+  const notes = parseStr(formData.get("notes"));
+  const isRenewal = String(formData.get("isRenewal")) === "1";
+
+  const periodMonths = periodMonthsRaw && periodMonthsRaw > 0 ? periodMonthsRaw : 0;
+  if (periodMonths <= 0) return;
+  const startDate = startDateRaw ? new Date(startDateRaw) : new Date();
+  if (Number.isNaN(startDate.getTime())) return;
+
+  const { applySubscriptionPeriod } = await import("@/lib/subscriptions");
+  await applySubscriptionPeriod({
+    clientId,
+    periodMonths,
+    startDate,
+    amountPaid,
+    paymentMethod,
+    notes,
+    isRenewal,
+  });
+
+  revalidatePath(`/clientes/${clientId}`);
+  revalidatePath("/clientes");
+  revalidatePath("/");
+}
+
+export async function updateSubscriptionPeriod(formData: FormData) {
+  const prof = await requireClientAccess();
+  const id = String(formData.get("id"));
+  const existing = await prisma.subscriptionPeriod.findUnique({ where: { id } });
+  if (!existing) return;
+  await loadClientForEdit(existing.clientId, prof);
+
+  const periodMonthsRaw = parseIntOrNull(formData.get("periodMonths"));
+  const startDateRaw = parseStr(formData.get("startDate"));
+  const endDateRaw = parseStr(formData.get("endDate"));
+  const status = parseStr(formData.get("status"));
+  const amountPaid = parseNumber(formData.get("amountPaid"));
+  const paymentMethod = parseStr(formData.get("paymentMethod"));
+  const notes = parseStr(formData.get("notes"));
+
+  const startDate = startDateRaw ? new Date(startDateRaw) : existing.startDate;
+  const endDate = endDateRaw ? new Date(endDateRaw) : existing.endDate;
+  const periodMonths = periodMonthsRaw && periodMonthsRaw > 0 ? periodMonthsRaw : existing.periodMonths;
+
+  await prisma.subscriptionPeriod.update({
+    where: { id },
+    data: {
+      periodMonths,
+      startDate,
+      endDate,
+      status: status && ["active", "finished", "lost", "scheduled"].includes(status) ? status : existing.status,
+      amountPaid,
+      paymentMethod,
+      notes,
+    },
+  });
+
+  const { refreshClientCache } = await import("@/lib/subscriptions");
+  await refreshClientCache(existing.clientId);
+
+  revalidatePath(`/clientes/${existing.clientId}`);
+  revalidatePath("/clientes");
+  revalidatePath("/");
+}
+
+export async function deleteSubscriptionPeriod(formData: FormData) {
+  const prof = await requireClientAccess();
+  const id = String(formData.get("id"));
+  const existing = await prisma.subscriptionPeriod.findUnique({ where: { id } });
+  if (!existing) return;
+  await loadClientForEdit(existing.clientId, prof);
+
+  await prisma.subscriptionPeriod.delete({ where: { id } });
+
+  const { refreshClientCache } = await import("@/lib/subscriptions");
+  await refreshClientCache(existing.clientId);
+
+  revalidatePath(`/clientes/${existing.clientId}`);
+  revalidatePath("/clientes");
+  revalidatePath("/");
+}
+
 // El nutricionista responde y marca un check-in como revisado.
 export async function reviewCheckIn(formData: FormData) {
   const prof = await requireClientAccess();

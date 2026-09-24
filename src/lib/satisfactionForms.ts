@@ -58,17 +58,30 @@ export function parseQuestions(raw: unknown): SatisfactionQuestion[] {
 
 const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
 
-/** Semana del programa del cliente (0 = primera semana). null si aún no tiene una venta. */
+/** Semana del programa del cliente (0 = primera semana). null si aún no tiene
+ *  fecha de inicio. Preferimos la fecha del primer SubscriptionPeriod (fuente
+ *  de verdad del negocio); si no hay ninguno, caemos al Sale más antiguo por
+ *  compatibilidad con datos anteriores al modelo SubscriptionPeriod. */
 export async function getClientProgramWeek(clientId: string, now = new Date()): Promise<number | null> {
+  const period = await prisma.subscriptionPeriod.findFirst({
+    where: { clientId },
+    orderBy: { startDate: "asc" },
+    select: { startDate: true },
+  });
+  const anchor = period?.startDate ?? (await legacySaleAnchor(clientId));
+  if (!anchor) return null;
+  const diffMs = now.getTime() - anchor.getTime();
+  if (diffMs < 0) return null;
+  return Math.floor(diffMs / MS_PER_WEEK);
+}
+
+async function legacySaleAnchor(clientId: string): Promise<Date | null> {
   const sale = await prisma.sale.findFirst({
     where: { clientId },
     orderBy: { startDate: "asc" },
     select: { startDate: true },
   });
-  if (!sale) return null;
-  const diffMs = now.getTime() - sale.startDate.getTime();
-  if (diffMs < 0) return null;
-  return Math.floor(diffMs / MS_PER_WEEK);
+  return sale?.startDate ?? null;
 }
 
 /**

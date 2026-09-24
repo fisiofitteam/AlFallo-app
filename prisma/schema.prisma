@@ -160,6 +160,19 @@ model Client {
 
   satisfactionResponses SatisfactionResponse[]
 
+  // Registro comercial: periodos de programa contratados (alta + renovaciones).
+  subscriptionPeriods SubscriptionPeriod[]
+
+  // ─── Caché del periodo VIGENTE ───────────────────────────────
+  // Se rellena/actualiza al aplicar un SubscriptionPeriod. La fuente de
+  // verdad sigue siendo SubscriptionPeriod (status=active); esto es solo
+  // para no hacer JOIN en cada listado/KPI.
+  programStartDate        DateTime?
+  programEndDate          DateTime?
+  programDurationMonths   Int?
+  subscriptionStatus      String?    // active | finished | pending | paused
+  subscriptionTotalMonths Int?       // suma histórica de todos los periodos
+
   @@index([nutritionistId])
   @@index([status])
 }
@@ -1492,6 +1505,36 @@ model SatisfactionForm {
   responses SatisfactionResponse[]
 
   @@index([weekOffset])
+}
+
+// Un periodo de programa contratado por un cliente: la unidad temporal del
+// negocio. Cada alta o renovación crea uno. Invariante: solo puede haber UN
+// periodo con status="active" por cliente. La lógica vive en
+// lib/subscriptions.ts:applySubscriptionPeriod().
+model SubscriptionPeriod {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  periodMonths  Int
+  startDate     DateTime
+  endDate       DateTime
+
+  status        String   @default("active") // active | finished | lost | scheduled
+
+  amountPaid    Float?   // total contratado (€) por este periodo
+  paymentMethod String?  // manual | bizum | transferencia | stripe | paypal
+  notes         String?
+
+  isRenewal     Boolean  @default(false) // false=alta inicial, true=renovación
+
+  decidedAt     DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([status])
+  @@index([endDate])
 }
 
 model SatisfactionResponse {

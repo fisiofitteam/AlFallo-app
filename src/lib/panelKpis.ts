@@ -19,10 +19,12 @@ export async function getPanelKpis(now = new Date()): Promise<Kpi[]> {
   const [totalClientes, sinAsignar, renovanEn30d, formulariosPendientes, llamadas7d] = await Promise.all([
     prisma.client.count(),
     prisma.client.count({ where: { nutritionistId: null, status: { not: "baja" } } }),
-    prisma.sale.count({
+    // Periodos activos que vencen en los próximos 30d — desde aquí gestiona
+    // el equipo las renovaciones anticipadas.
+    prisma.subscriptionPeriod.count({
       where: {
+        status: "active",
         endDate: { gte: now, lte: in30d },
-        clientId: { not: null },
       },
     }),
     prisma.checkIn.count({ where: { reviewedAt: null } }),

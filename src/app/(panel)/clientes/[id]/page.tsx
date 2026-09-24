@@ -9,7 +9,7 @@ export const maxDuration = 300;
 import {
   ArrowLeft,
   UtensilsCrossed, ClipboardList, CalendarDays,
-  TrendingUp, NotebookPen, KeyRound, Settings, Dumbbell,
+  TrendingUp, NotebookPen, KeyRound, Settings, Dumbbell, Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -28,6 +28,8 @@ import { FichaForm } from "./ficha-form";
 import { DeleteClientButton } from "./delete-client-button";
 import { CheckInsTab } from "./checkins-tab";
 import { EvolucionTab } from "./evolucion-tab";
+import { ProgramaSection } from "./programa-tab";
+import { listPeriodsForClient } from "@/lib/subscriptions";
 import { hasFulfilledLatestRequest, getCheckInDaysForClient } from "@/lib/weeklyCheckin";
 import {
   reassignNutritionist,
@@ -62,6 +64,7 @@ type SectionKey =
   | "ficha"
   | "evolucion"
   | "checkins"
+  | "programa"
   | "acceso"
   | "marcas"
   | "ajustes";
@@ -73,6 +76,7 @@ const SECTIONS: { key: SectionKey; label: string; description: string; icon: Luc
   { key: "evolucion", label: "Evolución", description: "Peso, cintura y % grasa", icon: TrendingUp },
   { key: "checkins", label: "Check-ins", description: "Cuestionarios semanales", icon: NotebookPen },
   { key: "marcas", label: "Marcas de fuerza", description: "1RM, benchmarks y evolución", icon: Dumbbell },
+  { key: "programa", label: "Programa y pagos", description: "Periodos contratados y renovaciones", icon: Wallet },
   { key: "acceso", label: "Acceso a la app", description: "Credenciales del cliente", icon: KeyRound },
   { key: "ajustes", label: "Ajustes", description: "Estado y nutricionista asignado", icon: Settings },
 ];
@@ -397,6 +401,8 @@ export default async function ClientDetailPage({
             />
           ) : active === "marcas" ? (
             <MarksSection clientId={client.id} />
+          ) : active === "programa" ? (
+            <ProgramaSectionAsync clientId={client.id} />
           ) : active === "acceso" ? (
             <AccesoSection
               clientId={client.id}
@@ -695,5 +701,17 @@ async function MarksSection({ clientId }: { clientId: string }) {
         }))}
       />
     </div>
+  );
+}
+
+async function ProgramaSectionAsync({ clientId }: { clientId: string }) {
+  const { active, history } = await listPeriodsForClient(clientId);
+  return (
+    <ProgramaSection
+      clientId={clientId}
+      active={active}
+      history={history}
+      hasAny={!!active || history.length > 0}
+    />
   );
 }
