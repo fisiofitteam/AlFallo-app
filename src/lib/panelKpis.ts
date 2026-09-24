@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { ensureRenewalNotifications } from "@/lib/subscriptions";
 
 export type Kpi = {
   key: string;
@@ -16,6 +17,10 @@ export async function getPanelKpis(now = new Date()): Promise<Kpi[]> {
   in30d.setDate(in30d.getDate() + 30);
   const in7d = new Date(now);
   in7d.setDate(in7d.getDate() + 7);
+
+  // Hearbeat: al cargar el panel garantizamos que los periodos en la ventana
+  // de aviso tengan su notificación. Idempotente (dedup por refKey).
+  ensureRenewalNotifications(now).catch((e) => console.error("ensureRenewalNotifications", e));
 
   const [totalClientes, sinAsignar, renovanEn30d, formulariosPendientes, llamadas7d] = await Promise.all([
     prisma.client.count(),

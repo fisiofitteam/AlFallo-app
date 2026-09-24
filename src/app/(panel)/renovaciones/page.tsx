@@ -4,7 +4,7 @@ import { ArrowRight, Clock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import { CLIENT_ACCESS_ROLES } from "@/lib/clients";
-import { periodProgress } from "@/lib/subscriptions";
+import { ensureRenewalNotifications, periodProgress } from "@/lib/subscriptions";
 
 export const metadata = { title: "Renovaciones · Al Fallo" };
 export const dynamic = "force-dynamic";
@@ -27,8 +27,8 @@ const BUCKETS: {
   tone: string;
 }[] = [
   { key: "expired", label: "Vencidos", hint: "Ya venció, sin renovación registrada", test: (d) => d < 0, tone: "text-rose-700 bg-rose-50 border-rose-200" },
-  { key: "d15", label: "Vencen en ≤ 15 días", hint: "Acción esta semana", test: (d) => d >= 0 && d <= 15, tone: "text-amber-800 bg-amber-50 border-amber-200" },
-  { key: "d30", label: "16-30 días", hint: "Planifica llamada de renovación", test: (d) => d > 15 && d <= 30, tone: "text-orange-800 bg-orange-50 border-orange-200" },
+  { key: "d21", label: "Vencen en ≤ 21 días", hint: "Ventana de aviso — agenda ya la llamada de renovación", test: (d) => d >= 0 && d <= 21, tone: "text-amber-800 bg-amber-50 border-amber-200" },
+  { key: "d30", label: "22-30 días", hint: "Planifica hueco en calendario", test: (d) => d > 21 && d <= 30, tone: "text-orange-800 bg-orange-50 border-orange-200" },
   { key: "d60", label: "31-60 días", hint: "Contexto de fidelización", test: (d) => d > 30 && d <= 60, tone: "text-sky-800 bg-sky-50 border-sky-200" },
   { key: "d90", label: "61-90 días", hint: "Vista larga", test: (d) => d > 60 && d <= 90, tone: "text-emerald-800 bg-emerald-50 border-emerald-200" },
   { key: "later", label: "Más adelante", hint: "> 90 días", test: (d) => d > 90, tone: "text-neutral-700 bg-neutral-50 border-neutral-200" },
@@ -37,6 +37,8 @@ const BUCKETS: {
 export default async function RenovacionesPage() {
   const prof = await requireProfessional();
   if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/");
+
+  await ensureRenewalNotifications();
 
   const periods = await prisma.subscriptionPeriod.findMany({
     where: { status: "active" },
@@ -66,7 +68,7 @@ export default async function RenovacionesPage() {
   }));
 
   const totalActive = periods.length;
-  const expiring30 = rows.filter((r) => r.daysLeft >= 0 && r.daysLeft <= 30).length;
+  const expiring21 = rows.filter((r) => r.daysLeft >= 0 && r.daysLeft <= 21).length;
   const expired = rows.filter((r) => r.daysLeft < 0).length;
 
   return (
@@ -81,7 +83,7 @@ export default async function RenovacionesPage() {
 
       <section className="mb-6 grid grid-cols-3 gap-3">
         <SummaryCard label="Periodos activos" value={totalActive} tone="text-text" />
-        <SummaryCard label="Vencen en 30 días" value={expiring30} tone="text-[#e07b1a]" />
+        <SummaryCard label="Vencen en 21 días" value={expiring21} tone="text-[#e07b1a]" />
         <SummaryCard label="Vencidos" value={expired} tone="text-rose-600" />
       </section>
 

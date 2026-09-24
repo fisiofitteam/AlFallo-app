@@ -143,6 +143,88 @@ function daysBetween(from: Date, to: Date): number {
   return Math.floor((to.getTime() - from.getTime()) / 86400000);
 }
 
+/** Ventana de aviso (en días) para renovaciones. A partir de este umbral se
+ *  emite una notificación al nutri asignado para que agende la llamada. */
+export const RENEWAL_ALERT_WINDOW_DAYS = 21;
+
+/** Crea notificaciones para los periodos activos que entran en la ventana de
+ *  aviso y aún no tienen aviso enviado. Idempotente vía refKey — se puede
+ *  llamar en cada carga del panel sin duplicar. Devuelve cuántas creó. */
+export async function ensureRenewalNotifications(now = new Date()): Promise<number> {
+  const windowEnd = new Date(now);
+  windowEnd.setDate(now.getDate() + RENEWAL_ALERT_WINDOW_DAYS);
+
+  const dueSoon = await prisma.subscriptionPeriod.findMany({
+    where: {
+      status: "active",
+      endDate: { gte: now, lte: windowEnd },
+    },
+    include: {
+      client: {
+        select: {
+          id: true,
+          fullName: true,
+          nutritionistId: true,
+        },
+      },
+    },
+  });
+  if (dueSoon.length === 0) return 0;
+
+  const refKeys = dueSoon.map((p) => `renewal-window:${p.id}`);
+  const existing = await prisma.teamNotification.findMany({
+    where: { refKey: { in: refKeys } },
+    select: { refKey: true },
+  });
+  const seen = new Set(existing.map((n) => n.refKey));
+
+  const rows: {
+    targetProfessionalId: string | null;
+    targetRole: string | null;
+    type: string;
+    title: string;
+    body: string;
+    actionUrl: string;
+    refKey: string;
+  }[] = [];
+
+  for (const p of dueSoon) {
+    const key = `renewal-window:${p.id}`;
+    if (seen.has(key)) continue;
+    const daysLeft = Math.max(0, daysBetween(now, p.endDate));
+    const body = `${p.client.fullName} termina su programa en ${daysLeft} ${
+      daysLeft === 1 ? "día" : "días"
+    }. Agenda la llamada de renovación.`;
+    const actionUrl = `/clientes/${p.client.id}?tab=programa`;
+    if (p.client.nutritionistId) {
+      rows.push({
+        targetProfessionalId: p.client.nutritionistId,
+        targetRole: null,
+        type: "renewal_window",
+        title: "Renovación en ventana",
+        body,
+        actionUrl,
+        refKey: key,
+      });
+    } else {
+      // Sin nutri → avisamos al head_coach para que asigne y/o llame.
+      rows.push({
+        targetProfessionalId: null,
+        targetRole: "head_coach",
+        type: "renewal_window",
+        title: "Renovación pendiente sin nutri",
+        body,
+        actionUrl,
+        refKey: key,
+      });
+    }
+  }
+
+  if (rows.length === 0) return 0;
+  await prisma.teamNotification.createMany({ data: rows });
+  return rows.length;
+}
+
 /** Progreso simple del periodo activo. */
 export function periodProgress(period: {
   startDate: Date;
