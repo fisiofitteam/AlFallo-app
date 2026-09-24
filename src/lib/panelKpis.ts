@@ -6,6 +6,7 @@ export type Kpi = {
   value: string;
   hint?: string;
   tone: "neutral" | "accent" | "muted";
+  href?: string;
 };
 
 /** Calcula los KPIs de la cabecera del panel. Algunos son placeholder ("—")
@@ -32,9 +33,9 @@ export async function getPanelKpis(now = new Date()): Promise<Kpi[]> {
   ]);
 
   return [
-    { key: "totales", label: "Pacientes totales", value: String(totalClientes), tone: "neutral" },
-    { key: "sinAsignar", label: "Sin asignar", value: String(sinAsignar), tone: "neutral" },
-    { key: "renuevan30", label: "Renuevan en 30d", value: String(renovanEn30d), tone: "accent" },
+    { key: "totales", label: "Pacientes totales", value: String(totalClientes), tone: "neutral", href: "/clientes" },
+    { key: "sinAsignar", label: "Sin asignar", value: String(sinAsignar), tone: "neutral", href: "/clientes?asignacion=sin" },
+    { key: "renuevan30", label: "Renuevan en 30d", value: String(renovanEn30d), tone: "accent", href: "/renovaciones" },
     { key: "formularios", label: "Formularios por revisar", value: String(formulariosPendientes), tone: "accent" },
     { key: "adherencia", label: "Adherencia media", value: "—", hint: "Pendiente sistema", tone: "muted" },
     { key: "renovacion", label: "Tasa renovación", value: "—", hint: "Pendiente sistema", tone: "muted" },

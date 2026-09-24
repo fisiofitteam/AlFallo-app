@@ -76,6 +76,31 @@ export async function applySubscriptionPeriod(input: SubscriptionPeriodInput) {
     },
   });
 
+  // Ingreso automático en el libro contable si hay importe. Coherente con la
+  // regla de FisioFit: cada evento de cobro deja una línea en Transaction.
+  // No creamos aquí Transaction "negativas" al editar / borrar — si el CEO
+  // corrige un importe, ajusta la Transaction desde /finanzas.
+  if (input.amountPaid && input.amountPaid > 0) {
+    const client = await prisma.client.findUnique({
+      where: { id: input.clientId },
+      select: { fullName: true },
+    });
+    const label = input.isRenewal ? "Renovación" : "Alta";
+    await prisma.transaction.create({
+      data: {
+        date: created.decidedAt,
+        type: "ingreso",
+        category: input.isRenewal ? "renovacion" : "cliente",
+        description:
+          `${label} · ${client?.fullName ?? "Cliente"} · ${input.periodMonths} ` +
+          `${input.periodMonths === 1 ? "mes" : "meses"}` +
+          (input.paymentMethod ? ` · ${input.paymentMethod}` : ""),
+        amount: input.amountPaid,
+        source: input.paymentMethod ?? "manual",
+      },
+    });
+  }
+
   await refreshClientCache(input.clientId);
   return created;
 }

@@ -58,6 +58,28 @@ export async function createClient(formData: FormData) {
     },
   });
 
+  // Si el form incluye datos del primer periodo (meses > 0) creamos el alta
+  // en el mismo paso. Así el CEO no tiene que ir a la pestaña "Programa"
+  // después. Todos los campos son opcionales; si falta la duración lo
+  // saltamos.
+  const initialMonths = parseIntOrNull(formData.get("initialPeriodMonths"));
+  if (initialMonths && initialMonths > 0) {
+    const startRaw = parseStr(formData.get("initialStartDate"));
+    const startDate = startRaw ? new Date(startRaw) : new Date();
+    if (!Number.isNaN(startDate.getTime())) {
+      const { applySubscriptionPeriod } = await import("@/lib/subscriptions");
+      await applySubscriptionPeriod({
+        clientId: client.id,
+        periodMonths: initialMonths,
+        startDate,
+        amountPaid: parseNumber(formData.get("initialAmountPaid")),
+        paymentMethod: parseStr(formData.get("initialPaymentMethod")),
+        notes: parseStr(formData.get("initialNotes")),
+        isRenewal: false,
+      });
+    }
+  }
+
   revalidatePath("/clientes");
   redirect(`/clientes/${client.id}`);
 }

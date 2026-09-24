@@ -68,6 +68,65 @@ export default async function NewClientPage() {
           </p>
         )}
 
+        <details className="rounded-xl border border-dashed border-border bg-bg/40 p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-text">
+            💼 Registrar alta y pago (opcional)
+          </summary>
+          <p className="mt-1 text-xs text-muted">
+            Si el cliente ya ha contratado, rellena estos campos y creamos su primer
+            periodo del programa a la vez. Si no, déjalo en blanco y lo añades más
+            tarde desde la pestaña «Programa» de su ficha.
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Duración (meses)" htmlFor="initialPeriodMonths">
+              <TextInput
+                id="initialPeriodMonths"
+                name="initialPeriodMonths"
+                type="number"
+                min={1}
+                max={24}
+                placeholder="p. ej. 3"
+              />
+            </Field>
+            <Field label="Fecha de inicio" htmlFor="initialStartDate">
+              <TextInput id="initialStartDate" name="initialStartDate" type="date" />
+            </Field>
+            <Field label="Importe contratado (€)" htmlFor="initialAmountPaid">
+              <TextInput
+                id="initialAmountPaid"
+                name="initialAmountPaid"
+                type="number"
+                step="0.01"
+                min={0}
+              />
+            </Field>
+            <Field label="Método de pago" htmlFor="initialPaymentMethod">
+              <Select
+                id="initialPaymentMethod"
+                name="initialPaymentMethod"
+                options={[
+                  { value: "manual", label: "Manual / efectivo" },
+                  { value: "transferencia", label: "Transferencia" },
+                  { value: "bizum", label: "Bizum" },
+                  { value: "stripe", label: "Stripe" },
+                  { value: "paypal", label: "PayPal" },
+                  { value: "otro", label: "Otro" },
+                ]}
+                placeholder="Manual"
+              />
+            </Field>
+          </div>
+          <div className="mt-3">
+            <Field label="Notas (opcional)" htmlFor="initialNotes">
+              <TextInput
+                id="initialNotes"
+                name="initialNotes"
+                placeholder="Referencia de pago, condiciones, comentarios..."
+              />
+            </Field>
+          </div>
+        </details>
+
         <div className="flex justify-end gap-3 pt-2">
           <Link href="/clientes" className="rounded-xl px-4 py-2.5 text-sm font-medium text-muted hover:bg-surface-2">
             Cancelar
