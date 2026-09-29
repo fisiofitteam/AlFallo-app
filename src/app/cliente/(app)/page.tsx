@@ -22,6 +22,7 @@ import { shouldShowCheckInReminder } from "@/lib/weeklyCheckin";
 import { getDueSatisfactionForm } from "@/lib/satisfactionForms";
 import { getTodayStatus, todayKey, weekStart, addDays } from "@/lib/habits";
 import { HabitTodayCard, type HabitTodayItem } from "@/components/cliente/HabitTodayCard";
+import { ReferralBanner } from "@/components/cliente/ReferralBanner";
 
 export const metadata = { title: "Al Fallo" };
 
@@ -210,6 +211,10 @@ export default async function ClientHomePage() {
           );
         })}
       </div>
+
+      {/* Banner de referidos: al fondo del escritorio principal, sin robar
+          protagonismo al mosaico. */}
+      <ReferralBanner firstName={me.fullName.split(" ")[0]} />
     </div>
   );
 }
