@@ -69,6 +69,8 @@ model Professional {
 
   // Plantillas de competición creadas por este profesional.
   competitionTemplatesCreated CompetitionPlanTemplate[] @relation("CompetitionTemplateCreator")
+  // Planes de competición concretos asignados a clientes (con fechas + PDF).
+  competitionPlansCreated CompetitionPlan[] @relation("CompetitionPlanCreator")
   // Plantillas nutricionales (regulares) creadas por este profesional.
   nutritionTemplatesCreated NutritionTemplate[] @relation("NutritionTemplateCreator")
   // Última edición del brief de macros (singleton).
@@ -161,6 +163,8 @@ model Client {
   satisfactionResponses SatisfactionResponse[]
 
   habitLogs HabitLog[]
+
+  competitionPlans CompetitionPlan[]
 
   // Registro comercial: periodos de programa contratados (alta + renovaciones).
   subscriptionPeriods SubscriptionPeriod[]
@@ -1544,6 +1548,34 @@ model HabitLog {
   @@unique([clientId, habitId, date])
   @@index([clientId, date])
   @@index([habitId])
+}
+
+// Plan de competición individual asignado a un cliente. Muy libre: título +
+// descripción larga (opcional) + PDF adjunto (opcional) + ventana de fechas
+// durante la que el atleta lo ve en su app. Diseñado para que el nutri
+// pueda montarlo en PDF y adjuntarlo directamente sin duplicar en texto.
+model CompetitionPlan {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?  // texto libre (puede incluir instrucciones, timing, notas)
+  pdfUrl      String?
+  pdfName     String?
+
+  startDate   DateTime // día desde el que le aparece al atleta
+  endDate     DateTime // día hasta el que le aparece (inclusive)
+
+  createdById String?
+  createdBy   Professional? @relation("CompetitionPlanCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([startDate])
+  @@index([endDate])
 }
 
 // Un periodo de programa contratado por un cliente: la unidad temporal del

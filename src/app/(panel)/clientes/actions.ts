@@ -359,6 +359,87 @@ export async function deleteSubscriptionPeriod(formData: FormData) {
   revalidatePath("/");
 }
 
+// ─── Planes de competición ────────────────────────────────────────────────
+
+function parseDateFromForm(v: FormDataEntryValue | null): Date | null {
+  const raw = parseStr(v);
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export async function createCompetitionPlan(formData: FormData) {
+  const prof = await requireClientAccess();
+  const clientId = String(formData.get("clientId"));
+  await loadClientForEdit(clientId, prof);
+
+  const title = parseStr(formData.get("title"));
+  if (!title) return;
+  const startDate = parseDateFromForm(formData.get("startDate"));
+  const endDate = parseDateFromForm(formData.get("endDate"));
+  if (!startDate || !endDate) return;
+
+  await prisma.competitionPlan.create({
+    data: {
+      clientId,
+      title: title.slice(0, 120),
+      description: parseStr(formData.get("description")),
+      pdfUrl: parseStr(formData.get("pdfUrl")),
+      pdfName: parseStr(formData.get("pdfName")),
+      startDate,
+      endDate,
+      createdById: prof.id,
+    },
+  });
+  revalidatePath(`/clientes/${clientId}`);
+  revalidatePath("/cliente");
+  revalidatePath("/cliente/competicion");
+}
+
+export async function updateCompetitionPlan(formData: FormData) {
+  const prof = await requireClientAccess();
+  const id = String(formData.get("id"));
+  const existing = await prisma.competitionPlan.findUnique({ where: { id } });
+  if (!existing) return;
+  await loadClientForEdit(existing.clientId, prof);
+
+  const title = parseStr(formData.get("title")) ?? existing.title;
+  const startDate = parseDateFromForm(formData.get("startDate")) ?? existing.startDate;
+  const endDate = parseDateFromForm(formData.get("endDate")) ?? existing.endDate;
+  // PDF: si viene pdfUrl explícito lo cambiamos; si viene clearPdf=1 lo limpiamos.
+  const clearPdf = String(formData.get("clearPdf")) === "1";
+  const nextPdfUrl = clearPdf ? null : (parseStr(formData.get("pdfUrl")) ?? existing.pdfUrl);
+  const nextPdfName = clearPdf ? null : (parseStr(formData.get("pdfName")) ?? existing.pdfName);
+
+  await prisma.competitionPlan.update({
+    where: { id },
+    data: {
+      title: title.slice(0, 120),
+      description: parseStr(formData.get("description")),
+      pdfUrl: nextPdfUrl,
+      pdfName: nextPdfName,
+      startDate,
+      endDate,
+    },
+  });
+  revalidatePath(`/clientes/${existing.clientId}`);
+  revalidatePath("/cliente");
+  revalidatePath("/cliente/competicion");
+}
+
+export async function deleteCompetitionPlan(formData: FormData) {
+  const prof = await requireClientAccess();
+  const id = String(formData.get("id"));
+  const existing = await prisma.competitionPlan.findUnique({ where: { id } });
+  if (!existing) return;
+  await loadClientForEdit(existing.clientId, prof);
+
+  await prisma.competitionPlan.delete({ where: { id } });
+  revalidatePath(`/clientes/${existing.clientId}`);
+  revalidatePath("/cliente");
+  revalidatePath("/cliente/competicion");
+}
+
 // El nutricionista responde y marca un check-in como revisado.
 export async function reviewCheckIn(formData: FormData) {
   const prof = await requireClientAccess();

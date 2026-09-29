@@ -23,6 +23,8 @@ import { getDueSatisfactionForm } from "@/lib/satisfactionForms";
 import { getTodayStatus, todayKey, weekStart, addDays } from "@/lib/habits";
 import { HabitTodayCard, type HabitTodayItem } from "@/components/cliente/HabitTodayCard";
 import { ReferralBanner } from "@/components/cliente/ReferralBanner";
+import { listActiveCompetitionPlans } from "@/lib/competitionPlans";
+import { Trophy } from "lucide-react";
 
 export const metadata = { title: "Al Fallo" };
 
@@ -126,6 +128,10 @@ export default async function ClientHomePage() {
     }));
   }
 
+  // Plan de competición vigente hoy (si lo hay). Mostramos banner destacado.
+  const activeCompetitionPlans = await listActiveCompetitionPlans(me.id);
+  const activeCompetitionPlan = activeCompetitionPlans[0] ?? null;
+
   return (
     <div className="relative pt-1">
       {/* Marca de agua: "A" gigante semitransparente al fondo */}
@@ -165,6 +171,14 @@ export default async function ClientHomePage() {
           oculta si ya toca el check-in inicial para no acumular banners. */}
       {!showInitialCheckIn && dueForm ? (
         <SatisfactionCard href={`/cliente/formulario/${dueForm.id}`} title={dueForm.name} />
+      ) : null}
+
+      {/* Plan de competición vigente. Sale destacado en amarillo/trofeo. */}
+      {activeCompetitionPlan ? (
+        <CompetitionActiveCard
+          title={activeCompetitionPlan.title}
+          endDate={activeCompetitionPlan.endDate}
+        />
       ) : null}
 
       <HabitTodayCard items={habitItems} />
@@ -268,6 +282,31 @@ function SatisfactionCard({ href, title }: { href: string; title: string }) {
 
 /** Banner rosa translúcido que invita a hacer el check-in semanal. Se pinta
  *  debajo de la frase motivacional cuando toca (lunes y aún no enviado). */
+/** Banner del plan de competición vigente. Amarillo con trofeo. */
+function CompetitionActiveCard({ title, endDate }: { title: string; endDate: Date }) {
+  const daysLeft = Math.max(
+    0,
+    Math.ceil((endDate.getTime() - Date.now()) / 86_400_000),
+  );
+  return (
+    <Link
+      href="/cliente/competicion"
+      className="relative mt-5 flex items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm transition hover:bg-amber-100"
+    >
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-md">
+        <Trophy size={22} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold text-amber-900">Plan de competición: {title}</p>
+        <p className="text-xs leading-snug text-amber-900/80">
+          Ábrelo para ver las instrucciones{daysLeft > 0 ? ` · ${daysLeft} ${daysLeft === 1 ? "día" : "días"} restantes` : " · último día"}.
+        </p>
+      </div>
+      <ArrowRight size={18} className="shrink-0 text-amber-800" />
+    </Link>
+  );
+}
+
 function CheckInReminderCard() {
   return (
     <Link
