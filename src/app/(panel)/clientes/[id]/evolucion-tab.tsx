@@ -1,4 +1,4 @@
-import { Plus, Pencil, Trash2, Eye, EyeOff } from "lucide-react";
+import { Flame, Plus, Pencil, Target, Trash2, Eye, EyeOff } from "lucide-react";
 import { LineChart, type ChartPoint } from "@/components/line-chart";
 import {
   addCustomMetric,
@@ -6,6 +6,25 @@ import {
   toggleCustomMetric,
   deleteCustomMetric,
 } from "../actions";
+
+export type HabitStreakInfo = {
+  habitId: string;
+  name: string;
+  emoji: string | null;
+  weeklyTarget: number;
+  currentStreak: number;
+  bestStreak: number;
+};
+
+export type HabitWeekSummary = {
+  weekStart: Date;
+  entries: {
+    habitId: string;
+    doneCount: number;
+    target: number;
+    achieved: boolean;
+  }[];
+};
 
 function ChartCard({
   title,
@@ -47,12 +66,16 @@ export function EvolucionTab({
   waist,
   bodyFat,
   customMetrics,
+  habitStreaks,
+  habitWeeks,
 }: {
   clientId: string;
   weight: ChartPoint[];
   waist: ChartPoint[];
   bodyFat: ChartPoint[];
   customMetrics: CustomMetricSeries[];
+  habitStreaks: HabitStreakInfo[];
+  habitWeeks: HabitWeekSummary[];
 }) {
   const hasStandard = weight.length + waist.length + bodyFat.length > 0;
   const activeCustom = customMetrics.filter((m) => m.active);
@@ -84,6 +107,9 @@ export function EvolucionTab({
           unit={m.unit ? ` ${m.unit}` : ""}
         />
       ))}
+
+      {/* Rachas de hábitos */}
+      <HabitStreaksSection streaks={habitStreaks} weeks={habitWeeks} />
 
       {/* Gestión de métricas personalizadas */}
       <section className="rounded-2xl border border-border bg-surface p-5">
@@ -226,5 +252,124 @@ export function EvolucionTab({
         </form>
       </section>
     </div>
+  );
+}
+
+function weekLabelShort(ws: Date): string {
+  const end = new Date(ws);
+  end.setUTCDate(end.getUTCDate() + 6);
+  const fmt = (d: Date) => d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+  return `${fmt(ws)} → ${fmt(end)}`;
+}
+
+function HabitStreaksSection({
+  streaks,
+  weeks,
+}: {
+  streaks: HabitStreakInfo[];
+  weeks: HabitWeekSummary[];
+}) {
+  if (streaks.length === 0) return null;
+
+  // Ordenamos las semanas desc (más reciente primero) y limitamos a 6 filas
+  // para no cargar la vista del nutri.
+  const recent = [...weeks]
+    .sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime())
+    .slice(0, 6);
+
+  return (
+    <section className="space-y-3">
+      <header>
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">
+          Hábitos y rachas
+        </h3>
+        <p className="text-xs text-muted">
+          Semanas ISO ganadas cuando el atleta llega a la meta del hábito.
+        </p>
+      </header>
+
+      {/* Rachas por hábito */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {streaks.map((s) => (
+          <div
+            key={s.habitId}
+            className="rounded-xl border border-border bg-surface p-3"
+          >
+            <p className="flex items-center gap-1 text-sm font-semibold">
+              {s.emoji ? <span>{s.emoji}</span> : <Target size={13} />}
+              {s.name}
+            </p>
+            <p className="text-[10px] text-muted">Meta {s.weeklyTarget}/7 días</p>
+            <div className="mt-2 flex items-baseline gap-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted">Actual</p>
+                <p className="flex items-baseline gap-1 text-xl font-bold text-primary">
+                  <Flame size={14} className="text-amber-500" />
+                  {s.currentStreak}
+                  <span className="text-[10px] font-medium text-muted">sem.</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted">Mejor</p>
+                <p className="text-base font-semibold text-text">
+                  {s.bestStreak}{" "}
+                  <span className="text-[10px] font-medium text-muted">sem.</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Histórico compacto de últimas 6 semanas */}
+      {recent.length > 0 ? (
+        <div className="rounded-xl border border-border bg-surface p-3">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted">
+            Últimas semanas
+          </p>
+          <div className="space-y-2">
+            {recent.map((w, idx) => (
+              <div key={w.weekStart.toISOString()}>
+                <p className="mb-1 text-[10px] font-semibold text-muted">
+                  {idx === 0 ? "Esta semana" : weekLabelShort(w.weekStart)}
+                </p>
+                <ul className="space-y-1">
+                  {streaks.map((s) => {
+                    const entry = w.entries.find((e) => e.habitId === s.habitId);
+                    const doneCount = entry?.doneCount ?? 0;
+                    const target = s.weeklyTarget;
+                    const achieved = entry?.achieved ?? false;
+                    const pct = Math.min(100, Math.round((doneCount / target) * 100));
+                    return (
+                      <li key={s.habitId} className="flex items-center gap-2">
+                        <span className="w-28 shrink-0 truncate text-xs">
+                          {s.emoji ? <span className="mr-1">{s.emoji}</span> : null}
+                          {s.name}
+                        </span>
+                        <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-bg">
+                          <div
+                            className={`h-full rounded-full ${
+                              achieved ? "bg-emerald-500" : "bg-primary/70"
+                            }`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span
+                          className={`w-12 text-right text-[10px] tabular-nums ${
+                            achieved ? "font-semibold text-emerald-600" : "text-muted"
+                          }`}
+                        >
+                          {doneCount}/{target}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }

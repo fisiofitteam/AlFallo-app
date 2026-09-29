@@ -388,7 +388,7 @@ export default async function ClientDetailPage({
               selectedConsiderationIds={selectedConsiderationIds}
             />
           ) : active === "evolucion" ? (
-            <EvolucionTab
+            <EvolucionAsync
               clientId={client.id}
               weight={weightSeries}
               waist={waistSeries}
@@ -717,6 +717,44 @@ async function ProgramaSectionAsync({ clientId }: { clientId: string }) {
       active={active}
       history={history}
       hasAny={!!active || history.length > 0}
+    />
+  );
+}
+
+async function EvolucionAsync({
+  clientId,
+  weight,
+  waist,
+  bodyFat,
+  customMetrics,
+}: {
+  clientId: string;
+  weight: ChartPoint[];
+  waist: ChartPoint[];
+  bodyFat: ChartPoint[];
+  customMetrics: React.ComponentProps<typeof EvolucionTab>["customMetrics"];
+}) {
+  const { getHabitStreaks, getRecentWeeks } = await import("@/lib/habits");
+  const [streaks, recent] = await Promise.all([
+    getHabitStreaks(clientId),
+    getRecentWeeks(clientId, 8),
+  ]);
+  return (
+    <EvolucionTab
+      clientId={clientId}
+      weight={weight}
+      waist={waist}
+      bodyFat={bodyFat}
+      customMetrics={customMetrics}
+      habitStreaks={streaks.map((s) => ({
+        habitId: s.habitId,
+        name: s.name,
+        emoji: s.emoji,
+        weeklyTarget: s.weeklyTarget,
+        currentStreak: s.currentStreak,
+        bestStreak: s.bestStreak,
+      }))}
+      habitWeeks={recent.weeks}
     />
   );
 }
