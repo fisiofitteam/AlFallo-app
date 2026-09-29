@@ -9,7 +9,7 @@ export const maxDuration = 300;
 import {
   ArrowLeft,
   UtensilsCrossed, ClipboardList, CalendarDays,
-  TrendingUp, NotebookPen, KeyRound, Settings, Dumbbell, Wallet,
+  TrendingUp, NotebookPen, KeyRound, Settings, Dumbbell, Wallet, MessageCircle,
   type LucideIcon,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -29,6 +29,7 @@ import { DeleteClientButton } from "./delete-client-button";
 import { CheckInsTab } from "./checkins-tab";
 import { EvolucionTab } from "./evolucion-tab";
 import { ProgramaSection } from "./programa-tab";
+import { FormulariosTab } from "./formularios-tab";
 import { listPeriodsForClient } from "@/lib/subscriptions";
 import { hasFulfilledLatestRequest, getCheckInDaysForClient } from "@/lib/weeklyCheckin";
 import {
@@ -64,6 +65,7 @@ type SectionKey =
   | "ficha"
   | "evolucion"
   | "checkins"
+  | "formularios"
   | "programa"
   | "acceso"
   | "marcas"
@@ -75,6 +77,7 @@ const SECTIONS: { key: SectionKey; label: string; description: string; icon: Luc
   { key: "ficha", label: "Ficha nutricional", description: "Anamnesis y datos personales", icon: ClipboardList },
   { key: "evolucion", label: "Evolución", description: "Peso, cintura y % grasa", icon: TrendingUp },
   { key: "checkins", label: "Check-ins", description: "Cuestionarios semanales", icon: NotebookPen },
+  { key: "formularios", label: "Formularios", description: "Respuestas a formularios de satisfacción", icon: MessageCircle },
   { key: "marcas", label: "Marcas de fuerza", description: "1RM, benchmarks y evolución", icon: Dumbbell },
   { key: "programa", label: "Programa y pagos", description: "Periodos contratados y renovaciones", icon: Wallet },
   { key: "acceso", label: "Acceso a la app", description: "Credenciales del cliente", icon: KeyRound },
@@ -401,6 +404,8 @@ export default async function ClientDetailPage({
             />
           ) : active === "marcas" ? (
             <MarksSection clientId={client.id} />
+          ) : active === "formularios" ? (
+            <FormulariosTab clientId={client.id} />
           ) : active === "programa" ? (
             <ProgramaSectionAsync clientId={client.id} />
           ) : active === "acceso" ? (

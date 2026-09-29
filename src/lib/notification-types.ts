@@ -21,6 +21,19 @@ export const NOTIFICATION_TYPES = [
     description: "El día anterior a la videoconsulta agendada.",
     defaultRoles: ["closer", "ceo", "head_coach"],
   },
+  {
+    value: "renewal_window",
+    label: "Renovación en ventana",
+    description:
+      "Cuando un cliente entra en la ventana de aviso de renovación (21 días).",
+    defaultRoles: ["nutricionista", "head_coach", "ceo"],
+  },
+  {
+    value: "satisfaction_submitted",
+    label: "Formulario de satisfacción respondido",
+    description: "Cuando un atleta envía un formulario de satisfacción.",
+    defaultRoles: ["nutricionista", "head_coach", "ceo"],
+  },
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number]["value"];
