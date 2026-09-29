@@ -20,6 +20,8 @@ import { requireOnboardedClient } from "@/lib/client-session";
 import { getDailyQuote } from "@/lib/dailyQuote";
 import { shouldShowCheckInReminder } from "@/lib/weeklyCheckin";
 import { getDueSatisfactionForm } from "@/lib/satisfactionForms";
+import { getTodayStatus, todayKey, weekStart, addDays } from "@/lib/habits";
+import { HabitTodayCard, type HabitTodayItem } from "@/components/cliente/HabitTodayCard";
 
 export const metadata = { title: "Al Fallo" };
 
@@ -97,6 +99,32 @@ export default async function ClientHomePage() {
   const showInitialCheckIn = clientState && !clientState.initialCheckInDone;
   const dueForm = await getDueSatisfactionForm(me.id);
 
+  // Hábitos de hoy + conteo semanal para pintar la tarjeta plácida.
+  const habitToday = await getTodayStatus(me.id);
+  let habitItems: HabitTodayItem[] = [];
+  if (habitToday.habits.length > 0) {
+    const wStart = weekStart(todayKey());
+    const wEnd = addDays(wStart, 7);
+    const weekLogs = await prisma.habitLog.groupBy({
+      by: ["habitId"],
+      where: {
+        clientId: me.id,
+        habitId: { in: habitToday.habits.map((h) => h.id) },
+        date: { gte: wStart, lt: wEnd },
+      },
+      _count: { habitId: true },
+    });
+    const countByHabit = new Map(weekLogs.map((l) => [l.habitId, l._count.habitId]));
+    habitItems = habitToday.habits.map((h) => ({
+      id: h.id,
+      name: h.name,
+      emoji: h.emoji,
+      weeklyTarget: h.weeklyTarget,
+      doneToday: h.doneToday,
+      weekDoneCount: countByHabit.get(h.id) ?? 0,
+    }));
+  }
+
   return (
     <div className="relative pt-1">
       {/* Marca de agua: "A" gigante semitransparente al fondo */}
@@ -137,6 +165,8 @@ export default async function ClientHomePage() {
       {!showInitialCheckIn && dueForm ? (
         <SatisfactionCard href={`/cliente/formulario/${dueForm.id}`} title={dueForm.name} />
       ) : null}
+
+      <HabitTodayCard items={habitItems} />
 
       {/* Mosaico de secciones — solo las "ready". Las que no, se ocultan
           hasta que estén montadas (sin badges "Pronto" que ensucien la UI). */}

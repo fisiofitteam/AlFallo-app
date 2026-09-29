@@ -160,6 +160,8 @@ model Client {
 
   satisfactionResponses SatisfactionResponse[]
 
+  habitLogs HabitLog[]
+
   // Registro comercial: periodos de programa contratados (alta + renovaciones).
   subscriptionPeriods SubscriptionPeriod[]
 
@@ -1505,6 +1507,43 @@ model SatisfactionForm {
   responses SatisfactionResponse[]
 
   @@index([weekOffset])
+}
+
+// Catálogo global de hábitos que puede marcar el atleta cada día. Los mantiene
+// el equipo desde /biblioteca/habitos. Simple por decisión: sin variantes por
+// cliente. Cada hábito tiene un objetivo semanal (weeklyTarget: cuántos días
+// de 7 se considera "semana ganada"), que impulsa la racha.
+model HabitDefinition {
+  id           String   @id @default(cuid())
+  name         String
+  emoji        String?
+  description  String?
+  weeklyTarget Int      @default(7) // 1..7 días/semana
+  order        Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  logs HabitLog[]
+}
+
+// Registro binario "marcado" para (cliente, hábito, día). El día se guarda
+// como Date a 00:00 UTC — la app usa Europe/Madrid para calcular qué día es
+// "hoy" al crear/borrar.
+model HabitLog {
+  id       String   @id @default(cuid())
+  clientId String
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  habitId  String
+  habit    HabitDefinition @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  date     DateTime
+  done     Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@unique([clientId, habitId, date])
+  @@index([clientId, date])
+  @@index([habitId])
 }
 
 // Un periodo de programa contratado por un cliente: la unidad temporal del
