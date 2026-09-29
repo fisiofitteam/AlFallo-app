@@ -18,6 +18,7 @@ import {
   computeSubscription,
   metricTone,
   renewalLabel,
+  weekLabel,
 } from "@/lib/clientMetrics";
 import { MetricDonut } from "@/components/MetricDonut";
 
@@ -112,14 +113,18 @@ export default async function ClientsPage({
     }),
   ]);
 
-  // Cargamos para los clientes resultantes la venta más reciente con planMonths
-  // (suscripción vigente) y los check-ins de los últimos 12 meses. Ambas con
-  // queries por separado para no inflar el findMany.
+  // Los campos programStart/End/DurationMonths ya vienen en `clients` (caché
+  // que se rellena al aplicar un SubscriptionPeriod). Si un cliente no tiene
+  // periodo registrado todavía pero sí una Sale antigua, usamos esa como
+  // fallback para no romper datos legacy.
   const clientIds = clients.map((c) => c.id);
+  const legacyIds = clients
+    .filter((c) => !c.programStartDate || !c.programEndDate)
+    .map((c) => c.id);
   const [sales, checkIns] = await Promise.all([
-    clientIds.length
+    legacyIds.length
       ? prisma.sale.findMany({
-          where: { clientId: { in: clientIds } },
+          where: { clientId: { in: legacyIds } },
           orderBy: { startDate: "desc" },
           select: { clientId: true, startDate: true, endDate: true, planMonths: true },
         })
@@ -135,7 +140,7 @@ export default async function ClientsPage({
       : [],
   ]);
 
-  // Mapa clientId → última venta (la primera del findMany ordenado desc).
+  // Mapa clientId → última venta legacy (fallback para clientes sin periodo).
   const saleByClient = new Map<string, (typeof sales)[number]>();
   for (const s of sales) {
     if (s.clientId && !saleByClient.has(s.clientId)) saleByClient.set(s.clientId, s);
@@ -269,8 +274,25 @@ export default async function ClientsPage({
             consTitles.forEach((t) => infoBits.push(t));
             if (!c.nutritionist?.fullName && manager) infoBits.push("Sin nutri asignado");
 
-            // Métricas
-            const sub = computeSubscription(saleByClient.get(c.id) ?? null);
+            // Métricas — la caché del Client (rellenada por SubscriptionPeriod)
+            // manda; caemos a la última Sale solo si el cliente aún no tiene
+            // periodo registrado (datos legacy).
+            const legacySale = saleByClient.get(c.id);
+            const sub = computeSubscription(
+              c.programStartDate && c.programEndDate
+                ? {
+                    startDate: c.programStartDate,
+                    endDate: c.programEndDate,
+                    planMonths: c.programDurationMonths ?? null,
+                  }
+                : legacySale
+                ? {
+                    startDate: legacySale.startDate,
+                    endDate: legacySale.endDate,
+                    planMonths: legacySale.planMonths,
+                  }
+                : null,
+            );
             const comp = computeCompliance(sub, checkInsByClient.get(c.id) ?? []);
             const subTone = metricTone(sub.progressPct, sub.hasSubscription);
             const compTone = metricTone(comp.compliancePct, comp.hasCompliance);
@@ -323,7 +345,14 @@ export default async function ClientsPage({
 
                   {/* Bloque derecho: métricas + WhatsApp + flecha */}
                   <div className="flex shrink-0 flex-col items-end gap-2 sm:items-end">
-                    <span className="text-xs text-muted">{renewalLabel(sub)}</span>
+                    <div className="text-right text-xs leading-tight text-muted">
+                      <div>{renewalLabel(sub)}</div>
+                      {weekLabel(sub) ? (
+                        <div className="text-[11px] font-medium text-primary">
+                          {weekLabel(sub)}
+                        </div>
+                      ) : null}
+                    </div>
                     <div className="flex items-center gap-4">
                       <MetricDonut
                         value={sub.progressPct}

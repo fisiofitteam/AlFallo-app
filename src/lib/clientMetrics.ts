@@ -1,21 +1,26 @@
 // Métricas que pintamos en la lista de clientes (cards estilo FisioFit):
-// - Suscripción: progreso (0–100%) del plan vigente + días hasta renovación.
-// - Cumplimiento: % de semanas con check-in dentro de la suscripción vigente.
+// - Suscripción: progreso (0–100%) del programa vigente + días hasta
+//   renovación + semana en la que está el atleta.
+// - Cumplimiento: % de semanas con check-in dentro del periodo vigente.
 //
-// Trabajamos con Sale como fuente de verdad: cogemos la venta más reciente del
-// cliente con planMonths definido. Si no hay venta o no hay planMonths, la
-// suscripción no aplica (se pinta neutra con "—").
+// La fuente de verdad es SubscriptionPeriod (via cache en Client:
+// programStartDate/EndDate/DurationMonths). Se acepta Sale como fallback
+// para no perder clientes legacy sin periodo registrado todavía.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 
 export type SubscriptionInfo = {
-  /** Hay una suscripción medible (Sale + planMonths). */
+  /** Hay una suscripción medible (fechas conocidas). */
   hasSubscription: boolean;
   /** Porcentaje 0–100 transcurrido del periodo. 0 al inicio, 100 al final. */
   progressPct: number;
   /** Días que faltan para la renovación (negativo si ya venció). */
   daysToRenewal: number;
+  /** Semana 1..N en la que está el atleta (0 antes de empezar). */
+  currentWeek: number;
+  /** Total de semanas del periodo. 0 si no se puede calcular. */
+  totalWeeks: number;
   /** Fechas para tooltips/cálculo del cumplimiento. */
   startDate: Date | null;
   endDate: Date | null;
@@ -30,7 +35,7 @@ export type ClientMetrics = {
 };
 
 export type SaleForMetrics = {
-  startDate: Date;
+  startDate: Date | null;
   endDate: Date | null;
   planMonths: number | null;
 };
@@ -44,22 +49,48 @@ function addMonths(d: Date, months: number): Date {
 }
 
 export function computeSubscription(sale: SaleForMetrics | null): SubscriptionInfo {
-  if (!sale) {
-    return { hasSubscription: false, progressPct: 0, daysToRenewal: 0, startDate: null, endDate: null };
-  }
+  const empty: SubscriptionInfo = {
+    hasSubscription: false,
+    progressPct: 0,
+    daysToRenewal: 0,
+    currentWeek: 0,
+    totalWeeks: 0,
+    startDate: null,
+    endDate: null,
+  };
+  if (!sale || !sale.startDate) return empty;
   const start = sale.startDate;
   // Preferimos endDate explícito (lo persiste la venta si está); si falta,
   // lo derivamos de planMonths. Sin nada de eso no podemos pintar nada.
   const end = sale.endDate ?? (sale.planMonths ? addMonths(start, sale.planMonths) : null);
-  if (!end) {
-    return { hasSubscription: false, progressPct: 0, daysToRenewal: 0, startDate: start, endDate: null };
-  }
+  if (!end) return { ...empty, startDate: start };
+
   const now = Date.now();
   const total = end.getTime() - start.getTime();
   const elapsed = Math.max(0, now - start.getTime());
   const pct = total > 0 ? Math.min(100, Math.round((elapsed / total) * 100)) : 0;
   const daysToRenewal = Math.round((end.getTime() - now) / DAY_MS);
-  return { hasSubscription: true, progressPct: pct, daysToRenewal, startDate: start, endDate: end };
+  const totalWeeks = Math.max(1, Math.round(total / WEEK_MS));
+  const currentWeek =
+    now < start.getTime()
+      ? 0
+      : Math.min(totalWeeks, Math.max(1, Math.ceil(elapsed / WEEK_MS)));
+  return {
+    hasSubscription: true,
+    progressPct: pct,
+    daysToRenewal,
+    currentWeek,
+    totalWeeks,
+    startDate: start,
+    endDate: end,
+  };
+}
+
+/** Frase corta que resume la posición del atleta en su programa. */
+export function weekLabel(sub: SubscriptionInfo): string | null {
+  if (!sub.hasSubscription || sub.totalWeeks === 0) return null;
+  if (sub.currentWeek === 0) return "Aún no empieza";
+  return `Semana ${sub.currentWeek} / ${sub.totalWeeks}`;
 }
 
 /** % de semanas en el periodo vigente con al menos un check-in registrado.
