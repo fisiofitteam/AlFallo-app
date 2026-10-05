@@ -3,12 +3,14 @@ import { redirect } from "next/navigation";
 import { requireProfessional } from "@/lib/session";
 import { CuadroTab } from "./cuadro-tab";
 import { FinanzasTab } from "./finanzas-tab";
+import { EquipoTab } from "./equipo-tab";
 
 export const metadata = { title: "Cuadro de mandos · Al Fallo Nutrition" };
 
 const TABS = [
   { key: "panel", label: "Cuadro de mandos" },
   { key: "finanzas", label: "Finanzas" },
+  { key: "equipo", label: "Equipo" },
 ] as const;
 
 export default async function FinanzasPage({
@@ -44,7 +46,13 @@ export default async function FinanzasPage({
         ))}
       </nav>
 
-      {active.key === "panel" ? <CuadroTab /> : <FinanzasTab />}
+      {active.key === "panel" ? (
+        <CuadroTab />
+      ) : active.key === "equipo" ? (
+        <EquipoTab />
+      ) : (
+        <FinanzasTab />
+      )}
     </div>
   );
 }

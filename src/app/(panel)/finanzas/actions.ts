@@ -192,6 +192,143 @@ export async function deleteRecurringExpense(formData: FormData) {
   revalidatePath("/finanzas");
 }
 
+// ─── Reglas de compensación del equipo ─────────────────────────
+
+function parseKind(v: FormDataEntryValue | null): string | null {
+  const raw = typeof v === "string" ? v.trim() : "";
+  const valid = [
+    "fixed",
+    "percent_of_profit",
+    "percent_of_revenue",
+    "per_active_client",
+    "per_new_client",
+    "per_renewal",
+  ];
+  return valid.includes(raw) ? raw : null;
+}
+
+function parseScope(v: FormDataEntryValue | null): string | null {
+  const raw = typeof v === "string" ? v.trim() : "";
+  return raw === "assigned" || raw === "all" ? raw : null;
+}
+
+function parseDate(v: FormDataEntryValue | null): Date | null {
+  const raw = parseStr(v);
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export async function createCompensationRule(formData: FormData) {
+  await requireCeo();
+  const professionalId = parseStr(formData.get("professionalId"));
+  const kind = parseKind(formData.get("kind"));
+  const value = parseNumber(formData.get("value"));
+  if (!professionalId || !kind || value == null) return;
+
+  await prisma.compensationRule.create({
+    data: {
+      professionalId,
+      kind,
+      value,
+      scope: parseScope(formData.get("scope")),
+      cap: parseNumber(formData.get("cap")),
+      floor: parseNumber(formData.get("floor")),
+      startDate: parseDate(formData.get("startDate")),
+      endDate: parseDate(formData.get("endDate")),
+      notes: parseStr(formData.get("notes")),
+      active: true,
+    },
+  });
+  revalidatePath("/finanzas");
+}
+
+export async function updateCompensationRule(formData: FormData) {
+  await requireCeo();
+  const id = String(formData.get("id"));
+  const kind = parseKind(formData.get("kind"));
+  const value = parseNumber(formData.get("value"));
+  if (!kind || value == null) return;
+
+  await prisma.compensationRule.update({
+    where: { id },
+    data: {
+      kind,
+      value,
+      scope: parseScope(formData.get("scope")),
+      cap: parseNumber(formData.get("cap")),
+      floor: parseNumber(formData.get("floor")),
+      startDate: parseDate(formData.get("startDate")),
+      endDate: parseDate(formData.get("endDate")),
+      notes: parseStr(formData.get("notes")),
+    },
+  });
+  revalidatePath("/finanzas");
+}
+
+export async function toggleCompensationRuleActive(formData: FormData) {
+  await requireCeo();
+  const id = String(formData.get("id"));
+  const cur = await prisma.compensationRule.findUnique({
+    where: { id },
+    select: { active: true },
+  });
+  if (!cur) return;
+  await prisma.compensationRule.update({
+    where: { id },
+    data: { active: !cur.active },
+  });
+  revalidatePath("/finanzas");
+}
+
+export async function deleteCompensationRule(formData: FormData) {
+  await requireCeo();
+  await prisma.compensationRule.delete({ where: { id: String(formData.get("id")) } });
+  revalidatePath("/finanzas");
+}
+
+/** Genera un PayrollPayment por cada profesional cuyo cálculo de reglas del
+ *  mes dé > 0 € y que todavía no tenga factura para ese periodo. Idempotente
+ *  por (professionalId, period) — si ya existe, no la toca.
+ */
+export async function generatePayrollsForMonth(formData: FormData): Promise<void> {
+  await requireCeo();
+  const periodRaw = parseStr(formData.get("period"));
+  // period es "YYYY-MM"; si no viene usamos el mes actual.
+  const now = new Date();
+  const period = periodRaw ?? `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const [year, month] = period.split("-").map(Number);
+  if (!year || !month) return;
+  const refDate = new Date(Date.UTC(year, month - 1, 1));
+
+  const { computeCompensationsForMonth } = await import("@/lib/compensation");
+  const rows = await computeCompensationsForMonth(refDate);
+
+  const existing = await prisma.payrollPayment.findMany({
+    where: { period, professionalId: { in: rows.map((r) => r.professionalId) } },
+    select: { professionalId: true },
+  });
+  const already = new Set(existing.map((e) => e.professionalId));
+
+  let created = 0;
+  for (const r of rows) {
+    if (r.total <= 0) continue;
+    if (already.has(r.professionalId)) continue;
+    const concept = r.rules.map((e) => e.note).join(" + ");
+    await prisma.payrollPayment.create({
+      data: {
+        professionalId: r.professionalId,
+        period,
+        amount: r.total,
+        concept: concept.slice(0, 400),
+        notes: "Generado automáticamente desde reglas de compensación.",
+      },
+    });
+    created++;
+  }
+  revalidatePath("/finanzas");
+}
+
 // ─── Configuración fiscal ───────────────────────────────────────
 
 export async function updateTaxSettings(formData: FormData) {

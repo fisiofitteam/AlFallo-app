@@ -71,6 +71,9 @@ model Professional {
   competitionTemplatesCreated CompetitionPlanTemplate[] @relation("CompetitionTemplateCreator")
   // Planes de competición concretos asignados a clientes (con fechas + PDF).
   competitionPlansCreated CompetitionPlan[] @relation("CompetitionPlanCreator")
+  // Reglas de compensación del profesional (una por fila; se SUMAN cada mes
+  // para calcular su sueldo variable).
+  compensationRules CompensationRule[]
   // Plantillas nutricionales (regulares) creadas por este profesional.
   nutritionTemplatesCreated NutritionTemplate[] @relation("NutritionTemplateCreator")
   // Última edición del brief de macros (singleton).
@@ -590,6 +593,49 @@ model RecurringExpense {
   transactions Transaction[]
 
   @@index([active])
+}
+
+// Regla de compensación de un profesional. Un profesional puede tener N
+// reglas; se SUMAN cada mes para calcular el importe de su factura. El
+// significado de `value` depende de `kind`:
+//
+//   kind                   | value es
+//   -----------------------+------------------------------------------
+//   fixed                  | € mensuales fijos
+//   percent_of_profit      | % sobre (ingresos − gastos) del mes
+//   percent_of_revenue     | % sobre ingresos del mes
+//   per_active_client      | € por cliente activo
+//   per_new_client         | € por nueva alta del mes
+//   per_renewal            | € por renovación del mes
+//
+// `scope` solo aplica a los kind basados en clientes:
+//   "assigned" → solo clientes cuyo nutritionistId == profesional
+//   "all"      → todos los clientes del negocio
+//
+// `cap` y `floor` acotan el resultado de ESTA regla (no el total).
+// `startDate`/`endDate` acotan la vigencia (inclusive por mes).
+model CompensationRule {
+  id             String   @id @default(cuid())
+  professionalId String
+  professional   Professional @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  kind           String
+  value          Float
+  scope          String?  // "assigned" | "all" (solo para kinds basados en clientes)
+
+  cap            Float?
+  floor          Float?
+
+  startDate      DateTime?
+  endDate        DateTime?
+
+  notes          String?
+  active         Boolean  @default(true)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([professionalId, active])
 }
 
 // Configuración fiscal del negocio (singleton — id="default"). Alimenta el
