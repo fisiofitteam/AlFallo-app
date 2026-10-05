@@ -670,3 +670,59 @@ export async function updateOptionMacros(formData: FormData) {
 // (Eliminado: generatePlanFromHB. Se basaba en Harris-Benedict + porcentajes
 //  de /biblioteca/macros — pantalla y helpers ya borrados. El cálculo de
 //  macros vive ahora 100% en la IA siguiendo el brief global.)
+
+/** Convierte un plan nutricional del cliente en una NutritionTemplate
+ *  reutilizable. Se usa desde el PlanBuilder — el botón "Convertir en
+ *  plantilla" abre un diálogo con nombre + sexo + objetivo pre-rellenos
+ *  (del NutritionProfile) y manda aquí.
+ *
+ *  Solo soporta planes `kind=regular`. Los planes de competición tienen su
+ *  propia biblioteca (CompetitionPlanTemplate) y no se tocan desde aquí.
+ */
+export async function convertPlanToTemplate(formData: FormData) {
+  const prof = await requireAccess();
+  const planId = String(formData.get("planId"));
+  const plan = await loadPlanForEdit(planId, prof);
+
+  if (plan.kind !== "regular") {
+    throw new Error(
+      "Solo se puede convertir en plantilla una pauta nutricional (regular).",
+    );
+  }
+
+  const client = await prisma.client.findUnique({
+    where: { id: plan.clientId },
+    select: { fullName: true },
+  });
+
+  const name = (parseStr(formData.get("name")) ?? client?.fullName ?? "Plantilla").slice(0, 200);
+  const sex = parseStr(formData.get("sex"));
+  const goal = parseStr(formData.get("goal"));
+
+  const { TEMPLATE_SEXES, TEMPLATE_GOALS } = await import("@/lib/nutritionTemplateShape");
+  if (!sex || !(TEMPLATE_SEXES as readonly string[]).includes(sex)) {
+    throw new Error("Sexo obligatorio para la plantilla.");
+  }
+  if (!goal || !(TEMPLATE_GOALS as readonly string[]).includes(goal)) {
+    throw new Error("Objetivo obligatorio para la plantilla.");
+  }
+
+  const { planToTemplateStructure } = await import("@/lib/nutritionTemplates");
+  const structure = await planToTemplateStructure(planId);
+
+  const row = await prisma.nutritionTemplate.create({
+    data: {
+      sex,
+      goal,
+      name,
+      description: parseStr(formData.get("description")),
+      notes: plan.notes,
+      supplementation: plan.supplementation,
+      structure: structure as unknown as Prisma.InputJsonValue,
+      createdById: prof.id,
+    },
+  });
+
+  revalidatePath("/biblioteca/plantillas");
+  redirect(`/biblioteca/plantillas/${row.id}`);
+}

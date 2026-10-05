@@ -45,6 +45,8 @@ export default async function PlanPage({ params }: { params: { planId: string } 
         carbs: loaded.plan.carbsOverride,
         fat: loaded.plan.fatOverride,
       }}
+      profileSex={loaded.profile.sex}
+      profileGoal={loaded.profile.goal}
     />
   );
 }

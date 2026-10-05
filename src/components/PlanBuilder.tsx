@@ -26,6 +26,11 @@ import {
   updatePlanMacroOverride,
 } from "@/app/(panel)/planes/actions";
 import { MEAL_TYPE_OPTIONS } from "@/lib/nutrition";
+import { ConvertPlanToTemplateButton } from "@/components/ConvertPlanToTemplateButton";
+import {
+  isTemplateSex,
+  isTemplateGoal,
+} from "@/lib/nutritionTemplateShape";
 
 export type PlanBuilderOption = {
   id: string;
@@ -113,6 +118,8 @@ export function PlanBuilder({
   initialNotes,
   initialSupplementation,
   initialOverride,
+  profileSex,
+  profileGoal,
   embedded = false,
 }: {
   planId: string;
@@ -133,6 +140,10 @@ export function PlanBuilder({
     carbs: number | null;
     fat: number | null;
   };
+  /** Sexo / objetivo del NutritionProfile del cliente, para pre-rellenar el
+   *  diálogo "Convertir en plantilla". */
+  profileSex?: string | null;
+  profileGoal?: string | null;
   embedded?: boolean;
 }) {
   const [days, setDays] = useState<PlanBuilderDay[]>(initialDays);
@@ -241,6 +252,19 @@ export function PlanBuilder({
     );
   }
 
+  // Botón "Convertir en plantilla" (solo pauta regular — competición tiene
+  // su propia biblioteca de plantillas). Se saca a variable para reusar en
+  // standalone y embedded.
+  const convertButton =
+    planKind !== "competition" ? (
+      <ConvertPlanToTemplateButton
+        planId={planId}
+        defaultName={clientName}
+        defaultSex={isTemplateSex(profileSex) ? profileSex : null}
+        defaultGoal={isTemplateGoal(profileGoal) ? profileGoal : null}
+      />
+    ) : null;
+
   return (
     <div className={embedded ? "" : "mx-auto max-w-6xl"}>
       {/* Cabecera standalone (en /planes/[id]). Embebido en la ficha del
@@ -262,10 +286,11 @@ export function PlanBuilder({
                 {clientName}
               </p>
             </div>
-            {/* (Eliminado el botón "Generar plan con IA". Los planes vienen
-                ya poblados desde plantilla al crearse.) */}
+            {convertButton}
           </header>
         </>
+      ) : convertButton ? (
+        <div className="mb-4 flex justify-end">{convertButton}</div>
       ) : null}
 
       {/* Editor de macros target para ESTE plan. Si tiene override

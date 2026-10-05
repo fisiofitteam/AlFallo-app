@@ -46,6 +46,45 @@ export async function getTemplate(id: string) {
   return prisma.nutritionTemplate.findUnique({ where: { id } });
 }
 
+/** Serializa un NutritionPlan a TemplateStructure para poder guardarlo como
+ *  plantilla reutilizable. Se queda SOLO con la foto de los macros (lo que
+ *  ya vive en MealItem) — no mantiene referencia a FoodLibrary para que la
+ *  plantilla sea autosuficiente. */
+export async function planToTemplateStructure(
+  planId: string,
+): Promise<TemplateStructure> {
+  const days = await prisma.planDay.findMany({
+    where: { planId },
+    orderBy: { order: "asc" },
+    include: {
+      meals: {
+        orderBy: { order: "asc" },
+        include: { items: { orderBy: { order: "asc" } } },
+      },
+    },
+  });
+  return {
+    days: days.map((d) => ({
+      name: d.name,
+      dayType: d.dayType,
+      meals: d.meals.map((m) => ({
+        name: m.name,
+        options: m.items.map((it) => ({
+          text: it.nameSnapshot,
+          kcal: it.kcalPer100,
+          protein: it.proteinPer100,
+          carbs: it.carbsPer100,
+          fat: it.fatPer100,
+          subType: it.subType ?? null,
+          dayContext: it.dayContext ?? null,
+          note: it.note ?? null,
+          selected: it.selected,
+        })),
+      })),
+    })),
+  };
+}
+
 /** Copia la plantilla seleccionada al NutritionPlan indicado. Borra los
  *  días/comidas/items existentes del plan y los crea desde la estructura
  *  de la plantilla. Usar al crear un plan con templateId. */

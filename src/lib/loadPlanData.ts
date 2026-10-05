@@ -18,6 +18,10 @@ export type LoadedPlan = {
     carbsOverride: number | null;
     fatOverride: number | null;
   };
+  /** Sexo / objetivo desde NutritionProfile del cliente — se usan para
+   *  pre-rellenar el diálogo "Convertir en plantilla". Null si la ficha no
+   *  los tiene. */
+  profile: { sex: string | null; goal: string | null };
   /** Target efectivo contra el que se comparan los macros del plan. Si hay
    *  overrides del plan ganan; si no, los de la ficha del cliente. */
   targets: PlanBuilderTargets;
@@ -47,6 +51,13 @@ export async function loadPlanForBuilder(planId: string): Promise<LoadedPlan | n
     },
   });
   if (!plan) return null;
+
+  // Sexo / objetivo del cliente — se usan para pre-rellenar el diálogo
+  // "Convertir en plantilla" en el PlanBuilder.
+  const profile = await prisma.nutritionProfile.findUnique({
+    where: { clientId: plan.clientId },
+    select: { sex: true, goal: true },
+  });
 
   // Override del plan. Si los 4 están set, son los targets que se muestran
   // en el SummaryCard. Si no, todo null y la UI dice "los calcula la IA".
@@ -103,6 +114,10 @@ export async function loadPlanForBuilder(planId: string): Promise<LoadedPlan | n
       proteinOverride: plan.proteinOverride,
       carbsOverride: plan.carbsOverride,
       fatOverride: plan.fatOverride,
+    },
+    profile: {
+      sex: profile?.sex ?? null,
+      goal: profile?.goal ?? null,
     },
     targets,
     days,

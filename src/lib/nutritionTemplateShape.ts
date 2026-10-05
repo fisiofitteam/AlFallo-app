@@ -50,6 +50,10 @@ export type TemplateOption = {
   /** Nota libre del nutri para el atleta (elaboración, tip, aclaración).
    *  No entra en el cálculo de macros. */
   note?: string | null;
+  /** Opción marcada como seleccionada en el plan de origen. Se usa como
+   *  pista al aplicar la plantilla; si no se da, aplica la primera de cada
+   *  grupo. */
+  selected?: boolean;
 };
 export type TemplateMeal = {
   name: string;

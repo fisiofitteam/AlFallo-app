@@ -347,6 +347,8 @@ export default async function ClientDetailPage({
                       carbs: activePlanData.plan.carbsOverride,
                       fat: activePlanData.plan.fatOverride,
                     }}
+                    profileSex={activePlanData.profile.sex}
+                    profileGoal={activePlanData.profile.goal}
                   />
                 ) : (
                   <WeeklyMenuView days={buildWeeklyMenu(activePlanData.days)} />
