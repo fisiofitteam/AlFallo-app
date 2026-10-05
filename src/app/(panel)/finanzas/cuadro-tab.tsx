@@ -1,6 +1,6 @@
 import { Trash2, Plus, Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { fmtEur, lastNMonths, monthKey, monthLabel, quarterOf } from "@/lib/finance";
+import { fmtEur, lastNMonths, marginPct, monthKey, monthLabel, quarterOf } from "@/lib/finance";
 import { LineChart, type ChartPoint } from "@/components/line-chart";
 import { Field, TextInput } from "@/components/form-ui";
 import { createGoal, deleteGoal } from "./actions";
@@ -66,6 +66,7 @@ export async function CuadroTab() {
   const thisKey = monthKey(now);
   const cur = byMonth[thisKey];
   const beneficio = cur.ingresos - cur.gastos;
+  const margen = marginPct(cur.ingresos, cur.gastos);
   const cacInputs = cur.publicidad + cur.sueldos;
   const cac = newClientsThisMonth > 0 ? cacInputs / newClientsThisMonth : null;
 
@@ -85,13 +86,19 @@ export async function CuadroTab() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
           Este mes ({monthLabel(thisKey)})
         </h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <KpiCard label="Ingresos" value={fmtEur(cur.ingresos)} tone="green" />
           <KpiCard label="Gastos" value={fmtEur(cur.gastos)} tone="amber" />
           <KpiCard
-            label="Beneficio"
+            label="Beneficio bruto"
             value={fmtEur(beneficio)}
             tone={beneficio >= 0 ? "green" : "amber"}
+          />
+          <KpiCard
+            label="Margen bruto"
+            value={margen == null ? "—" : `${margen.toLocaleString("es-ES")}%`}
+            hint={margen == null ? "Sin ingresos" : "beneficio / ingresos"}
+            tone={margen != null && margen >= 0 ? "green" : "amber"}
           />
           <KpiCard
             label="CAC"

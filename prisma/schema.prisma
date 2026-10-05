@@ -549,12 +549,66 @@ model Transaction {
   category    String? // publicidad | sueldos | software | herramientas | otros | cliente | renovacion
   description String?
   amount      Float
-  source      String? // stripe | manual | meta_ads | ...
+  source      String? // stripe | manual | meta_ads | recurring | ...
+  // Si la Transaction la generó automáticamente la ejecución mensual de un
+  // RecurringExpense, se enlaza aquí (para auditoría y para borrarla si se
+  // borra la plantilla). periodKey "YYYY-MM" marca el mes al que aplica.
+  recurringExpenseId String?
+  recurringExpense   RecurringExpense? @relation(fields: [recurringExpenseId], references: [id], onDelete: SetNull)
+  periodKey          String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  @@unique([recurringExpenseId, periodKey])
   @@index([date])
   @@index([type])
+}
+
+// Gasto fijo mensual recurrente (suscripciones, software, alquileres, etc.).
+// No es una Transaction en sí: es la "plantilla" que, cada mes el día X,
+// materializa una Transaction gasto automáticamente. La idempotencia la
+// asegura el unique (recurringExpenseId, periodKey) de Transaction.
+model RecurringExpense {
+  id          String   @id @default(cuid())
+  name        String
+  category    String // mismas categorías de gasto de lib/finance
+  amount      Float
+  // Día del mes en que se contabiliza (1..28). Lo cap a 28 para no romper
+  // en febrero. El 28 por defecto porque la mayoría de SaaS cargan a fin
+  // de mes.
+  dayOfMonth  Int      @default(1)
+  description String?
+  active      Boolean  @default(true)
+  // Momento desde el que empieza a aplicar (si no está, aplica a partir
+  // del mes de creación). Útil para registrar un gasto que empezó en
+  // enero y seguirá los próximos meses.
+  startDate   DateTime?
+  endDate     DateTime? // null = indefinido
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([active])
+}
+
+// Configuración fiscal del negocio (singleton — id="default"). Alimenta el
+// resumen fiscal mensual/trimestral. Todos los porcentajes son editables.
+model TaxSetting {
+  id             String   @id @default("default")
+  // IVA repercutido por defecto en servicios (21 % España, 10 % reducido,
+  // 0 % si vatExempt=true para profesiones sanitarias art. 20 LIVA).
+  vatRate        Float    @default(21)
+  vatExempt      Boolean  @default(false)
+  // Retención IRPF que el cliente (si es autónomo o empresa) te retiene
+  // en la factura (15 % habitual; 7 % durante los dos primeros años de
+  // actividad). Se descuenta de los ingresos a efectos de pago fraccionado.
+  irpfIncomeRate Float    @default(15)
+  // Pago fraccionado modelo 130 trimestral: 20 % sobre (ingresos − gastos)
+  // acumulado del trimestre, menos lo que ya me hayan retenido.
+  irpfQuarterlyRate Float @default(20)
+  notes          String?
+  updatedAt      DateTime @updatedAt
 }
 
 // Pago/factura de un miembro del equipo.

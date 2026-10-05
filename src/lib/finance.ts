@@ -84,3 +84,25 @@ export function categoryLabel(value: string | null | undefined): string {
   if (!value) return "—";
   return ALL_CATEGORIES.find((c) => c.value === value)?.label ?? value;
 }
+
+/** Margen bruto en % (beneficio / ingresos * 100). Devuelve null si no hay
+ *  ingresos — no tiene sentido mostrar 0 % cuando el denominador es cero. */
+export function marginPct(ingresos: number, gastos: number): number | null {
+  if (ingresos <= 0) return null;
+  return Math.round(((ingresos - gastos) / ingresos) * 1000) / 10;
+}
+
+export function startOfMonthUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
+export function startOfNextMonthUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+}
+export function startOfQuarterUTC(d: Date): Date {
+  const q = Math.floor(d.getUTCMonth() / 3);
+  return new Date(Date.UTC(d.getUTCFullYear(), q * 3, 1));
+}
+export function startOfNextQuarterUTC(d: Date): Date {
+  const q = Math.floor(d.getUTCMonth() / 3);
+  return new Date(Date.UTC(d.getUTCFullYear(), q * 3 + 3, 1));
+}

@@ -122,3 +122,103 @@ export async function deleteGoal(formData: FormData) {
   await prisma.quarterlyGoal.delete({ where: { id: String(formData.get("id")) } });
   revalidatePath("/finanzas");
 }
+
+// ─── Gastos fijos mensuales (RecurringExpense) ─────────────────
+
+function clampDay(n: number): number {
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(28, Math.max(1, Math.round(n)));
+}
+
+export async function createRecurringExpense(formData: FormData) {
+  await requireCeo();
+  const name = parseStr(formData.get("name"));
+  const category = parseStr(formData.get("category")) ?? "otros_gasto";
+  const amount = parseNumber(formData.get("amount"));
+  const dayRaw = parseNumber(formData.get("dayOfMonth"));
+  if (!name || amount == null || amount <= 0) return;
+
+  await prisma.recurringExpense.create({
+    data: {
+      name,
+      category,
+      amount,
+      dayOfMonth: clampDay(dayRaw ?? 1),
+      description: parseStr(formData.get("description")),
+      active: true,
+    },
+  });
+  revalidatePath("/finanzas");
+}
+
+export async function updateRecurringExpense(formData: FormData) {
+  await requireCeo();
+  const id = String(formData.get("id"));
+  const name = parseStr(formData.get("name"));
+  const amount = parseNumber(formData.get("amount"));
+  if (!name || amount == null || amount <= 0) return;
+
+  await prisma.recurringExpense.update({
+    where: { id },
+    data: {
+      name,
+      category: parseStr(formData.get("category")) ?? "otros_gasto",
+      amount,
+      dayOfMonth: clampDay(parseNumber(formData.get("dayOfMonth")) ?? 1),
+      description: parseStr(formData.get("description")),
+    },
+  });
+  revalidatePath("/finanzas");
+}
+
+export async function toggleRecurringExpenseActive(formData: FormData) {
+  await requireCeo();
+  const id = String(formData.get("id"));
+  const cur = await prisma.recurringExpense.findUnique({
+    where: { id },
+    select: { active: true },
+  });
+  if (!cur) return;
+  await prisma.recurringExpense.update({
+    where: { id },
+    data: { active: !cur.active },
+  });
+  revalidatePath("/finanzas");
+}
+
+export async function deleteRecurringExpense(formData: FormData) {
+  await requireCeo();
+  await prisma.recurringExpense.delete({ where: { id: String(formData.get("id")) } });
+  revalidatePath("/finanzas");
+}
+
+// ─── Configuración fiscal ───────────────────────────────────────
+
+export async function updateTaxSettings(formData: FormData) {
+  await requireCeo();
+  const vatRate = parseNumber(formData.get("vatRate"));
+  const irpfIncomeRate = parseNumber(formData.get("irpfIncomeRate"));
+  const irpfQuarterlyRate = parseNumber(formData.get("irpfQuarterlyRate"));
+  const vatExempt = String(formData.get("vatExempt")) === "1";
+  const notes = parseStr(formData.get("notes"));
+
+  await prisma.taxSetting.upsert({
+    where: { id: "default" },
+    create: {
+      id: "default",
+      vatRate: vatRate ?? 21,
+      vatExempt,
+      irpfIncomeRate: irpfIncomeRate ?? 15,
+      irpfQuarterlyRate: irpfQuarterlyRate ?? 20,
+      notes,
+    },
+    update: {
+      vatRate: vatRate ?? 21,
+      vatExempt,
+      irpfIncomeRate: irpfIncomeRate ?? 15,
+      irpfQuarterlyRate: irpfQuarterlyRate ?? 20,
+      notes,
+    },
+  });
+  revalidatePath("/finanzas");
+}
