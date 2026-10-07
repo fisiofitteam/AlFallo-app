@@ -1,29 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { Gift, MessageCircle, Copy, Check } from "lucide-react";
-
-// URL pública que ve el amig@ referido. Ajústala si cambia la landing
-// pública de Al Fallo.
-const REFERRAL_URL = "https://alfalloperformance.com/";
+import { Gift, Copy, Check } from "lucide-react";
 
 function buildMessage(firstName: string): string {
   const name = firstName ? firstName.trim() : "";
-  const opening = name
-    ? `¡Hola! Soy ${name}. `
-    : "¡Hola! ";
+  const opening = name ? `¡Hola! Soy ${name}. ` : "¡Hola! ";
   return (
     `${opening}Estoy trabajando con Al Fallo Performance en mi nutrición ` +
     `y me está ayudando un montón. Si entras por mi recomendación te ` +
-    `descuentan 100 € en tu primera factura. Te dejo la web para que le ` +
-    `eches un ojo: ${REFERRAL_URL}`
+    `descuentan 100 € en tu primera factura. Dime y te paso info.`
   );
 }
 
 export function ReferralBanner({ firstName }: { firstName: string }) {
   const [copied, setCopied] = useState(false);
   const message = buildMessage(firstName);
-  const waUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
 
   async function copyMessage() {
     try {
@@ -48,19 +40,10 @@ export function ReferralBanner({ firstName }: { firstName: string }) {
           <p className="mt-1 text-xs leading-snug text-amber-900/80">
             Si algún amig@ empieza a trabajar con nosotros por tu recomendación,
             <strong> le descontamos 100 € directamente</strong> de tu próxima
-            renovación. Sencillo: le compartes el mensaje y, cuando entre, nos
-            dice que va de tu parte.
+            renovación. Sencillo: cuando entre, nos dice que va de tu parte.
           </p>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            <a
-              href={waUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
-            >
-              <MessageCircle size={14} /> Compartir por WhatsApp
-            </a>
+          <div className="mt-4">
             <button
               type="button"
               onClick={copyMessage}
@@ -72,7 +55,7 @@ export function ReferralBanner({ firstName }: { firstName: string }) {
                 </>
               ) : (
                 <>
-                  <Copy size={14} /> Copiar mensaje
+                  <Copy size={14} /> Copiar mensaje para compartir
                 </>
               )}
             </button>
