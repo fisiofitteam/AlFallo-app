@@ -104,3 +104,40 @@ export function parseStr(value: FormDataEntryValue | null): string | null {
   const s = value == null ? "" : String(value).trim();
   return s === "" ? null : s;
 }
+
+/** Rangos razonables de las métricas biométricas. Fuera de estos, el valor
+ *  se considera basura (típicamente alguien metió "2" por metros, o un
+ *  import malo). Usar como fuente única entre UI (display) y server
+ *  (sanitize) para que no diverjan. */
+export const METRIC_RANGES: Record<string, { min: number; max: number }> = {
+  heightCm: { min: 80, max: 250 },
+  weightKg: { min: 15, max: 300 },
+  targetWeightKg: { min: 15, max: 300 },
+  bodyFatPct: { min: 2, max: 70 },
+  waistCm: { min: 30, max: 250 },
+  hipCm: { min: 30, max: 250 },
+  armCm: { min: 10, max: 100 },
+};
+
+/** Devuelve el valor si está dentro del rango razonable para esa métrica;
+ *  si no, devuelve null. Reemplaza "2 cm de altura" por nada. */
+export function sanitizeMetric(
+  field: keyof typeof METRIC_RANGES,
+  value: number | null | undefined,
+): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const r = METRIC_RANGES[field];
+  if (!r) return value;
+  if (value < r.min || value > r.max) return null;
+  return value;
+}
+
+/** Para rellenar `defaultValue` de un input: devuelve el valor como string
+ *  si es razonable, o cadena vacía si está fuera de rango o no existe. */
+export function displayMetric(
+  field: keyof typeof METRIC_RANGES,
+  value: number | null | undefined,
+): string {
+  const v = sanitizeMetric(field, value ?? null);
+  return v == null ? "" : String(v);
+}

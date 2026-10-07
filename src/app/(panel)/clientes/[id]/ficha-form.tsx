@@ -1,9 +1,14 @@
+"use client";
+
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Check, Loader2, X } from "lucide-react";
 import type { NutritionProfile } from "@prisma/client";
 import {
   DIETARY_STYLE_OPTIONS,
   GOAL_OPTIONS,
   LEVEL_OPTIONS,
   SEX_OPTIONS,
+  displayMetric,
 } from "@/lib/clients";
 import { Field, SectionTitle, Select, TextArea, TextInput } from "@/components/form-ui";
 import { SpecialConsiderationsSelector } from "@/components/SpecialConsiderationsSelector";
@@ -13,6 +18,8 @@ import { updateNutritionProfile } from "../actions";
 function dateValue(d: Date | null): string {
   return d ? new Date(d).toISOString().slice(0, 10) : "";
 }
+
+type SaveState = "idle" | "pending" | "ok" | "err";
 
 export function FichaForm({
   clientId,
@@ -26,9 +33,75 @@ export function FichaForm({
   selectedConsiderationIds: string[];
 }) {
   const p = profile;
+  const formRef = useRef<HTMLFormElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [, startTransition] = useTransition();
+
+  function flush() {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    const form = formRef.current;
+    if (!form) return;
+    const fd = new FormData(form);
+    setSaveState("pending");
+    startTransition(async () => {
+      try {
+        await updateNutritionProfile(fd);
+        setSaveState("ok");
+        setTimeout(() => setSaveState((s) => (s === "ok" ? "idle" : s)), 1600);
+      } catch {
+        setSaveState("err");
+        setTimeout(() => setSaveState((s) => (s === "err" ? "idle" : s)), 3000);
+      }
+    });
+  }
+
+  function schedule() {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(flush, 1500);
+  }
+
+  // Flush al desmontar por si queda algo pendiente.
+  useEffect(() => {
+    return () => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        // No flush aquí — React se desmonta sin esperar async; mejor
+        // confiar en el blur + el botón manual.
+      }
+    };
+  }, []);
+
   return (
-    <form action={updateNutritionProfile} className="space-y-8">
+    <form
+      ref={formRef}
+      action={flush}
+      onInput={schedule}
+      onBlur={flush}
+      className="space-y-8"
+    >
       <input type="hidden" name="clientId" value={clientId} />
+
+      <div className="flex items-center justify-end gap-2 text-xs">
+        {saveState === "pending" ? (
+          <span className="inline-flex items-center gap-1 text-muted">
+            <Loader2 size={12} className="animate-spin" /> guardando…
+          </span>
+        ) : saveState === "ok" ? (
+          <span className="inline-flex items-center gap-1 text-emerald-600">
+            <Check size={12} /> guardado
+          </span>
+        ) : saveState === "err" ? (
+          <span className="inline-flex items-center gap-1 text-red-600">
+            <X size={12} /> error al guardar
+          </span>
+        ) : (
+          <span className="text-muted">Autoguardado activo</span>
+        )}
+      </div>
 
       {/* Antropometría */}
       <section>
@@ -41,22 +114,22 @@ export function FichaForm({
             <TextInput id="birthDate" name="birthDate" type="date" defaultValue={dateValue(p?.birthDate ?? null)} />
           </Field>
           <Field label="Altura (cm)" htmlFor="heightCm">
-            <TextInput id="heightCm" name="heightCm" inputMode="numeric" defaultValue={p?.heightCm ?? ""} />
+            <TextInput id="heightCm" name="heightCm" inputMode="numeric" defaultValue={displayMetric("heightCm", p?.heightCm)} />
           </Field>
           <Field label="Peso (kg)" htmlFor="weightKg">
-            <TextInput id="weightKg" name="weightKg" inputMode="decimal" defaultValue={p?.weightKg ?? ""} />
+            <TextInput id="weightKg" name="weightKg" inputMode="decimal" defaultValue={displayMetric("weightKg", p?.weightKg)} />
           </Field>
           <Field label="% Grasa" htmlFor="bodyFatPct">
-            <TextInput id="bodyFatPct" name="bodyFatPct" inputMode="decimal" defaultValue={p?.bodyFatPct ?? ""} />
+            <TextInput id="bodyFatPct" name="bodyFatPct" inputMode="decimal" defaultValue={displayMetric("bodyFatPct", p?.bodyFatPct)} />
           </Field>
           <Field label="Cintura (cm)" htmlFor="waistCm">
-            <TextInput id="waistCm" name="waistCm" inputMode="decimal" defaultValue={p?.waistCm ?? ""} />
+            <TextInput id="waistCm" name="waistCm" inputMode="decimal" defaultValue={displayMetric("waistCm", p?.waistCm)} />
           </Field>
           <Field label="Cadera (cm)" htmlFor="hipCm">
-            <TextInput id="hipCm" name="hipCm" inputMode="decimal" defaultValue={p?.hipCm ?? ""} />
+            <TextInput id="hipCm" name="hipCm" inputMode="decimal" defaultValue={displayMetric("hipCm", p?.hipCm)} />
           </Field>
           <Field label="Brazo (cm)" htmlFor="armCm">
-            <TextInput id="armCm" name="armCm" inputMode="decimal" defaultValue={p?.armCm ?? ""} />
+            <TextInput id="armCm" name="armCm" inputMode="decimal" defaultValue={displayMetric("armCm", p?.armCm)} />
           </Field>
         </div>
       </section>
@@ -121,7 +194,7 @@ export function FichaForm({
             <Select id="goal" name="goal" options={GOAL_OPTIONS} defaultValue={p?.goal ?? ""} />
           </Field>
           <Field label="Peso objetivo (kg)" htmlFor="targetWeightKg">
-            <TextInput id="targetWeightKg" name="targetWeightKg" inputMode="decimal" defaultValue={p?.targetWeightKg ?? ""} />
+            <TextInput id="targetWeightKg" name="targetWeightKg" inputMode="decimal" defaultValue={displayMetric("targetWeightKg", p?.targetWeightKg)} />
           </Field>
           <Field label="Plazo" htmlFor="timeframe" hint="Ej. 12 semanas">
             <TextInput id="timeframe" name="timeframe" defaultValue={p?.timeframe ?? ""} />
@@ -160,6 +233,9 @@ export function FichaForm({
         </div>
       </section>
 
+      {/* Botón manual como fallback — útil si el user quiere forzar un
+          guardado tras un cambio rápido antes de salir, o si el autosave
+          tardó en dispararse. */}
       <div className="flex justify-end">
         <button
           type="submit"

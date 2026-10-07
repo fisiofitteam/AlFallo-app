@@ -12,6 +12,7 @@ import {
   parseList,
   parseNumber,
   parseStr,
+  sanitizeMetric,
 } from "@/lib/clients";
 
 async function requireClientAccess() {
@@ -475,12 +476,15 @@ export async function updateNutritionProfile(formData: FormData) {
   const data = {
     sex: parseStr(formData.get("sex")),
     birthDate: birthDateRaw ? new Date(birthDateRaw) : null,
-    heightCm: parseIntOrNull(formData.get("heightCm")),
-    weightKg: parseNumber(formData.get("weightKg")),
-    bodyFatPct: parseNumber(formData.get("bodyFatPct")),
-    waistCm: parseNumber(formData.get("waistCm")),
-    hipCm: parseNumber(formData.get("hipCm")),
-    armCm: parseNumber(formData.get("armCm")),
+    // Sanitizamos para que valores claramente imposibles (ej. heightCm=2
+    // porque alguien escribió metros) se guarden como null en vez de
+    // perpetuarse en la ficha y envenenar cálculos derivados.
+    heightCm: sanitizeMetric("heightCm", parseIntOrNull(formData.get("heightCm"))),
+    weightKg: sanitizeMetric("weightKg", parseNumber(formData.get("weightKg"))),
+    bodyFatPct: sanitizeMetric("bodyFatPct", parseNumber(formData.get("bodyFatPct"))),
+    waistCm: sanitizeMetric("waistCm", parseNumber(formData.get("waistCm"))),
+    hipCm: sanitizeMetric("hipCm", parseNumber(formData.get("hipCm"))),
+    armCm: sanitizeMetric("armCm", parseNumber(formData.get("armCm"))),
     boxName: parseStr(formData.get("boxName")),
     yearsTraining: parseIntOrNull(formData.get("yearsTraining")),
     weeklyFrequency: parseIntOrNull(formData.get("weeklyFrequency")),
@@ -494,7 +498,7 @@ export async function updateNutritionProfile(formData: FormData) {
     medicalConditions: parseStr(formData.get("medicalConditions")),
     medication: parseStr(formData.get("medication")),
     goal: parseStr(formData.get("goal")),
-    targetWeightKg: parseNumber(formData.get("targetWeightKg")),
+    targetWeightKg: sanitizeMetric("targetWeightKg", parseNumber(formData.get("targetWeightKg"))),
     timeframe: parseStr(formData.get("timeframe")),
     // Consideraciones especiales: vienen como N inputs hidden con name
     // 'specialConsiderationIds'. Las recogemos con getAll() y filtramos.
