@@ -39,11 +39,11 @@ export async function getPanelKpis(now = new Date()): Promise<Kpi[]> {
 
   return [
     { key: "totales", label: "Pacientes totales", value: String(totalClientes), tone: "neutral", href: "/clientes" },
-    { key: "sinAsignar", label: "Sin asignar", value: String(sinAsignar), tone: "neutral", href: "/clientes?asignacion=sin" },
+    { key: "sinAsignar", label: "Sin asignar", value: String(sinAsignar), tone: "neutral", href: "/clientes?filter=unassigned" },
     { key: "renuevan30", label: "Renuevan en 30d", value: String(renovanEn30d), tone: "accent", href: "/renovaciones" },
-    { key: "formularios", label: "Formularios por revisar", value: String(formulariosPendientes), tone: "accent" },
+    { key: "formularios", label: "Formularios por revisar", value: String(formulariosPendientes), tone: "accent", href: "/revisar/formularios" },
     { key: "adherencia", label: "Adherencia media", value: "—", hint: "Pendiente sistema", tone: "muted" },
     { key: "renovacion", label: "Tasa renovación", value: "—", hint: "Pendiente sistema", tone: "muted" },
-    { key: "llamadas", label: "Llamadas (7 días)", value: String(llamadas7d), tone: "neutral" },
+    { key: "llamadas", label: "Llamadas (7 días)", value: String(llamadas7d), tone: "neutral", href: "/clientes/llamadas-seguimiento" },
   ];
 }
