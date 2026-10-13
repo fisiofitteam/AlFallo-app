@@ -108,9 +108,10 @@ function PostCard({
 }) {
   const videoInfo = post.videoUrl ? parseVideo(post.videoUrl) : null;
   const thumb = post.imageUrl || videoInfo?.thumbnail || null;
+  const isVideoEmbed = !!videoInfo?.embedUrl;
   return (
-    <article className="rounded-2xl border border-border bg-surface p-4">
-      <header className="mb-3 flex items-start gap-3">
+    <article className="overflow-hidden rounded-2xl border border-border bg-surface">
+      <header className="flex items-start gap-3 p-4 pb-3">
         <Avatar url={post.authorImageUrl} name={post.authorName} size={40} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-text">
@@ -131,13 +132,16 @@ function PostCard({
           </button>
         ) : null}
       </header>
-      {post.title ? <h3 className="mb-1 text-base font-bold text-text">{post.title}</h3> : null}
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-text">{post.body}</p>
+
+      {/* Hero visual del post: la imagen (o thumbnail del vídeo) actúa como
+          miniatura y como preview principal al scrollear el feed. Si es un
+          vídeo embebible lo pintamos directamente para que se pueda reproducir
+          sin abrir nada. */}
       {thumb ? (
-        videoInfo?.embedUrl ? (
-          <div className="mt-3 aspect-video w-full overflow-hidden rounded-xl border border-border">
+        isVideoEmbed ? (
+          <div className="aspect-video w-full overflow-hidden border-y border-border bg-black">
             <iframe
-              src={videoInfo.embedUrl}
+              src={videoInfo!.embedUrl ?? undefined}
               title="video"
               className="h-full w-full"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -148,11 +152,16 @@ function PostCard({
           <img
             src={thumb}
             alt=""
-            className="mt-3 max-h-96 w-full rounded-xl border border-border object-cover"
+            className="aspect-[4/3] w-full border-y border-border object-cover"
           />
         )
       ) : null}
-      <footer className="mt-3 flex gap-1 border-t border-border pt-3">
+
+      <div className="p-4 pt-3">
+        {post.title ? <h3 className="mb-1 text-base font-bold text-text">{post.title}</h3> : null}
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-text">{post.body}</p>
+      </div>
+      <footer className="flex gap-1 border-t border-border px-4 py-3">
         <button
           onClick={onLike}
           className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition ${
