@@ -6,8 +6,14 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Pooled connection (host con -pooler, pgbouncer=true, connection_limit=1).
+  // La usa la app en runtime — Vercel es serverless y abre una Lambda por
+  // request; sin pooler saturamos Neon y la app se cuelga esperando conexión.
+  url       = env("DATABASE_URL")
+  // Direct connection (host SIN -pooler). La usan prisma migrate / db push
+  // porque PgBouncer en modo transaction no soporta DDL ni prepared stmts.
+  directUrl = env("DIRECT_URL")
 }
 
 // Miembro del equipo (dirección, nutricionistas, comercial).
