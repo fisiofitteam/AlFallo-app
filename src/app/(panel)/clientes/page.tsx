@@ -21,6 +21,7 @@ import {
   weekLabel,
 } from "@/lib/clientMetrics";
 import { MetricDonut } from "@/components/MetricDonut";
+import { DeleteClientIconButton } from "@/components/DeleteClientIconButton";
 
 export const metadata = { title: "Clientes · Al Fallo Nutrition" };
 export const dynamic = "force-dynamic";
@@ -301,8 +302,11 @@ export default async function ClientsPage({
             return (
               <article
                 key={c.id}
-                className="rounded-2xl border border-border bg-surface p-5 transition hover:border-primary"
+                className="relative rounded-2xl border border-border bg-surface p-5 transition hover:border-primary"
               >
+                {manager ? (
+                  <DeleteClientIconButton clientId={c.id} clientName={c.fullName} />
+                ) : null}
                 <div className="flex flex-wrap items-start gap-4 sm:flex-nowrap">
                   {/* Bloque izquierdo: nombre, badges, info nutricional */}
                   <div className="min-w-0 flex-1">

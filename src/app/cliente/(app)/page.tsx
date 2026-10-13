@@ -132,6 +132,19 @@ export default async function ClientHomePage() {
   const activeCompetitionPlans = await listActiveCompetitionPlans(me.id);
   const activeCompetitionPlan = activeCompetitionPlans[0] ?? null;
 
+  // Última revisión del nutri que el atleta aún no ha visto. Si existe,
+  // sale banner en la home. Al abrir /cliente/checkin/[id]/revisado se
+  // marca como leída.
+  const pendingReview = await prisma.checkIn.findFirst({
+    where: {
+      clientId: me.id,
+      reviewedAt: { not: null },
+      clientSeenReviewAt: null,
+    },
+    orderBy: { reviewedAt: "desc" },
+    select: { id: true, reviewedAt: true, reviewNotes: true },
+  });
+
   return (
     <div className="relative pt-1">
       {/* Marca de agua: "A" gigante semitransparente al fondo */}
@@ -178,6 +191,14 @@ export default async function ClientHomePage() {
         <CompetitionActiveCard
           title={activeCompetitionPlan.title}
           endDate={activeCompetitionPlan.endDate}
+        />
+      ) : null}
+
+      {/* Revisión del nutri pendiente de leer. Verde con icono de nutri. */}
+      {pendingReview ? (
+        <ReviewedCheckInCard
+          href={`/cliente/checkin/${pendingReview.id}/revisado`}
+          hasComment={!!(pendingReview.reviewNotes && pendingReview.reviewNotes.trim())}
         />
       ) : null}
 
@@ -282,6 +303,32 @@ function SatisfactionCard({ href, title }: { href: string; title: string }) {
 
 /** Banner rosa translúcido que invita a hacer el check-in semanal. Se pinta
  *  debajo de la frase motivacional cuando toca (lunes y aún no enviado). */
+/** Banner "Tu nutri ha revisado tu check-in". Verde esmeralda con icono
+ *  de estetoscopio. Al abrirlo se marca como leído y desaparece. */
+function ReviewedCheckInCard({ href, hasComment }: { href: string; hasComment: boolean }) {
+  return (
+    <Link
+      href={href}
+      className="relative mt-5 flex items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 shadow-sm transition hover:bg-emerald-100"
+    >
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-md">
+        <Stethoscope size={22} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold text-emerald-900">
+          Tu nutri ha revisado tu check-in
+        </p>
+        <p className="text-xs leading-snug text-emerald-900/80">
+          {hasComment
+            ? "Toca para ver su mensaje y el resumen de lo que enviaste."
+            : "Lo ha revisado sin comentarios esta vez. Toca para ver el resumen."}
+        </p>
+      </div>
+      <ArrowRight size={18} className="shrink-0 text-emerald-800" />
+    </Link>
+  );
+}
+
 /** Banner del plan de competición vigente. Amarillo con trofeo. */
 function CompetitionActiveCard({ title, endDate }: { title: string; endDate: Date }) {
   const daysLeft = Math.max(

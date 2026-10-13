@@ -456,9 +456,13 @@ export async function reviewCheckIn(formData: FormData) {
       status: "revisado",
       reviewedById: prof.id,
       reviewedAt: new Date(),
+      // Al revisar (o re-revisar) reseteamos la "lectura" del atleta para
+      // que vuelva a aparecerle el banner en su app.
+      clientSeenReviewAt: null,
     },
   });
   revalidatePath(`/clientes/${checkIn.clientId}`);
+  revalidatePath("/cliente");
 }
 
 // (Eliminada: updateMacroTargets. La pestaña "Macros objetivo" se ha

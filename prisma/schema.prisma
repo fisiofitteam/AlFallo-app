@@ -204,6 +204,12 @@ model CheckIn {
   reviewNotes  String?
   reviewedById String?
   reviewedAt   DateTime?
+  // Momento en el que el atleta ha visto la respuesta del nutri. Mientras
+  // sea null (y reviewedAt no), su home muestra un banner "Tu nutri ha
+  // revisado tu check-in". Al abrir /cliente/checkin/[id]/revisado se marca
+  // automáticamente. Si el nutri vuelve a tocar la revisión, se resetea
+  // a null para notificar de nuevo.
+  clientSeenReviewAt DateTime?
 
   // Respuestas a los campos custom del formulario avanzado (cuando el
   // atleta tiene useAdvancedCheckIn = true). JSON con {fieldId: value}.
