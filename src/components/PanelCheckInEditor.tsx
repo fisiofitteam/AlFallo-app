@@ -67,7 +67,7 @@ export function PanelCheckInEditor({
           <input
             className={inputCls}
             type="number"
-            step="0.1"
+            step="any"
             name="weightKg"
             defaultValue={initial.weightKg ?? ""}
           />
@@ -77,7 +77,7 @@ export function PanelCheckInEditor({
           <input
             className={inputCls}
             type="number"
-            step="0.1"
+            step="any"
             name="bodyFatPct"
             defaultValue={initial.bodyFatPct ?? ""}
           />
@@ -87,7 +87,7 @@ export function PanelCheckInEditor({
           <input
             className={inputCls}
             type="number"
-            step="0.1"
+            step="any"
             name="waistCm"
             defaultValue={initial.waistCm ?? ""}
           />
@@ -97,7 +97,7 @@ export function PanelCheckInEditor({
           <input
             className={inputCls}
             type="number"
-            step="0.1"
+            step="any"
             name="hipCm"
             defaultValue={initial.hipCm ?? ""}
           />
@@ -107,7 +107,7 @@ export function PanelCheckInEditor({
           <input
             className={inputCls}
             type="number"
-            step="0.1"
+            step="any"
             name="armCm"
             defaultValue={initial.armCm ?? ""}
           />
