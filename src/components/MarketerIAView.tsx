@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
+import { Loader2, Paperclip, X } from "lucide-react";
+import { upload } from "@vercel/blob/client";
 import { isoWeekFromDate } from "@/lib/content-templates";
 
 type GoalKey = "atraer" | "conectar" | "educar" | "convertir" | "lanzamiento";
@@ -70,6 +72,35 @@ export function MarketerIAView() {
   const [result, setResult] = useState<Result | null>(null);
   const [added, setAdded] = useState<Record<string, string>>({});
 
+  // PDF opcional de referencia para ESTA generación (no se persiste).
+  const [attachment, setAttachment] = useState<{ url: string; name: string } | null>(null);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
+
+  async function handlePdfSelected(file: File | null) {
+    if (!file) return;
+    setUploadError(null);
+    setUploadingPdf(true);
+    try {
+      const key = `marketer-oneoff/${Date.now()}-${file.name}`;
+      const blob = await upload(key, file, {
+        access: "public",
+        handleUploadUrl: "/api/biblioteca/upload-doc",
+      });
+      setAttachment({ url: blob.url, name: file.name });
+    } catch (e) {
+      setUploadError((e as Error).message || "No se pudo subir el PDF.");
+    } finally {
+      setUploadingPdf(false);
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
+    }
+  }
+
+  function removeAttachment() {
+    setAttachment(null);
+  }
+
   async function generate() {
     if (brief.trim().length < 10) {
       setError("Escribe un brief más detallado");
@@ -95,6 +126,7 @@ export function MarketerIAView() {
           startWeek: toDateInputValue(snapToMondayUtc(startWeek)),
           weeksAhead,
           piecesPerWeek: Object.keys(piecesPerWeek).length > 0 ? piecesPerWeek : undefined,
+          attachment: attachment ?? undefined,
         }),
       });
       // Parseo defensivo: si Vercel devuelve HTML por timeout, .json() peta.
@@ -248,9 +280,61 @@ export function MarketerIAView() {
             <MixInput label="🔴 Live" value={mixLive} onChange={setMixLive} disabled={busy} />
           </div>
         </div>
+        <div>
+          <label className="text-xs font-medium text-muted">PDF de referencia (opcional)</label>
+          <p className="mt-0.5 text-[11px] text-muted">
+            Hasta 50 MB. La IA lo lee para esta generación concreta — no se guarda.
+          </p>
+          {attachment ? (
+            <div className="mt-1 flex items-center gap-2 rounded-lg border border-border bg-bg px-3 py-2 text-xs">
+              <Paperclip size={12} className="text-muted" />
+              <a
+                href={attachment.url}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 flex-1 truncate hover:text-primary hover:underline"
+              >
+                {attachment.name}
+              </a>
+              <button
+                type="button"
+                onClick={removeAttachment}
+                disabled={busy}
+                className="rounded-md p-1 text-muted hover:text-red-600 disabled:opacity-50"
+                title="Quitar PDF"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ) : (
+            <label className="mt-1 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-border bg-bg px-3 py-2 text-xs font-medium hover:border-primary">
+              {uploadingPdf ? (
+                <>
+                  <Loader2 size={12} className="animate-spin" /> Subiendo…
+                </>
+              ) : (
+                <>
+                  <Paperclip size={12} /> Adjuntar PDF
+                </>
+              )}
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={(e) => handlePdfSelected(e.target.files?.[0] ?? null)}
+                disabled={uploadingPdf || busy}
+              />
+            </label>
+          )}
+          {uploadError ? (
+            <p className="mt-1 text-[11px] text-red-600">{uploadError}</p>
+          ) : null}
+        </div>
+
         <button
           onClick={generate}
-          disabled={busy}
+          disabled={busy || uploadingPdf}
           className="w-full rounded-lg bg-primary py-2 font-medium text-primary-fg transition hover:opacity-90 disabled:opacity-50"
         >
           {busy ? "Generando…" : "🧠 Generar estrategia"}

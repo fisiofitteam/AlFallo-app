@@ -153,6 +153,25 @@ async function runGenerate(req: NextRequest) {
       ? (body.piecesPerWeek as Record<string, number>)
       : undefined;
 
+  // PDF de referencia one-off para esta generación. No se persiste.
+  // Shape esperado: { url, name }. Validamos que sea una URL http(s).
+  type AttachmentIn = { url: string; name: string };
+  const rawAtt = body?.attachment as unknown;
+  const attachment: AttachmentIn | null =
+    rawAtt &&
+    typeof rawAtt === "object" &&
+    typeof (rawAtt as AttachmentIn).url === "string" &&
+    /^https?:\/\//i.test((rawAtt as AttachmentIn).url)
+      ? {
+          url: (rawAtt as AttachmentIn).url,
+          name:
+            typeof (rawAtt as AttachmentIn).name === "string" &&
+            (rawAtt as AttachmentIn).name.trim().length > 0
+              ? (rawAtt as AttachmentIn).name.trim()
+              : "documento",
+        }
+      : null;
+
   const recentWeeks = await prisma.contentWeek.findMany({
     orderBy: { startDate: "desc" },
     take: 6,
@@ -236,6 +255,37 @@ async function runGenerate(req: NextRequest) {
     },
   };
 
+  // Si en el formulario se subió un PDF de referencia one-off, lo pasamos
+  // como bloque `document` con source.type="url" — Anthropic lo descarga y
+  // lo lee de forma nativa, sin inflar el prompt. Solo PDF (Anthropic
+  // nativo); otros formatos se ignoran.
+  const isPdf = attachment ? /\.pdf(\?|$)/i.test(attachment.url) : false;
+  const userContent: Anthropic.Messages.ContentBlockParam[] = [
+    ...(attachment && isPdf
+      ? [
+          {
+            type: "document" as const,
+            source: { type: "url" as const, url: attachment.url },
+            title: attachment.name,
+            context:
+              "Documento de referencia aportado por el equipo para esta estrategia. Úsalo como fuente principal de inspiración y datos.",
+            citations: { enabled: false },
+          },
+        ]
+      : []),
+    {
+      type: "text" as const,
+      text: buildUserPrompt({
+        brief: briefText,
+        targetDate,
+        startWeek,
+        weeksAhead,
+        piecesPerWeek,
+        recentThemes,
+      }),
+    },
+  ];
+
   try {
     const msg = await client().messages.create({
       model: MODEL,
@@ -243,19 +293,7 @@ async function runGenerate(req: NextRequest) {
       system: systemPrompt(brief),
       tools: [tool],
       tool_choice: { type: "tool", name: "submit_strategy" },
-      messages: [
-        {
-          role: "user",
-          content: buildUserPrompt({
-            brief: briefText,
-            targetDate,
-            startWeek,
-            weeksAhead,
-            piecesPerWeek,
-            recentThemes,
-          }),
-        },
-      ],
+      messages: [{ role: "user", content: userContent }],
     });
 
     const toolUse = msg.content.find(
