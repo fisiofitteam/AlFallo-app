@@ -11,7 +11,11 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const MODEL = "claude-sonnet-4-6";
-const MAX_OUTPUT_TOKENS = 6000;
+// Subido a 16k para dar aire a planificaciones de 4-8 semanas con guion
+// completo de reel (3 bloques × varias piezas × varias semanas). Con el
+// anterior 6k, al añadir un PDF de referencia el modelo se quedaba sin
+// presupuesto y devolvía weeks=[] (solo strategy summary).
+const MAX_OUTPUT_TOKENS = 16000;
 
 let _client: Anthropic | null = null;
 function client(): Anthropic {
@@ -115,14 +119,24 @@ function buildUserPrompt(input: {
   const startLine = input.startWeek
     ? `a partir del lunes ${input.startWeek}`
     : "a partir del próximo lunes";
+  const totalPieces =
+    input.piecesPerWeek && Object.keys(input.piecesPerWeek).length > 0
+      ? Object.values(input.piecesPerWeek).reduce((s, n) => s + (n || 0), 0) * input.weeksAhead
+      : null;
   return [
     `BRIEF DEL USUARIO:\n${input.brief.trim()}`,
     input.targetDate ? `\nFECHA OBJETIVO (lanzamiento): ${input.targetDate}` : "",
     `\nHORIZONTE: ${input.weeksAhead} semana${input.weeksAhead === 1 ? "" : "s"} ${startLine}.`,
     `\nMEZCLA POR SEMANA: ${mix}`,
     themesLine,
+    `\n\nSALIDA OBLIGATORIA:`,
+    `- El array \`weeks\` DEBE tener EXACTAMENTE ${input.weeksAhead} elemento${input.weeksAhead === 1 ? "" : "s"} (una entrada por semana).`,
+    `- Cada semana DEBE llevar su array \`pieces\` COMPLETO con las piezas de esa semana (según la mezcla pedida).`,
+    totalPieces ? `- Total aproximado: ${totalPieces} piezas en el conjunto.` : "",
+    `- NO devuelvas solo \`strategy\` con \`weeks\` vacío — eso cuenta como respuesta inválida.`,
+    `- Si hay un documento adjunto, úsalo como contexto para los temas y hooks, pero sigue devolviendo las piezas en el formato pedido.`,
     "\n\nGenera la estrategia usando la herramienta `submit_strategy`.",
-  ].join("");
+  ].filter(Boolean).join("");
 }
 
 async function runGenerate(req: NextRequest) {
@@ -309,10 +323,20 @@ async function runGenerate(req: NextRequest) {
       return NextResponse.json({ error: "La IA no devolvió estrategia" }, { status: 502 });
     }
     const parsed = toolUse.input as { strategy?: string; weeks?: unknown };
+    const weeks = Array.isArray(parsed.weeks) ? parsed.weeks : [];
+    if (weeks.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "La IA devolvió el arco narrativo pero cero piezas. Prueba a hacer el brief más concreto (ej. qué quieres atacar o un mito específico) o reduce el número de semanas.",
+        },
+        { status: 502 },
+      );
+    }
     return NextResponse.json({
       ok: true,
       strategy: String(parsed.strategy ?? ""),
-      weeks: Array.isArray(parsed.weeks) ? parsed.weeks : [],
+      weeks,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error llamando a la IA";
