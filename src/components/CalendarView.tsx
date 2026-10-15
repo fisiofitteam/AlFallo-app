@@ -223,11 +223,15 @@ async function deletePiece(pieceId: string): Promise<boolean> {
   return res.ok;
 }
 
-async function createPiece(weekId: string, dayOfWeek: number): Promise<string | null> {
+async function createPiece(
+  weekId: string,
+  dayOfWeek: number,
+  format?: string,
+): Promise<string | null> {
   const res = await fetch("/api/content/pieces", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ weekId, dayOfWeek }),
+    body: JSON.stringify({ weekId, dayOfWeek, format }),
   });
   if (!res.ok) return null;
   const data = await res.json().catch(() => null);
@@ -418,23 +422,39 @@ function MonthGrid({
                         {day.getUTCDate()}
                       </span>
                       {rowWeek && (
-                        <button
-                          type="button"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            const id = await createPiece(rowWeek.id, colIdx + 1);
-                            if (id) router.push(`/contenido/pieza/${id}`);
-                            else alert("No se pudo crear la pieza");
-                          }}
-                          className="flex h-4 w-4 items-center justify-center rounded text-neutral-400 opacity-0 transition group-hover/day:opacity-100 hover:bg-emerald-100 hover:text-emerald-700"
-                          title="Añadir pieza en este día"
-                          aria-label="Añadir pieza"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
-                            <path d="M12 5v14" />
-                            <path d="M5 12h14" />
-                          </svg>
-                        </button>
+                        <div className="flex items-center gap-0.5 opacity-0 transition group-hover/day:opacity-100">
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const id = await createPiece(rowWeek.id, colIdx + 1, "historia");
+                              if (id) router.push(`/contenido/pieza/${id}`);
+                              else alert("No se pudo crear la historia");
+                            }}
+                            className="flex h-4 w-4 items-center justify-center rounded text-neutral-400 hover:bg-violet-100 hover:text-violet-700"
+                            title="Añadir historia en este día"
+                            aria-label="Añadir historia"
+                          >
+                            <span className="text-[10px] leading-none">✨</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const id = await createPiece(rowWeek.id, colIdx + 1);
+                              if (id) router.push(`/contenido/pieza/${id}`);
+                              else alert("No se pudo crear la pieza");
+                            }}
+                            className="flex h-4 w-4 items-center justify-center rounded text-neutral-400 hover:bg-emerald-100 hover:text-emerald-700"
+                            title="Añadir pieza en este día"
+                            aria-label="Añadir pieza"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                              <path d="M12 5v14" />
+                              <path d="M5 12h14" />
+                            </svg>
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -457,9 +477,15 @@ function MonthGrid({
                       {dayPieces.map((dp) => {
                         const fmtLabel = formatLabelOnly(dp.piece.format);
                         const fmtIcon = formatIcon(dp.piece.format);
+                        const isStory = dp.piece.format === "historia";
                         const label = dp.piece.title?.trim() || dp.piece.hook?.trim() || fmtLabel || "Pieza";
                         const statusIcon = dp.piece.status === "published" ? "✓" : dp.piece.status === "scheduled" ? "📅" : "";
                         const goals = parseGoals(dp.piece.goals);
+                        // Las historias se pintan en violeta con borde
+                        // discontinuo para distinguirlas al vuelo del resto.
+                        const cardClass = isStory
+                          ? "group relative rounded border border-dashed border-violet-300 bg-violet-50 hover:bg-violet-100 cursor-move overflow-hidden"
+                          : "group relative rounded bg-neutral-100 hover:bg-neutral-200 cursor-move overflow-hidden";
                         return (
                           <div
                             key={dp.piece.id}
@@ -471,7 +497,7 @@ function MonthGrid({
                               e.dataTransfer.effectAllowed = "move";
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            className="group relative rounded bg-neutral-100 hover:bg-neutral-200 cursor-move overflow-hidden"
+                            className={cardClass}
                             title={`${fmtLabel}${dp.piece.hook ? " · " + dp.piece.hook : ""}${dp.weekTheme ? " · " + dp.weekTheme : ""}`}
                           >
                             <Link

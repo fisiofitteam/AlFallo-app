@@ -8,7 +8,7 @@
  * de guion creadas por el usuario).
  */
 
-export type FormatKey = "reel" | "carousel" | "infographic" | "image" | "live";
+export type FormatKey = "reel" | "carousel" | "infographic" | "image" | "live" | "historia";
 
 export const FORMATS: { value: FormatKey; label: string; icon: string }[] = [
   { value: "reel", label: "Reel", icon: "🎬" },
@@ -16,6 +16,7 @@ export const FORMATS: { value: FormatKey; label: string; icon: string }[] = [
   { value: "infographic", label: "Infografía", icon: "📝" },
   { value: "image", label: "Imagen/foto", icon: "📸" },
   { value: "live", label: "Directo", icon: "🔴" },
+  { value: "historia", label: "Historia", icon: "✨" },
 ];
 
 export function formatLabel(value: string): string {

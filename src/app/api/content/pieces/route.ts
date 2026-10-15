@@ -17,6 +17,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "dayOfWeek debe ser 1-7" }, { status: 400 });
   }
 
+  // Format opcional. Validamos contra el catálogo para no permitir strings
+  // arbitrarios desde cliente.
+  const ALLOWED_FORMATS = ["reel", "carousel", "infographic", "image", "live", "historia"];
+  const rawFormat = typeof data.format === "string" ? data.format : "";
+  const format = ALLOWED_FORMATS.includes(rawFormat) ? rawFormat : "";
+
   const week = await prisma.contentWeek.findUnique({ where: { id: weekId } });
   if (!week) return NextResponse.json({ error: "Semana no existe" }, { status: 404 });
 
@@ -24,7 +30,7 @@ export async function POST(req: NextRequest) {
     data: {
       weekId,
       dayOfWeek,
-      format: "",
+      format,
       goal: "",
       goals: "[]",
       ctaType: "",
