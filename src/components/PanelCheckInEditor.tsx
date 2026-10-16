@@ -66,8 +66,8 @@ export function PanelCheckInEditor({
           <span className="text-muted">Peso (kg)</span>
           <input
             className={inputCls}
-            type="number"
-            step="any"
+            type="text"
+            inputMode="decimal"
             name="weightKg"
             defaultValue={initial.weightKg ?? ""}
           />
@@ -76,8 +76,8 @@ export function PanelCheckInEditor({
           <span className="text-muted">% Grasa</span>
           <input
             className={inputCls}
-            type="number"
-            step="any"
+            type="text"
+            inputMode="decimal"
             name="bodyFatPct"
             defaultValue={initial.bodyFatPct ?? ""}
           />
@@ -86,8 +86,8 @@ export function PanelCheckInEditor({
           <span className="text-muted">Cintura (cm)</span>
           <input
             className={inputCls}
-            type="number"
-            step="any"
+            type="text"
+            inputMode="decimal"
             name="waistCm"
             defaultValue={initial.waistCm ?? ""}
           />
@@ -96,8 +96,8 @@ export function PanelCheckInEditor({
           <span className="text-muted">Cadera (cm)</span>
           <input
             className={inputCls}
-            type="number"
-            step="any"
+            type="text"
+            inputMode="decimal"
             name="hipCm"
             defaultValue={initial.hipCm ?? ""}
           />
@@ -106,8 +106,8 @@ export function PanelCheckInEditor({
           <span className="text-muted">Brazo (cm)</span>
           <input
             className={inputCls}
-            type="number"
-            step="any"
+            type="text"
+            inputMode="decimal"
             name="armCm"
             defaultValue={initial.armCm ?? ""}
           />
@@ -116,10 +116,9 @@ export function PanelCheckInEditor({
           <span className="text-muted">Adherencia (%)</span>
           <input
             className={inputCls}
-            type="number"
+            type="text"
+            inputMode="numeric"
             name="adherencePct"
-            min={0}
-            max={100}
             defaultValue={initial.adherencePct ?? ""}
           />
         </label>
@@ -127,10 +126,9 @@ export function PanelCheckInEditor({
           <span className="text-muted">Energía (1-5)</span>
           <input
             className={inputCls}
-            type="number"
+            type="text"
+            inputMode="numeric"
             name="energy"
-            min={1}
-            max={5}
             defaultValue={initial.energy ?? ""}
           />
         </label>
