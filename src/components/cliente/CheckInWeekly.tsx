@@ -245,6 +245,7 @@ function CheckInForm({
                 <TextInput
                   id={`metric_${m.id}`}
                   name={`metric_${m.id}`}
+                  type="text"
                   inputMode="decimal"
                   defaultValue={m.value ?? ""}
                 />
@@ -358,10 +359,18 @@ function MetricField({
       </Field>
     );
   }
-  // number por defecto
+  // number por defecto. Usamos type="text" + inputMode="decimal" en lugar
+  // de type="number" para evitar que el validador del browser rechace
+  // enteros por el bug conocido de step en Chrome (ver PanelCheckInEditor).
   return (
     <Field label={label} htmlFor={name} hint={hint}>
-      <TextInput id={name} name={name} inputMode="decimal" defaultValue={defaultStr} />
+      <TextInput
+        id={name}
+        name={name}
+        type="text"
+        inputMode="decimal"
+        defaultValue={defaultStr}
+      />
     </Field>
   );
 }
