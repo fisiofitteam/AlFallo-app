@@ -1,11 +1,11 @@
+import { pieceHookFromBlocks } from "@/lib/content-formats";
+import { canUseMarketerIA } from "@/lib/marketer-access";
+import { canManageContent } from "@/lib/roles";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-import { canManageContent } from "@/lib/roles";
-import { canUseMarketerIA } from "@/lib/marketer-access";
 import { ContentNav } from "@/components/ContentNav";
 import { CalendarView } from "@/components/CalendarView";
-import { pieceHookFromBlocks } from "@/lib/content-formats";
 
 export default async function CalendarPage({
   searchParams,
@@ -27,11 +27,12 @@ export default async function CalendarPage({
   if (zoneFilter !== "all") where.bodyZone = zoneFilter;
   if (typeFilter !== "all") where.weekType = typeFilter;
 
-  // Rango del mes mostrado (con margen de una semana antes y después para cubrir cuadrícula)
+  // Rango de eventos ampliado: mes mostrado +/- 2 meses, así el cliente
+  // tiene datos listos al auto-avanzar meses mientras arrastra una pieza.
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59));
-  const rangeStart = new Date(monthStart); rangeStart.setUTCDate(monthStart.getUTCDate() - 7);
-  const rangeEnd = new Date(monthEnd); rangeEnd.setUTCDate(monthEnd.getUTCDate() + 7);
+  const rangeStart = new Date(Date.UTC(year, month - 3, 1));
+  const rangeEnd = new Date(Date.UTC(year, month + 2, 0, 23, 59, 59));
 
   const [weeks, events] = await Promise.all([
     prisma.contentWeek.findMany({
@@ -39,7 +40,7 @@ export default async function CalendarPage({
       orderBy: [{ year: "desc" }, { weekNumber: "desc" }],
       include: {
         pieces: {
-          select: { id: true, dayOfWeek: true, format: true, title: true, goals: true, status: true, blocks: true },
+          select: { id: true, dayOfWeek: true, format: true, title: true, goals: true, status: true, hook: true, blocks: true },
           orderBy: { dayOfWeek: "asc" },
         },
       },
@@ -52,7 +53,7 @@ export default async function CalendarPage({
 
   return (
     <main>
-      <ContentNav active="calendar" showMarketer={canUseMarketerIA(user.email)} />
+      <ContentNav active="calendar" role={user.role} showMarketer={canUseMarketerIA(user.email)} />
       <CalendarView
         view={view}
         month={month}
@@ -78,7 +79,7 @@ export default async function CalendarPage({
             title: p.title,
             goals: p.goals,
             status: p.status,
-            hook: pieceHookFromBlocks(p.blocks),
+            hook: p.hook ?? pieceHookFromBlocks(p.blocks),
           })),
         }))}
         events={events.map((e) => ({

@@ -1,12 +1,16 @@
+import { canManageContent } from "@/lib/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-import { canManageContent } from "@/lib/roles";
 import { isoWeekRange } from "@/lib/content-templates";
+
+function canAccess(role: string): boolean {
+  return canManageContent(role);
+}
 
 export async function POST(req: NextRequest) {
   const user = await getActiveProfessional();
-  if (!user || !canManageContent(user.role)) {
+  if (!user || !canAccess(user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -90,7 +94,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const user = await getActiveProfessional();
-  if (!user || !canManageContent(user.role)) {
+  if (!user || !canAccess(user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -103,12 +107,18 @@ export async function PATCH(req: NextRequest) {
     "centralTheme", "bodyZone", "weekType", "leadMagnetName", "leadMagnetKeyword",
     "commercialTrigger", "previousWeekConnection", "nextWeekSetup",
     "kpiName", "status", "closingNotes", "winningHooks", "ideasEmerged",
+    "strategyPdfUrl", "strategyPdfName",
   ];
   for (const k of passthrough) {
     if (rest[k] !== undefined) update[k] = rest[k] || null;
   }
   if (rest.limitingBeliefs !== undefined) update.limitingBeliefs = JSON.stringify(rest.limitingBeliefs);
   if (rest.weekStories !== undefined) update.weekStories = JSON.stringify(rest.weekStories);
+  if (rest.weekStoriesInstructions !== undefined) {
+    update.weekStoriesInstructions = typeof rest.weekStoriesInstructions === "string"
+      ? rest.weekStoriesInstructions
+      : "";
+  }
   if (rest.mixValue !== undefined) update.mixValue = Number(rest.mixValue);
   if (rest.mixBeliefs !== undefined) update.mixBeliefs = Number(rest.mixBeliefs);
   if (rest.mixConversion !== undefined) update.mixConversion = Number(rest.mixConversion);

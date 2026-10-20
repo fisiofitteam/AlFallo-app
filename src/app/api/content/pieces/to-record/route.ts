@@ -1,3 +1,4 @@
+import { canManageContent } from "@/lib/roles";
 /**
  * GET /api/content/pieces/to-record
  *
@@ -8,14 +9,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-import { canManageContent } from "@/lib/roles";
-import { piecePublishDate, pieceHookFromBlocks } from "@/lib/content-formats";
+import { piecePublishDate } from "@/lib/content-formats";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const user = await getActiveProfessional();
-  if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!user || !canManageContent(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!canManageContent(user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -51,8 +51,7 @@ export async function GET() {
       dayOfWeek: p.dayOfWeek,
       format: p.format,
       title: p.title,
-      hook: pieceHookFromBlocks(p.blocks),
-      recordingInstructions: p.recordingInstructions,
+      hook: p.hook,
       publishDate: p._publishDate?.toISOString() ?? null,
       recordingLocation: p.recordingLocation,
       recordingOutfit: p.recordingOutfit,

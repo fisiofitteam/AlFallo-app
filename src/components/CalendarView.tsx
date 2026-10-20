@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -17,7 +17,25 @@ import {
   goalColor,
   goalLabel,
   GOAL_COLOR_CLASSES,
+  goalTileStyle,
+  pieceTileStyle,
 } from "@/lib/content-formats";
+import { AddPieceModal } from "@/components/AddPieceModal";
+
+/**
+ * Meta de estado por pieza para el badge de la esquina superior derecha
+ * en el calendario. Icono corto + label legible en tooltip + color.
+ * Los valores coinciden con los del catálogo PIECE_STATUS en
+ * lib/content-templates.ts — si añades allí un nuevo estado, añade aquí.
+ */
+const PIECE_STATUS_BADGE: Record<string, { icon: string; label: string; color: string }> = {
+  idea: { icon: "💡", label: "Idea", color: "#737373" },
+  script: { icon: "✍️", label: "Guion listo", color: "#B45309" },
+  recorded: { icon: "🎥", label: "Grabado", color: "#1D4ED8" },
+  edited: { icon: "🎬", label: "Editado", color: "#7C3AED" },
+  scheduled: { icon: "📅", label: "Programado", color: "#3730A3" },
+  published: { icon: "✓", label: "Publicado", color: "#065F46" },
+};
 
 type Piece = {
   id: string;
@@ -126,7 +144,15 @@ export function CalendarView({
           <p className="text-xs text-neutral-500 mt-0.5">Vista global de la estrategia</p>
         </div>
 
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap items-center">
+          <a
+            href={`/contenido/export-reels?month=${String(year)}-${String(month).padStart(2, "0")}`}
+            className="px-3 py-1.5 text-xs rounded font-medium whitespace-nowrap"
+            style={{ background: "#FAFAFA", border: "1px solid #E5E5E5" }}
+            title="Exportar los guiones de los reels del mes a PDF"
+          >
+            🎬 Exportar reels del mes
+          </a>
           <button
             onClick={() => navigate({ view: "month" })}
             className={`px-3 py-1.5 text-xs rounded ${view === "month" ? "bg-neutral-900 text-white" : "bg-white border border-neutral-200"}`}
@@ -179,7 +205,9 @@ export function CalendarView({
         <span className="mr-3 font-medium">Leyenda objetivos:</span>
         <span className={`inline-block mr-2 mb-1 px-2 py-0.5 rounded text-[10px] ${GOAL_COLOR_CLASSES.green}`}>🟢 Atraer / Conectar</span>
         <span className={`inline-block mr-2 mb-1 px-2 py-0.5 rounded text-[10px] ${GOAL_COLOR_CLASSES.yellow}`}>🟡 Educar</span>
-        <span className={`inline-block mr-2 mb-1 px-2 py-0.5 rounded text-[10px] ${GOAL_COLOR_CLASSES.red}`}>🔴 Convertir / Lanzamiento</span>
+        <span className={`inline-block mr-2 mb-1 px-2 py-0.5 rounded text-[10px] ${GOAL_COLOR_CLASSES.red}`}>🔴 Convertir</span>
+        <span className={`inline-block mr-2 mb-1 px-2 py-0.5 rounded text-[10px] ${GOAL_COLOR_CLASSES.purple}`}>🟣 Lanzamiento</span>
+        <span className="inline-block mr-2 mb-1 text-[10px] italic">· Piezas con 2 objetivos → gradiente de ambos colores</span>
       </section>
     </>
   );
@@ -216,31 +244,9 @@ async function movePiece(pieceId: string, weekId: string, dayOfWeek: number) {
   return res.ok;
 }
 
-async function deletePiece(pieceId: string): Promise<boolean> {
-  const res = await fetch(`/api/content/pieces?id=${encodeURIComponent(pieceId)}`, {
-    method: "DELETE",
-  });
-  return res.ok;
-}
-
-async function createPiece(
-  weekId: string,
-  dayOfWeek: number,
-  format?: string,
-): Promise<string | null> {
-  const res = await fetch("/api/content/pieces", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ weekId, dayOfWeek, format }),
-  });
-  if (!res.ok) return null;
-  const data = await res.json().catch(() => null);
-  return data?.id ?? null;
-}
-
 function MonthGrid({
-  month,
-  year,
+  month: propMonth,
+  year: propYear,
   weeks,
   events,
   onSwitchMonth,
@@ -254,6 +260,49 @@ function MonthGrid({
   const router = useRouter();
   const [eventModal, setEventModal] = useState<{ date: string; event: CalEvent | null } | null>(null);
   const [creatingWeek, setCreatingWeek] = useState(false);
+  const [movePieceModal, setMovePieceModal] = useState<{ pieceId: string; pieceTitle: string; currentDate: string } | null>(null);
+  const [addPieceModal, setAddPieceModal] = useState<{ weekId: string; dayOfWeek: number; weekLabel: string } | null>(null);
+
+  // Estado local del mes mostrado. Inicial = props (URL). Cambiar localmente
+  // permite el auto-avance durante el arrastre sin perder el drag nativo
+  // (los eventos vienen pre-cargados ±2 meses; las weeks no se filtran por mes).
+  const [month, setMonth] = useState(propMonth);
+  const [year, setYear] = useState(propYear);
+  useEffect(() => { setMonth(propMonth); setYear(propYear); }, [propMonth, propYear]);
+
+  function shiftMonthLocal(delta: number) {
+    let m = month + delta;
+    let y = year;
+    if (m < 1) { m = 12; y -= 1; }
+    if (m > 12) { m = 1; y += 1; }
+    setMonth(m); setYear(y);
+  }
+
+  // Track si hay un drag de pieza en curso (para enseñar las flechas como
+  // drop zones).
+  const [dragging, setDragging] = useState(false);
+
+  // Timer del auto-avance al mantener encima de prev/next.
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [advancePending, setAdvancePending] = useState<"prev" | "next" | null>(null);
+
+  function startAdvance(dir: "prev" | "next") {
+    if (advancePending === dir) return;
+    cancelAdvance();
+    setAdvancePending(dir);
+    advanceTimer.current = setTimeout(() => {
+      shiftMonthLocal(dir === "prev" ? -1 : 1);
+      setAdvancePending(null);
+      advanceTimer.current = null;
+    }, 500);
+  }
+  function cancelAdvance() {
+    if (advanceTimer.current) {
+      clearTimeout(advanceTimer.current);
+      advanceTimer.current = null;
+    }
+    setAdvancePending(null);
+  }
 
   // Crea (o abre, si ya existe) la semana de contenido para un lunes dado y
   // lleva a su vista para editarla.
@@ -333,12 +382,36 @@ function MonthGrid({
   return (
     <>
       <div className="flex items-center justify-between mb-3">
-        <button onClick={() => onSwitchMonth(-1)} className="text-sm px-3 py-1.5 border border-neutral-200 rounded hover:bg-neutral-50">
-          ← {MONTH_NAMES[month === 1 ? 12 : month - 1]}
+        <button
+          onClick={() => { shiftMonthLocal(-1); router.push(`?month=${month === 1 ? 12 : month - 1}&year=${month === 1 ? year - 1 : year}`); }}
+          onDragEnter={(e) => { e.preventDefault(); startAdvance("prev"); }}
+          onDragOver={(e) => { e.preventDefault(); }}
+          onDragLeave={() => cancelAdvance()}
+          className="text-sm px-3 py-1.5 rounded transition-colors"
+          style={{
+            background: dragging && advancePending === "prev" ? "#FEF3C7" : "#FFFFFF",
+            color: dragging && advancePending === "prev" ? "#92400E" : "#0A0A0A",
+            border: dragging ? "1px dashed " + (advancePending === "prev" ? "#F59E0B" : "#E5E5E5") : "1px solid #E5E5E5",
+          }}
+          title={dragging ? "Mantén el arrastre aquí para cambiar de mes" : ""}
+        >
+          ← {MONTH_NAMES[month === 1 ? 12 : month - 1]}{advancePending === "prev" && "…"}
         </button>
         <h2 className="text-lg font-semibold">{MONTH_NAMES[month]} {year}</h2>
-        <button onClick={() => onSwitchMonth(1)} className="text-sm px-3 py-1.5 border border-neutral-200 rounded hover:bg-neutral-50">
-          {MONTH_NAMES[month === 12 ? 1 : month + 1]} →
+        <button
+          onClick={() => { shiftMonthLocal(1); router.push(`?month=${month === 12 ? 1 : month + 1}&year=${month === 12 ? year + 1 : year}`); }}
+          onDragEnter={(e) => { e.preventDefault(); startAdvance("next"); }}
+          onDragOver={(e) => { e.preventDefault(); }}
+          onDragLeave={() => cancelAdvance()}
+          className="text-sm px-3 py-1.5 rounded transition-colors"
+          style={{
+            background: dragging && advancePending === "next" ? "#FEF3C7" : "#FFFFFF",
+            color: dragging && advancePending === "next" ? "#92400E" : "#0A0A0A",
+            border: dragging ? "1px dashed " + (advancePending === "next" ? "#F59E0B" : "#E5E5E5") : "1px solid #E5E5E5",
+          }}
+          title={dragging ? "Mantén el arrastre aquí para cambiar de mes" : ""}
+        >
+          {MONTH_NAMES[month === 12 ? 1 : month + 1]} →{advancePending === "next" && "…"}
         </button>
       </div>
 
@@ -360,10 +433,10 @@ function MonthGrid({
 
           return (
             <div key={rowIdx} className="grid grid-cols-7 border-b border-neutral-100 last:border-b-0">
-              {/* Franja tema (ocupa columnas 1-7 de la fila si hay semana) */}
-              {rowWeek && (
-                <WeekThemeBanner week={rowWeek} />
-              )}
+              {/* Antes había una franja con "W12 · Tema · zona · tipo" encima
+                  de cada fila. Se retiró a petición del CEO porque no la
+                  usaba. Mantenemos el "+ Crear semana" cuando aún no existe
+                  la semana porque sin ella no se pueden añadir piezas. */}
               {!rowWeek && (
                 <button
                   onClick={() => createWeekForMonday(rowMonday)}
@@ -412,7 +485,7 @@ function MonthGrid({
                         alert("Error al mover la pieza");
                       }
                     }}
-                    className={`group/day min-h-[120px] p-1.5 border-r border-neutral-100 last:border-r-0 cursor-pointer hover:bg-amber-50/30 transition-colors ${
+                    className={`group min-h-[120px] p-1.5 border-r border-neutral-100 last:border-r-0 cursor-pointer hover:bg-amber-50/30 transition-colors ${
                       isOtherMonth ? "bg-neutral-50/50" : "bg-white"
                     } ${isToday ? "bg-amber-50" : ""}`}
                     title="Click para añadir evento · Arrastra piezas aquí"
@@ -421,41 +494,32 @@ function MonthGrid({
                       <span className={`text-[11px] ${isOtherMonth ? "text-neutral-300" : isToday ? "text-amber-800 font-bold" : "text-neutral-500"}`}>
                         {day.getUTCDate()}
                       </span>
-                      {rowWeek && (
-                        <div className="flex items-center gap-0.5 opacity-0 transition group-hover/day:opacity-100">
+                      {/* Botón "+ Pieza" visible al hover, solo si el día cae en una semana */}
+                      {(() => {
+                        const target = findWeekForDate(weeks, dateKey);
+                        if (!target) return null;
+                        const wk = weeks.find((w) => w.id === target.weekId);
+                        const weekLabel = wk
+                          ? `Semana ${wk.weekNumber} · ${wk.centralTheme || "Sin tema"}`
+                          : "";
+                        return (
                           <button
                             type="button"
-                            onClick={async (e) => {
+                            onClick={(e) => {
                               e.stopPropagation();
-                              const id = await createPiece(rowWeek.id, colIdx + 1, "historia");
-                              if (id) router.push(`/contenido/pieza/${id}`);
-                              else alert("No se pudo crear la historia");
+                              setAddPieceModal({
+                                weekId: target.weekId,
+                                dayOfWeek: target.dayOfWeek,
+                                weekLabel,
+                              });
                             }}
-                            className="flex h-4 w-4 items-center justify-center rounded text-neutral-400 hover:bg-violet-100 hover:text-violet-700"
-                            title="Añadir historia en este día"
-                            aria-label="Añadir historia"
+                            className="text-[10px] leading-none font-medium text-neutral-400 hover:text-neutral-900 hover:bg-white rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Añadir pieza este día"
                           >
-                            <span className="text-[10px] leading-none">✨</span>
+                            + pieza
                           </button>
-                          <button
-                            type="button"
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              const id = await createPiece(rowWeek.id, colIdx + 1);
-                              if (id) router.push(`/contenido/pieza/${id}`);
-                              else alert("No se pudo crear la pieza");
-                            }}
-                            className="flex h-4 w-4 items-center justify-center rounded text-neutral-400 hover:bg-emerald-100 hover:text-emerald-700"
-                            title="Añadir pieza en este día"
-                            aria-label="Añadir pieza"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
-                              <path d="M12 5v14" />
-                              <path d="M5 12h14" />
-                            </svg>
-                          </button>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
 
                     {/* Eventos custom */}
@@ -477,76 +541,108 @@ function MonthGrid({
                       {dayPieces.map((dp) => {
                         const fmtLabel = formatLabelOnly(dp.piece.format);
                         const fmtIcon = formatIcon(dp.piece.format);
-                        const isStory = dp.piece.format === "historia";
                         const label = dp.piece.title?.trim() || dp.piece.hook?.trim() || fmtLabel || "Pieza";
-                        const statusIcon = dp.piece.status === "published" ? "✓" : dp.piece.status === "scheduled" ? "📅" : "";
+                        // Badge de estado arriba a la derecha. Todos los
+                        // estados llevan icono + tooltip para leer rápido
+                        // en qué fase está cada pieza sin abrirla.
+                        const statusMeta = PIECE_STATUS_BADGE[dp.piece.status] ?? { icon: "•", label: dp.piece.status, color: "#737373" };
                         const goals = parseGoals(dp.piece.goals);
-                        // Las historias se pintan en violeta con borde
-                        // discontinuo para distinguirlas al vuelo del resto.
-                        const cardClass = isStory
-                          ? "group relative rounded border border-dashed border-violet-300 bg-violet-50 hover:bg-violet-100 cursor-move overflow-hidden"
-                          : "group relative rounded bg-neutral-100 hover:bg-neutral-200 cursor-move overflow-hidden";
+                        // Las historias no abren editor — con la idea
+                        // principal en el calendario basta. Si es story
+                        // renderizamos un <div> en vez de <Link> para que
+                        // el click no navegue; conserva drag/borrar/mover.
+                        const isStory = dp.piece.format === "story";
+                        const TileTag: any = isStory ? "div" : Link;
+                        const tileProps: any = isStory
+                          ? {}
+                          : { href: `/contenido/pieza/${dp.piece.id}` };
                         return (
-                          <div
+                          <TileTag
                             key={dp.piece.id}
+                            {...tileProps}
+                            onClick={(e: any) => e.stopPropagation()}
                             draggable
-                            onDragStart={(e) => {
+                            onDragStart={(e: any) => {
                               e.dataTransfer.setData("text/piece-id", dp.piece.id);
                               e.dataTransfer.setData("text/source-week-id", dp.weekId);
                               e.dataTransfer.setData("text/source-dayofweek", String(dp.piece.dayOfWeek));
                               e.dataTransfer.effectAllowed = "move";
+                              setDragging(true);
                             }}
-                            onClick={(e) => e.stopPropagation()}
-                            className={cardClass}
+                            onDragEnd={() => {
+                              setDragging(false);
+                              cancelAdvance();
+                              // Si auto-avanzamos durante el drag, sincroniza URL
+                              if (month !== propMonth || year !== propYear) {
+                                router.push(`?month=${month}&year=${year}`);
+                              }
+                            }}
+                            className="relative flex flex-col gap-0.5 text-[10px] px-1.5 py-1 pr-5 rounded leading-tight cursor-move overflow-hidden hover:brightness-95 transition"
+                            style={pieceTileStyle(dp.piece.format, goals)}
                             title={`${fmtLabel}${dp.piece.hook ? " · " + dp.piece.hook : ""}${dp.weekTheme ? " · " + dp.weekTheme : ""}`}
                           >
-                            <Link
-                              href={`/contenido/pieza/${dp.piece.id}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="block px-1.5 py-1 text-[10px] leading-tight"
+                            <span
+                              className="absolute top-0.5 right-0.5 text-[10px] leading-none font-bold"
+                              style={{ color: statusMeta.color }}
+                              title={`Estado: ${statusMeta.label}`}
                             >
-                              <div className="flex items-start gap-1 pr-8">
-                                <span className="flex-shrink-0">{fmtIcon}</span>
-                                <span className="line-clamp-2 break-words flex-1 min-w-0">
-                                  {label}
-                                </span>
-                              </div>
-                              {goals.length > 0 && (
-                                <div className="flex flex-wrap gap-0.5 mt-0.5">
-                                  {goals.map((g) => (
-                                    <span key={g} className={`text-[8px] px-1 rounded ${GOAL_COLOR_CLASSES[goalColor(g)]}`}>
-                                      {goalLabel(g)}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </Link>
-                            {statusIcon && (
-                              <span className="pointer-events-none absolute top-0.5 right-6 text-emerald-700 font-bold text-[11px] leading-none">
-                                {statusIcon}
-                              </span>
-                            )}
+                              {statusMeta.icon}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMovePieceModal({
+                                  pieceId: dp.piece.id,
+                                  pieceTitle: label,
+                                  currentDate: dateKey,
+                                });
+                              }}
+                              draggable={false}
+                              className="absolute bottom-0.5 right-0.5 text-[10px] leading-none px-1 rounded hover:bg-black/10"
+                              title="Mover a otra fecha (cualquier mes)"
+                            >
+                              ↗
+                            </button>
                             <button
                               type="button"
                               onClick={async (e) => {
-                                e.stopPropagation();
                                 e.preventDefault();
-                                if (!confirm(`Eliminar "${label}"?`)) return;
-                                const ok = await deletePiece(dp.piece.id);
-                                if (ok) router.refresh();
-                                else alert("No se pudo eliminar la pieza");
+                                e.stopPropagation();
+                                if (!confirm(`¿Borrar la pieza "${label}"?\n\nNo se puede deshacer.`)) return;
+                                const res = await fetch(`/api/content/pieces/${dp.piece.id}`, {
+                                  method: "DELETE",
+                                });
+                                if (res.ok) {
+                                  router.refresh();
+                                } else {
+                                  const data = await res.json().catch(() => ({}));
+                                  alert(data?.error || "No se pudo borrar la pieza");
+                                }
                               }}
-                              className="absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded text-neutral-500 opacity-0 transition group-hover:opacity-100 hover:bg-red-100 hover:text-red-700"
-                              title="Eliminar pieza"
-                              aria-label="Eliminar pieza"
+                              draggable={false}
+                              className="absolute bottom-0.5 right-5 text-[10px] leading-none px-1 rounded hover:bg-red-100 hover:text-red-700"
+                              title="Borrar pieza"
                             >
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
-                                <path d="M3 6h18" />
-                                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                              </svg>
+                              🗑
                             </button>
-                          </div>
+                            <div className="flex items-start gap-1 pr-3">
+                              <span className="flex-shrink-0">{fmtIcon}</span>
+                              <span className="line-clamp-2 break-words flex-1 min-w-0">
+                                {label}
+                              </span>
+                            </div>
+                            {goals.length > 0 && (
+                              <div className="flex flex-wrap gap-0.5 mt-0.5">
+                                {goals.map((g) => (
+                                  <span key={g} className={`text-[8px] px-1 rounded ${GOAL_COLOR_CLASSES[goalColor(g)]}`}>
+                                    {goalLabel(g)}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </TileTag>
                         );
                       })}
                     </div>
@@ -559,7 +655,7 @@ function MonthGrid({
       </section>
 
       <p className="text-[11px] text-neutral-500 italic mt-2">
-        💡 Click en cualquier día para añadir un evento (masterclass, workshop, apertura de plazas…).
+        💡 Click en cualquier día para añadir un evento · Arrastra piezas entre días para mover · Mantén el arrastre sobre ← o → para cambiar de mes · Usa ↗ en cada pieza para saltar a cualquier fecha.
       </p>
 
       {eventModal && (
@@ -570,7 +666,93 @@ function MonthGrid({
           onSaved={() => { setEventModal(null); router.refresh(); }}
         />
       )}
+
+      {addPieceModal && (
+        <AddPieceModal
+          weekId={addPieceModal.weekId}
+          weekLabel={addPieceModal.weekLabel}
+          lockedDayOfWeek={addPieceModal.dayOfWeek}
+          onClose={() => setAddPieceModal(null)}
+        />
+      )}
+
+      {movePieceModal && (
+        <MovePieceModal
+          pieceTitle={movePieceModal.pieceTitle}
+          currentDate={movePieceModal.currentDate}
+          weeks={weeks}
+          onClose={() => setMovePieceModal(null)}
+          onMove={async (newDate) => {
+            const target = findWeekForDate(weeks, newDate);
+            if (!target) {
+              alert("Ese día no está dentro de ninguna semana planificada. Crea la semana antes de mover la pieza.");
+              return;
+            }
+            const ok = await movePiece(movePieceModal.pieceId, target.weekId, target.dayOfWeek);
+            if (ok) {
+              setMovePieceModal(null);
+              router.refresh();
+            } else {
+              alert("Error al mover la pieza");
+            }
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function MovePieceModal({
+  pieceTitle,
+  currentDate,
+  weeks,
+  onClose,
+  onMove,
+}: {
+  pieceTitle: string;
+  currentDate: string;
+  weeks: Week[];
+  onClose: () => void;
+  onMove: (newDate: string) => Promise<void>;
+}) {
+  const [target, setTarget] = useState(currentDate);
+  const [busy, setBusy] = useState(false);
+  const hasWeek = !!findWeekForDate(weeks, target);
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-3">
+          <h3 className="font-medium text-sm">↗ Mover pieza a otra fecha</h3>
+          <button onClick={onClose} className="text-neutral-400 text-xl leading-none px-2">✕</button>
+        </div>
+        <p className="text-xs text-neutral-500 mb-3 line-clamp-2">{pieceTitle}</p>
+        <div className="mb-3">
+          <label className="text-xs text-neutral-500 block mb-1.5">Nueva fecha</label>
+          <input
+            type="date"
+            className="input text-sm w-full"
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+          />
+          {target !== currentDate && !hasWeek && (
+            <p className="text-[11px] text-amber-700 mt-1">
+              ⚠ Esa fecha no está dentro de una semana de contenido. Crea la semana antes.
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="text-sm px-3 py-2" style={{ color: "#737373" }}>Cancelar</button>
+          <button
+            onClick={async () => { setBusy(true); await onMove(target); setBusy(false); }}
+            disabled={busy || target === currentDate || !hasWeek}
+            className="text-sm font-semibold px-3 py-2 rounded-lg disabled:opacity-50"
+            style={{ background: "#0A0A0A", color: "#FAFAFA" }}
+          >
+            {busy ? "..." : "Mover aquí"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

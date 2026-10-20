@@ -1,11 +1,12 @@
+import { canUseMarketerIA } from "@/lib/marketer-access";
+import { canManageContent } from "@/lib/roles";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-import { canManageContent } from "@/lib/roles";
-import { canUseMarketerIA } from "@/lib/marketer-access";
 import { ContentNav } from "@/components/ContentNav";
 import { MetricsView } from "@/components/MetricsView";
-import { pieceHookFromBlocks } from "@/lib/content-formats";
+import { MarketerAiPanel } from "@/components/MarketerAiPanel";
+import { SyncMetricsButton } from "@/components/SyncMetricsButton";
 
 type Range = "week" | "month" | "quarter" | "custom";
 
@@ -195,11 +196,10 @@ export default async function MetricsPage({
     return (p.metricsReach ?? 0) * 0.3 + (p.metricsSaves ?? 0) * 0.3 + (p.metricsDmKeyword ?? 0) * 50;
   }
   const topHooks = piecesCurrent
-    .map((p) => ({ p, hook: pieceHookFromBlocks(p.blocks) }))
-    .filter((x) => x.hook)
-    .map(({ p, hook }) => ({
+    .filter((p) => p.hook)
+    .map((p) => ({
       pieceId: p.id,
-      hook: hook!,
+      hook: p.hook!,
       format: p.format,
       bodyZone: p.week.bodyZone,
       weekTheme: p.week.centralTheme,
@@ -261,7 +261,47 @@ export default async function MetricsPage({
 
   return (
     <main>
-      <ContentNav active="metrics" showMarketer={canUseMarketerIA(user.email)} />
+      <ContentNav active="metrics" role={user.role} showMarketer={canUseMarketerIA(user.email)} />
+
+      {/* Sincronización de métricas desde Instagram (cron diario + botón manual) */}
+      <div className="mb-3">
+        <SyncMetricsButton />
+        <p className="text-[10px] text-neutral-400 mt-1">
+          🔁 Se ejecuta solo cada día a las 5:00 (Madrid). Pulsa el botón para forzar un refresco ahora mismo.
+        </p>
+      </div>
+
+      {/* Marketer IA: consultor de contenido con Claude Opus alimentado con las
+          métricas reales del rango + brief de marca. */}
+      <MarketerAiPanel
+        context={{
+          rangeLabel: label,
+          totals: currentTotals,
+          deltas: deltas,
+          piecesCount: piecesCurrent.length,
+          formatRows: formatRows,
+          zoneRows: zoneRows,
+          topHooks: topHooks.map((h) => ({
+            hook: h.hook,
+            format: h.format,
+            bodyZone: h.bodyZone,
+            weekTheme: h.weekTheme,
+            reach: h.reach ?? null,
+            saves: h.saves ?? null,
+            dmKeyword: h.dmKeyword ?? null,
+            conversions: h.conversions ?? null,
+            score: h.score,
+          })),
+          weeklyComparison: weeklyComparison,
+          leadMagnets: lmRows.map((lm) => ({
+            name: lm.name,
+            keyword: lm.keyword ?? "",
+            active: lm.active,
+            lastPromotedAt: lm.lastPromotedAt,
+          })),
+        }}
+      />
+
       <MetricsView
         range={range}
         rangeLabel={label}

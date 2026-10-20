@@ -1,11 +1,15 @@
+import { canManageContent } from "@/lib/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-import { canManageContent } from "@/lib/roles";
+
+function canAccess(role: string): boolean {
+  return canManageContent(role);
+}
 
 export async function POST(req: NextRequest) {
   const user = await getActiveProfessional();
-  if (!user || !canManageContent(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!user || !canAccess(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const d = await req.json();
   if (!d.date || !d.title) return NextResponse.json({ error: "date y title requeridos" }, { status: 400 });
 
@@ -26,7 +30,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const user = await getActiveProfessional();
-  if (!user || !canManageContent(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!user || !canAccess(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { id, ...rest } = await req.json();
   const update: any = {};
   if (rest.title !== undefined) update.title = rest.title;
@@ -43,7 +47,7 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const user = await getActiveProfessional();
-  if (!user || !canManageContent(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!user || !canAccess(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "missing id" }, { status: 400 });
   await prisma.calendarEvent.delete({ where: { id } });

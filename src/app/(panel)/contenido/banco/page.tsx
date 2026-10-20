@@ -1,8 +1,8 @@
+import { canUseMarketerIA } from "@/lib/marketer-access";
+import { canManageContent } from "@/lib/roles";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-import { canManageContent } from "@/lib/roles";
-import { canUseMarketerIA } from "@/lib/marketer-access";
 import { ContentNav } from "@/components/ContentNav";
 import { BankView } from "@/components/BankView";
 
@@ -28,7 +28,7 @@ export default async function BankPage({
 
   return (
     <main>
-      <ContentNav active="bank" showMarketer={canUseMarketerIA(user.email)} />
+      <ContentNav active="bank" role={user.role} showMarketer={canUseMarketerIA(user.email)} />
       <BankView
         activeTab={tab}
         ideas={ideas.map((i) => ({
@@ -54,10 +54,12 @@ export default async function BankPage({
           athleteName: c.athleteName,
           injury: c.injury,
           insight: c.insight,
+          shortSummary: (c as any).shortSummary ?? null,
           consentSigned: c.consentSigned,
           videoUrls: JSON.parse(c.videoUrls) as string[],
           notes: c.notes,
           patientId: c.patientId,
+          hasNarrative: !!((c as any).initialSituation || (c as any).process),
         }))}
         leadMagnets={leadMagnets.map((l) => ({
           id: l.id,

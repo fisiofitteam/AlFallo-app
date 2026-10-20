@@ -1,65 +1,67 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 
-function pad(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
-
-function thisMonthKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-}
-
-function shiftMonth(key: string, delta: number): string {
-  const [y, m] = key.split("-").map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-}
-
-export function DossierMonthPicker({ value }: { value: string }) {
+/**
+ * Selector de mes del Dossier. Navega actualizando ?m=YYYY-MM.
+ * También ofrece atajos "← Mes anterior · Este mes · Mes siguiente →".
+ */
+export function DossierMonthPicker({ year, month }: { year: number; month: number }) {
   const router = useRouter();
 
-  function go(next: string) {
-    const url = new URL(window.location.href);
-    url.searchParams.set("m", next);
-    router.push(url.pathname + url.search);
+  function go(y: number, m: number) {
+    const mm = String(m).padStart(2, "0");
+    router.push(`?m=${y}-${mm}`);
+  }
+
+  function prev() {
+    const m = month === 1 ? 12 : month - 1;
+    const y = month === 1 ? year - 1 : year;
+    go(y, m);
+  }
+  function next() {
+    const m = month === 12 ? 1 : month + 1;
+    const y = month === 12 ? year + 1 : year;
+    go(y, m);
+  }
+  function today() {
+    const now = new Date();
+    go(now.getFullYear(), now.getMonth() + 1);
   }
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-xl border border-neutral-200 bg-white px-1 py-1 shadow-sm">
+    <div className="flex items-center gap-1">
       <button
-        type="button"
-        onClick={() => go(shiftMonth(value, -1))}
-        className="rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
+        onClick={prev}
+        className="text-sm px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50"
         title="Mes anterior"
-        aria-label="Mes anterior"
       >
-        <ChevronLeft size={16} />
+        ←
       </button>
       <input
         type="month"
-        value={value}
-        onChange={(e) => e.target.value && go(e.target.value)}
-        className="bg-transparent px-1 py-0.5 text-sm font-medium text-neutral-800 outline-none"
+        value={`${year}-${String(month).padStart(2, "0")}`}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (/^\d{4}-\d{2}$/.test(v)) {
+            const [y, m] = v.split("-").map(Number);
+            go(y, m);
+          }
+        }}
+        className="input text-sm"
       />
       <button
-        type="button"
-        onClick={() => go(shiftMonth(value, 1))}
-        className="rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
+        onClick={next}
+        className="text-sm px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50"
         title="Mes siguiente"
-        aria-label="Mes siguiente"
       >
-        <ChevronRight size={16} />
+        →
       </button>
       <button
-        type="button"
-        onClick={() => go(thisMonthKey())}
-        className="ml-1 inline-flex items-center gap-1 rounded-lg bg-neutral-900 px-2 py-1 text-xs font-semibold text-white hover:opacity-90"
-        title="Ir al mes actual"
+        onClick={today}
+        className="text-xs font-medium px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 ml-1"
       >
-        <CalendarDays size={12} /> Este mes
+        Este mes
       </button>
     </div>
   );

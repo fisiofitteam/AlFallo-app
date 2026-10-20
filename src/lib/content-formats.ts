@@ -7,76 +7,46 @@
  * estructura de bloques se gestiona mediante ScriptTemplate (plantillas
  * de guion creadas por el usuario).
  */
+import type React from "react";
 
-export type FormatKey = "reel" | "carousel" | "infographic" | "image" | "live" | "historia";
+export type FormatKey = "reel" | "carousel" | "infographic" | "image" | "live" | "story";
 
 export const FORMATS: { value: FormatKey; label: string; icon: string }[] = [
   { value: "reel", label: "Reel", icon: "🎬" },
   { value: "carousel", label: "Carrusel", icon: "🎞️" },
+  { value: "story", label: "Historia", icon: "📱" },
   { value: "infographic", label: "Infografía", icon: "📝" },
   { value: "image", label: "Imagen/foto", icon: "📸" },
   { value: "live", label: "Directo", icon: "🔴" },
-  { value: "historia", label: "Historia", icon: "✨" },
 ];
 
 export function formatLabel(value: string): string {
-  const f = FORMATS.find((f) => f.value === value);
+  const f = FORMATS.find((f) => f.value === (value === "historia" ? "story" : value));
   if (!f) return value;
   return `${f.icon} ${f.label}`;
 }
 
 export function formatLabelOnly(value: string): string {
-  return FORMATS.find((f) => f.value === value)?.label ?? value;
-}
-
-/**
- * Extrae el "gancho" de una pieza a partir de sus blocks (JSON del guion).
- *
- * Regla: el gancho es el content del primer bloque del guion. En pieza/[id]
- * garantizamos que el primer bloque es "Gancho"; pero por robustez aquí
- * aceptamos "cualquier primer bloque no vacío". Acepta blocks como array
- * ya parseado o como string JSON crudo (así lo llaman las vistas que solo
- * seleccionan el campo blocks).
- *
- * Antes vivía en la columna `ContentPiece.hook`; ahora esa columna queda
- * como legacy y todas las lecturas nuevas van por aquí.
- */
-export function pieceHookFromBlocks(
-  blocks: string | Array<{ label?: string; content?: string }> | null | undefined,
-): string | null {
-  if (!blocks) return null;
-  let arr: Array<{ label?: string; content?: string }>;
-  if (typeof blocks === "string") {
-    try {
-      arr = JSON.parse(blocks);
-    } catch {
-      return null;
-    }
-  } else {
-    arr = blocks;
-  }
-  if (!Array.isArray(arr) || arr.length === 0) return null;
-  const content = arr[0]?.content?.trim();
-  return content && content.length > 0 ? content : null;
+  return FORMATS.find((f) => f.value === (value === "historia" ? "story" : value))?.label ?? value;
 }
 
 export function formatIcon(value: string): string {
-  return FORMATS.find((f) => f.value === value)?.icon ?? "";
+  return FORMATS.find((f) => f.value === (value === "historia" ? "story" : value))?.icon ?? "";
 }
 
 // ─── Objetivos ─────────────────────────────────────────────────────────
 
 export type GoalKey = "atraer" | "conectar" | "educar" | "convertir" | "lanzamiento";
 
-// Color category: green (atraer/conectar), yellow (educar), red (convertir/lanzamiento)
-export type GoalColor = "green" | "yellow" | "red";
+// Color category: green (atraer/conectar), yellow (educar), red (convertir), purple (lanzamiento)
+export type GoalColor = "green" | "yellow" | "red" | "purple";
 
 export const GOALS: { value: GoalKey; label: string; color: GoalColor }[] = [
   { value: "atraer", label: "Atraer", color: "green" },
   { value: "conectar", label: "Conectar", color: "green" },
   { value: "educar", label: "Educar", color: "yellow" },
   { value: "convertir", label: "Convertir", color: "red" },
-  { value: "lanzamiento", label: "Lanzamiento", color: "red" },
+  { value: "lanzamiento", label: "Lanzamiento", color: "purple" },
 ];
 
 export function goalLabel(value: string): string {
@@ -87,12 +57,79 @@ export function goalColor(value: string): GoalColor {
   return GOALS.find((g) => g.value === value)?.color ?? "yellow";
 }
 
-// Tailwind classes para etiquetas de objetivo
+// Tailwind classes para etiquetas de objetivo (chips que van encima del cuadro).
+// El rojo va un peldaño más oscuro que el resto porque su fondo también sube
+// (ver GOAL_TILE_HEX.red): sin eso, el chip se confundiría con el fondo.
 export const GOAL_COLOR_CLASSES: Record<GoalColor, string> = {
   green: "bg-emerald-100 text-emerald-800 border border-emerald-200",
   yellow: "bg-amber-100 text-amber-800 border border-amber-200",
-  red: "bg-red-100 text-red-800 border border-red-200",
+  red: "bg-red-200 text-red-900 border border-red-400",
+  purple: "bg-violet-100 text-violet-800 border border-violet-200",
 };
+
+// HEX del FONDO (tono claro) y BORDER de la pieza del calendario, por color.
+// Los usamos con inline styles para evitar problemas de Tailwind JIT purge
+// con clases dinámicas y para poder hacer gradientes con background-image.
+//
+// Nota: el rojo va un peldaño más marcado que el resto porque en piezas con
+// dos objetivos (ej. Educar + Convertir) el rojo apenas se distinguía del
+// amarillo suave; con red-100/300 sí gana presencia visual.
+export const GOAL_TILE_HEX: Record<GoalColor, { bg: string; border: string }> = {
+  green:  { bg: "#ECFDF5", border: "#A7F3D0" }, // emerald-50 / emerald-200
+  yellow: { bg: "#FEFCE8", border: "#FDE68A" }, // amber-50 / amber-200
+  red:    { bg: "#FEE2E2", border: "#F87171" }, // red-100 / red-400
+  purple: { bg: "#F5F3FF", border: "#DDD6FE" }, // violet-50 / violet-200
+};
+
+/**
+ * Devuelve el estilo inline del fondo de una pieza según sus objetivos.
+ *   - 0 goals → gris neutro (histórico).
+ *   - 1 goal  → color plano.
+ *   - 2+ goals → gradiente diagonal del color[0] al color[último].
+ * El border toma el color dominante (color[0]).
+ */
+export function goalTileStyle(goals: GoalKey[]): React.CSSProperties {
+  if (goals.length === 0) {
+    return { background: "#F5F5F5", border: "1px solid transparent" };
+  }
+  const colors = goals.map((g) => GOAL_TILE_HEX[goalColor(g)]);
+  if (colors.length === 1) {
+    return { background: colors[0].bg, border: `1px solid ${colors[0].border}` };
+  }
+  // Gradiente entre extremos. Usamos linear-gradient a 135deg — se ve bien
+  // en cuadros pequeños y respeta la diagonal de lectura izq→dcha.
+  const first = colors[0];
+  const last = colors[colors.length - 1];
+  return {
+    background: `linear-gradient(135deg, ${first.bg} 0%, ${last.bg} 100%)`,
+    border: `1px solid ${first.border}`,
+  };
+}
+
+/**
+ * Estilo específico para piezas de formato "story" (Instagram historia).
+ * Las historias son contenido efímero y volátil, así que las sacamos del
+ * código de colores por objetivo y les damos un look propio inspirado en
+ * el degradado morado→rosa→naranja de la UI de IG. Así se ven de un
+ * vistazo distinto al resto en el calendario.
+ */
+export function storyTileStyle(): React.CSSProperties {
+  return {
+    background: "linear-gradient(135deg, #833AB4 0%, #E1306C 55%, #F77737 100%)",
+    border: "1px solid #C13584",
+    color: "#FFFFFF",
+  };
+}
+
+/**
+ * Devuelve el estilo del cuadro de una pieza en el calendario. Centraliza
+ * la decisión "¿es historia o es pieza normal?" para que los componentes
+ * no tengan que repetir el if en cada punto.
+ */
+export function pieceTileStyle(format: string | null | undefined, goals: GoalKey[]): React.CSSProperties {
+  if (format === "story") return storyTileStyle();
+  return goalTileStyle(goals);
+}
 
 /**
  * Parse goals desde JSON string almacenado en BD.
@@ -139,4 +176,24 @@ export function piecePublishDate(weekStartDate: string | Date | null, dayOfWeek:
 export function piecePublishDateIso(weekStartDate: string | Date | null, dayOfWeek: number): string | null {
   const d = piecePublishDate(weekStartDate, dayOfWeek);
   return d ? d.toISOString() : null;
+}
+
+
+export function pieceHookFromBlocks(
+  blocks: string | Array<{ label?: string; content?: string }> | null | undefined,
+): string | null {
+  if (!blocks) return null;
+  let arr: Array<{ label?: string; content?: string }>;
+  if (typeof blocks === "string") {
+    try {
+      arr = JSON.parse(blocks);
+    } catch {
+      return null;
+    }
+  } else {
+    arr = blocks;
+  }
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const content = arr[0]?.content?.trim();
+  return content && content.length > 0 ? content : null;
 }

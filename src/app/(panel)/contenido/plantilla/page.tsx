@@ -1,11 +1,12 @@
+import { canUseMarketerIA } from "@/lib/marketer-access";
+import { canManageContent } from "@/lib/roles";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-import { canManageContent } from "@/lib/roles";
-import { canUseMarketerIA } from "@/lib/marketer-access";
 import { ContentNav } from "@/components/ContentNav";
 import { ScriptTemplatesManager } from "@/components/ScriptTemplatesManager";
 import { WeeklyTemplatesManager } from "@/components/WeeklyTemplatesManager";
+import { StoryTemplatesManager } from "@/components/StoryTemplatesManager";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +15,10 @@ export default async function ContentTemplatePage() {
   if (!user) redirect("/login");
   if (!canManageContent(user.role)) redirect("/");
 
-  const [scriptTemplates, weeklyTemplates] = await Promise.all([
+  const [scriptTemplates, weeklyTemplates, storyTemplates] = await Promise.all([
     prisma.scriptTemplate.findMany({ orderBy: [{ format: "asc" }, { name: "asc" }] }),
     prisma.weeklyTemplate.findMany({ orderBy: { name: "asc" } }),
+    prisma.contentStoryTemplate.findMany({ orderBy: { updatedAt: "desc" } }).catch(() => []),
   ]);
 
   const serializedScripts = scriptTemplates.map((t) => ({
@@ -36,6 +38,19 @@ export default async function ContentTemplatePage() {
     updatedAt: t.updatedAt.toISOString(),
   }));
 
+  const serializedStories = storyTemplates.map((t) => {
+    let parsed: any = {};
+    try { parsed = JSON.parse(t.jsonSlides); } catch {}
+    return {
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      slides: parsed.slides ?? [],
+      aiSlots: parsed.aiSlots ?? [],
+      updatedAt: t.updatedAt.toISOString(),
+    };
+  });
+
   const canEdit = user.role === "ceo";
 
   return (
@@ -47,11 +62,13 @@ export default async function ContentTemplatePage() {
         </p>
       </header>
 
-      <ContentNav active="template" showMarketer={canUseMarketerIA(user.email)} />
+      <ContentNav active="template" role={user.role} showMarketer={canUseMarketerIA(user.email)} />
 
       <WeeklyTemplatesManager initialTemplates={serializedWeekly} canEdit={canEdit} />
 
       <ScriptTemplatesManager initialTemplates={serializedScripts} canEdit={canEdit} />
+
+      <StoryTemplatesManager initialTemplates={serializedStories} canEdit={canEdit} />
     </main>
   );
 }

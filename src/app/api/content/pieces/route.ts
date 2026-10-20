@@ -1,50 +1,74 @@
+import { canManageContent } from "@/lib/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-import { canManageContent } from "@/lib/roles";
 
+function canAccess(role: string): boolean {
+  return canManageContent(role);
+}
+
+/**
+ * POST /api/content/pieces — crear una pieza nueva dentro de una semana.
+ * Hasta ahora solo se podían crear las 7 al crear la semana; este endpoint
+ * permite añadir piezas adicionales (más de una por día, días extra, etc).
+ *
+ * Body:
+ *  - weekId      (string, obligatorio)
+ *  - dayOfWeek   (1-7, obligatorio)
+ *  - format      (string, opcional → vacío)
+ *  - title       (string, opcional)
+ */
 export async function POST(req: NextRequest) {
   const user = await getActiveProfessional();
-  if (!user || !canManageContent(user.role)) {
+  if (!user || !canAccess(user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const data = await req.json();
-  const weekId = typeof data.weekId === "string" ? data.weekId : "";
-  const dayOfWeek = Number(data.dayOfWeek);
+  const data = await req.json().catch(() => ({}));
+  const weekId = typeof data?.weekId === "string" ? data.weekId.trim() : "";
+  const dayOfWeek = Number(data?.dayOfWeek);
   if (!weekId) return NextResponse.json({ error: "weekId requerido" }, { status: 400 });
   if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7) {
-    return NextResponse.json({ error: "dayOfWeek debe ser 1-7" }, { status: 400 });
+    return NextResponse.json({ error: "dayOfWeek debe ser 1..7" }, { status: 400 });
   }
 
-  // Format opcional. Validamos contra el catálogo para no permitir strings
-  // arbitrarios desde cliente.
-  const ALLOWED_FORMATS = ["reel", "carousel", "infographic", "image", "live", "historia"];
-  const rawFormat = typeof data.format === "string" ? data.format : "";
-  const format = ALLOWED_FORMATS.includes(rawFormat) ? rawFormat : "";
+  // Validamos que la semana exista. Aprovechamos para coger leadMagnetKeyword
+  // y prefijar dmKeyword igual que se hace al crear las 7 iniciales.
+  const week = await prisma.contentWeek.findUnique({
+    where: { id: weekId },
+    select: { id: true, leadMagnetKeyword: true },
+  });
+  if (!week) return NextResponse.json({ error: "Semana no encontrada" }, { status: 404 });
 
-  const week = await prisma.contentWeek.findUnique({ where: { id: weekId } });
-  if (!week) return NextResponse.json({ error: "Semana no existe" }, { status: 404 });
+  // Objetivos opcionales al crear (array de strings). Los filtramos
+  // contra el catálogo válido para no aceptar basura.
+  const ALLOWED_GOALS = ["atraer", "conectar", "educar", "convertir", "lanzamiento"];
+  const goalsRaw = Array.isArray(data?.goals) ? data.goals : [];
+  const goalsClean = goalsRaw
+    .map((g: unknown) => String(g))
+    .filter((g: string) => ALLOWED_GOALS.includes(g));
 
   const piece = await prisma.contentPiece.create({
     data: {
-      weekId,
+      weekId: week.id,
       dayOfWeek,
-      format,
+      format: typeof data?.format === "string" ? data.format : "",
       goal: "",
-      goals: "[]",
+      goals: JSON.stringify(goalsClean),
       ctaType: "",
       dmKeyword: week.leadMagnetKeyword ?? null,
+      title: typeof data?.title === "string" && data.title.trim() ? data.title.trim() : null,
       blocks: "[]",
       status: "idea",
     },
   });
-  return NextResponse.json({ id: piece.id });
+
+  return NextResponse.json({ ok: true, id: piece.id, piece });
 }
 
 export async function PATCH(req: NextRequest) {
   const user = await getActiveProfessional();
-  if (!user || !canManageContent(user.role)) {
+  if (!user || !canAccess(user.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -113,21 +137,4 @@ export async function PATCH(req: NextRequest) {
 
   const piece = await prisma.contentPiece.update({ where: { id }, data: update });
   return NextResponse.json(piece);
-}
-
-export async function DELETE(req: NextRequest) {
-  const user = await getActiveProfessional();
-  if (!user || !canManageContent(user.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const id = req.nextUrl.searchParams.get("id");
-  if (!id) return NextResponse.json({ error: "id requerido" }, { status: 400 });
-
-  try {
-    await prisma.contentPiece.delete({ where: { id } });
-  } catch {
-    return NextResponse.json({ error: "Pieza no encontrada" }, { status: 404 });
-  }
-  return NextResponse.json({ ok: true });
 }

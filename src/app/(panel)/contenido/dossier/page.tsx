@@ -1,17 +1,19 @@
-import Link from "next/link";
+import { canUseMarketerIA } from "@/lib/marketer-access";
+import { canManageContent } from "@/lib/roles";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-import { canManageContent } from "@/lib/roles";
-import { canUseMarketerIA } from "@/lib/marketer-access";
 import { ContentNav } from "@/components/ContentNav";
 import { DossierMonthPicker } from "@/components/DossierMonthPicker";
 import { DossierPrintButton } from "@/components/DossierPrintButton";
+import { PieceStatusInlineSelect } from "@/components/PieceStatusInlineSelect";
 import { PieceInlineText } from "@/components/PieceInlineText";
 import { PieceBlocksInlineEditor } from "@/components/PieceBlocksInlineEditor";
-import { PieceStatusInlineSelect } from "@/components/PieceStatusInlineSelect";
-import { BODY_ZONES, WEEK_TYPES, DAY_LABELS } from "@/lib/content-templates";
+import { DAY_LABELS } from "@/lib/content-templates";
 import {
+  formatLabelOnly,
+  formatIcon,
   parseGoals,
   goalColor,
   goalLabel,
@@ -20,49 +22,55 @@ import {
 } from "@/lib/content-formats";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Dossier de contenido · Al Fallo" };
 
-const MONTH_NAMES = [
-  "enero",
-  "febrero",
-  "marzo",
-  "abril",
-  "mayo",
-  "junio",
-  "julio",
-  "agosto",
-  "septiembre",
-  "octubre",
-  "noviembre",
-  "diciembre",
-];
+const STATUS_LABEL: Record<string, string> = {
+  idea: "Idea",
+  script: "Guion listo",
+  recorded: "Grabado",
+  edited: "Editado",
+  scheduled: "Programado",
+  published: "Publicado",
+};
 
-function pad(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
+const WEEK_TYPE_LABEL: Record<string, string> = {
+  educativa: "Educativa",
+  objeciones: "Objeciones",
+  lanzamiento: "Lanzamiento",
+  recuperacion: "Recuperación",
+};
 
-function parseMonthKey(raw: string | undefined): { year: number; month: number; key: string } {
+function parseMonthParam(m: string | undefined): { year: number; month: number } {
+  if (m && /^\d{4}-\d{2}$/.test(m)) {
+    const [y, mm] = m.split("-").map(Number);
+    if (mm >= 1 && mm <= 12) return { year: y, month: mm };
+  }
   const now = new Date();
-  const fallback = { year: now.getFullYear(), month: now.getMonth() + 1 };
-  if (!raw) {
-    const { year, month } = fallback;
-    return { year, month, key: `${year}-${pad(month)}` };
-  }
-  const match = /^(\d{4})-(\d{2})$/.exec(raw);
-  if (!match) {
-    const { year, month } = fallback;
-    return { year, month, key: `${year}-${pad(month)}` };
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  if (month < 1 || month > 12) {
-    return { year: fallback.year, month: fallback.month, key: `${fallback.year}-${pad(fallback.month)}` };
-  }
-  return { year, month, key: `${year}-${pad(month)}` };
+  return { year: now.getFullYear(), month: now.getMonth() + 1 };
 }
 
-function shortDate(d: Date): string {
-  return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
+function monthLabel(year: number, month: number): string {
+  const d = new Date(year, month - 1, 1);
+  const s = d.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Parsear el JSON blocks del guion. Ignora bloques vacíos.
+ */
+function parseBlocks(raw: string): Array<{ id?: string; order?: number; label: string; content: string }> {
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map((b: any) => ({
+        ...b,
+        label: String(b?.label ?? ""),
+        content: String(b?.content ?? ""),
+      }))
+;
+  } catch {
+    return [];
+  }
 }
 
 export default async function DossierPage({
@@ -74,205 +82,244 @@ export default async function DossierPage({
   if (!user) redirect("/login");
   if (!canManageContent(user.role)) redirect("/");
 
-  const { year, month, key } = parseMonthKey(searchParams.m);
-
-  // Rango del mes en UTC (ContentWeek.startDate/endDate se guardan como UTC).
+  const { year, month } = parseMonthParam(searchParams.m);
+  // Ventana del mes en UTC (mismo criterio que ContentWeek.startDate, que
+  // es un lunes 00:00 UTC). Buscamos semanas cuyo intervalo intersecte con
+  // este mes: startDate <= último día del mes AND endDate >= primer día.
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
   const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59));
 
-  // Semanas cuyo intervalo intersecta el mes: (weekStart <= monthEnd) AND (weekEnd >= monthStart).
-  const weeks = await prisma.contentWeek.findMany({
+  const rawWeeks = await prisma.contentWeek.findMany({
     where: {
-      AND: [{ startDate: { lte: monthEnd } }, { endDate: { gte: monthStart } }],
+      startDate: { lte: monthEnd },
+      endDate: { gte: monthStart },
     },
-    orderBy: [{ startDate: "asc" }],
     include: {
+      // Solo REELS — el resto de formatos (carrusel, foto, directo) no
+      // aplican al flujo grabación / drive / editor.
       pieces: {
         where: { format: "reel" },
         orderBy: [{ dayOfWeek: "asc" }, { createdAt: "asc" }],
       },
     },
+    orderBy: { startDate: "asc" },
   });
 
-  const totalReels = weeks.reduce((n, w) => n + w.pieces.length, 0);
+  // Filtrar las piezas de cada semana a las que se PUBLICAN dentro de este
+  // mes. Si una semana pisa dos meses (últ. semana de sept → primeros días
+  // de oct), sus piezas se reparten según su día real, no aparecen dobles.
+  // Semanas que queden vacías tras el filtro se descartan del dossier.
+  const weeks = rawWeeks
+    .map((w) => ({
+      ...w,
+      pieces: w.pieces.filter((p) => {
+        const d = piecePublishDate(w.startDate, p.dayOfWeek);
+        if (!d) return false;
+        return d >= monthStart && d <= monthEnd;
+      }),
+    }))
+    .filter((w) => w.pieces.length > 0);
 
   return (
     <main>
-      <ContentNav active="dossier" showMarketer={canUseMarketerIA(user.email)} />
-
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3 print:mb-3">
-        <div>
-          <h1 className="text-2xl font-bold text-neutral-900">📄 Dossier de contenido</h1>
-          <p className="mt-0.5 text-xs text-neutral-500 print:text-neutral-700">
-            Guion mensual de todos los reels. Título, guion y notas se autoguardan al escribir.
-            Solo se muestran piezas con formato <strong>reel</strong>.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 print:hidden">
-          <DossierMonthPicker value={key} />
-          <DossierPrintButton />
-        </div>
+      <header className="mb-5 print:hidden">
+        <h1 className="text-xl font-semibold">📄 Dossier de contenido</h1>
+        <p className="text-xs text-neutral-500 mt-0.5">
+          Documento vivo por mes. Se sincroniza automáticamente con la estrategia y guiones que edites en el calendario y en las fichas de cada pieza.
+        </p>
       </header>
 
-      <div className="mb-4 flex items-baseline gap-3">
-        <h2 className="text-lg font-semibold capitalize text-neutral-800">
-          {MONTH_NAMES[month - 1]} {year}
-        </h2>
-        <span className="text-xs text-neutral-500">
-          {weeks.length} {weeks.length === 1 ? "semana" : "semanas"} · {totalReels}{" "}
-          {totalReels === 1 ? "reel" : "reels"}
-        </span>
+      <div className="print:hidden">
+        <ContentNav active="dossier" role={user.role} showMarketer={canUseMarketerIA(user.email)} />
+      </div>
+
+      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap print:hidden">
+        <DossierMonthPicker year={year} month={month} />
+        <DossierPrintButton />
+      </div>
+
+      {/* Encabezado del documento (visible al imprimir) */}
+      <div className="mb-6">
+        <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-1">FisioFit Team · Dossier de contenido</div>
+        <h2 className="text-2xl font-bold">{monthLabel(year, month)}</h2>
+        <p className="text-xs text-neutral-500 mt-1">
+          {weeks.length} semana{weeks.length === 1 ? "" : "s"} · {weeks.reduce((n, w) => n + w.pieces.length, 0)} reels totales
+        </p>
       </div>
 
       {weeks.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-neutral-200 bg-neutral-50/60 p-10 text-center text-sm text-neutral-500">
-          No hay semanas planificadas que caigan en este mes.{" "}
-          <Link href="/contenido/calendario" className="text-neutral-800 underline">
-            Ir al calendario
-          </Link>{" "}
-          para crear una.
-        </div>
+        <section className="card text-center py-12 print:border-0">
+          <p className="text-sm text-neutral-500 italic">
+            Este mes no tiene semanas planificadas.
+          </p>
+          <Link
+            href="/contenido/calendario"
+            className="inline-block mt-3 text-xs font-medium text-neutral-900 underline print:hidden"
+          >
+            Ir al calendario para planificar →
+          </Link>
+        </section>
       ) : (
-        <div className="space-y-6">
-          {weeks.map((w) => {
-            const zone = BODY_ZONES.find((z) => z.value === w.bodyZone)?.label ?? w.bodyZone;
-            const type = WEEK_TYPES.find((t) => t.value === w.weekType)?.label ?? w.weekType;
+        (() => {
+          // Contador global de reels del mes, en el orden de aparición
+          // (semana asc → día asc). Se incrementa al renderizar cada pieza.
+          let reelCounter = 0;
+          return (
+        <div className="space-y-8">
+          {weeks.map((week) => {
+            const startStr = week.startDate.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+            const endStr = week.endDate.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+            const weekTypeLabel = WEEK_TYPE_LABEL[week.weekType] ?? week.weekType;
             return (
-              <section key={w.id} className="print:break-inside-avoid">
-                <header className="mb-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4 print:border-neutral-300 print:bg-white">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[10px] uppercase font-bold tracking-wider text-neutral-500">
-                        Semana {w.weekNumber} · {w.year}
-                      </p>
-                      <h3 className="mt-0.5 text-lg font-bold text-neutral-900">
-                        {w.centralTheme || "Sin tema"}
-                      </h3>
+              <section key={week.id}>
+                {/* Cabecera de semana */}
+                <div className="border-b-2 border-neutral-800 pb-2 mb-3">
+                  <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                    <h3 className="text-lg font-semibold">
+                      Semana {week.weekNumber}
+                      <span className="text-neutral-500 font-normal"> · {startStr} → {endStr}</span>
+                    </h3>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700">
+                      {weekTypeLabel}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-sm text-neutral-800">
+                    <b>Tema:</b> {week.centralTheme || <span className="italic text-neutral-400">sin tema</span>}
+                    {week.bodyZone && <span className="text-neutral-500"> · {week.bodyZone}</span>}
+                  </div>
+                  {week.leadMagnetName && (
+                    <div className="text-xs text-neutral-600 mt-0.5">
+                      🎁 Lead magnet: <b>{week.leadMagnetName}</b>
+                      {week.leadMagnetKeyword && <span> — keyword DM: <code className="bg-neutral-100 px-1 rounded">{week.leadMagnetKeyword}</code></span>}
                     </div>
-                    <p className="text-xs text-neutral-500">
-                      {shortDate(w.startDate)} → {shortDate(w.endDate)}
-                    </p>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-600">
-                    <span>{zone}</span>
-                    <span>{type}</span>
-                    {w.leadMagnetName ? (
-                      <span>
-                        Lead magnet: <strong>{w.leadMagnetName}</strong>
-                        {w.leadMagnetKeyword ? (
-                          <span className="ml-1 font-mono text-neutral-500">
-                            ({w.leadMagnetKeyword})
-                          </span>
-                        ) : null}
-                      </span>
-                    ) : null}
-                    {w.kpiName ? (
-                      <span>
-                        KPI: <strong>{w.kpiName}</strong>
-                        {w.kpiTarget != null ? ` · objetivo ${w.kpiTarget}` : ""}
-                      </span>
-                    ) : null}
-                  </div>
-                </header>
+                  )}
+                  {week.limitingBeliefs && (
+                    (() => {
+                      try {
+                        const arr = JSON.parse(week.limitingBeliefs);
+                        if (!Array.isArray(arr) || arr.length === 0) return null;
+                        return (
+                          <div className="text-xs text-neutral-600 mt-1">
+                            <b>Creencias limitantes a atacar:</b> {arr.join(" · ")}
+                          </div>
+                        );
+                      } catch { return null; }
+                    })()
+                  )}
+                </div>
 
-                {w.pieces.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-neutral-200 bg-white p-4 text-center text-xs text-neutral-400">
-                    Sin reels en esta semana. Añádelos desde el calendario o desde la ficha de la semana.
+                {/* Piezas de la semana */}
+                {week.pieces.length === 0 ? (
+                  <p className="text-sm text-neutral-400 italic ml-1">
+                    Sin reels planificados esta semana.
                   </p>
                 ) : (
                   <div className="space-y-4">
-                    {w.pieces.map((p, i) => {
-                      const publishDate = piecePublishDate(w.startDate, p.dayOfWeek);
+                    {week.pieces.map((p) => {
                       const goals = parseGoals(p.goals);
+                      const blocks = parseBlocks(p.blocks);
+                      const publishDate = piecePublishDate(week.startDate, p.dayOfWeek);
+                      const publishStr = publishDate
+                        ? publishDate.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "short" })
+                        : DAY_LABELS[p.dayOfWeek];
+                      const fmtLabel = formatLabelOnly(p.format);
+                      const fmtIcon = formatIcon(p.format);
+                      const displayTitle = p.title?.trim() || fmtLabel;
+                      // Como solo mostramos reels, el contador es continuo y
+                      // no distingue formato. Empieza en 1.
+                      reelCounter += 1;
+                      const reelLabel = `Reel ${reelCounter}`;
                       return (
                         <article
                           key={p.id}
-                          className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm print:break-inside-avoid print:border-neutral-300 print:shadow-none"
+                          className="border border-neutral-200 rounded-lg p-4 print:break-inside-avoid print:border-neutral-300"
                         >
-                          <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[10px] uppercase font-bold tracking-wider text-neutral-400">
-                                Reel {i + 1} · {DAY_LABELS[p.dayOfWeek]}
-                              </p>
-                              <PieceInlineText
-                                pieceId={p.id}
-                                field="title"
-                                initial={p.title}
-                                placeholder="Título del reel"
-                                variant="title"
-                                className="mt-0.5"
-                              />
+                          {/* Header de la pieza */}
+                          <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
+                            <div className="flex items-baseline gap-2 flex-wrap flex-1 min-w-0">
+                              <span
+                                className="text-sm font-bold px-2 py-0.5 rounded shrink-0"
+                                style={{ background: "#1E3A8A", color: "#FAFAFA", letterSpacing: "0.02em" }}
+                              >
+                                {reelLabel}
+                              </span>
+                              <span className="shrink-0">{fmtIcon}</span>
+                              <div className="flex-1 min-w-0">
+                                <PieceInlineText
+                                  pieceId={p.id}
+                                  field="title"
+                                  initialValue={p.title ?? ""}
+                                  placeholder={fmtLabel}
+                                  as="h4"
+                                  className="text-base font-semibold"
+                                />
+                              </div>
                             </div>
-                            <div className="flex flex-col items-end gap-1">
-                              {publishDate ? (
-                                <span className="text-xs text-neutral-500">
-                                  📅 {shortDate(publishDate)}
-                                </span>
-                              ) : null}
-                              <PieceStatusInlineSelect pieceId={p.id} status={p.status} />
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs font-medium text-neutral-700 capitalize">
+                                📅 {publishStr}
+                              </span>
+                              <PieceStatusInlineSelect pieceId={p.id} initialStatus={p.status} />
                             </div>
                           </div>
 
-                          {goals.length > 0 ? (
-                            <div className="mb-3 flex flex-wrap gap-1">
+                          {goals.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-2">
                               {goals.map((g) => (
-                                <span
-                                  key={g}
-                                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${GOAL_COLOR_CLASSES[goalColor(g)]}`}
-                                >
+                                <span key={g} className={`text-[10px] px-1.5 py-0.5 rounded ${GOAL_COLOR_CLASSES[goalColor(g)]}`}>
                                   {goalLabel(g)}
                                 </span>
                               ))}
                             </div>
-                          ) : null}
+                          )}
 
-                          <div className="mb-4">
-                            <PieceBlocksInlineEditor pieceId={p.id} initial={parseBlocks(p.blocks)} />
+                          <div className="mb-2">
+                            <PieceBlocksInlineEditor pieceId={p.id} initialBlocks={blocks} />
                           </div>
 
-                          {(p.recordingLocation || p.recordingOutfit || p.recordingMaterial) ? (
-                            <div className="mb-4 rounded-lg border border-neutral-100 bg-neutral-50/60 p-3 text-xs text-neutral-600 print:border-neutral-200">
-                              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                                Producción
-                              </p>
-                              <ul className="space-y-0.5">
-                                {p.recordingLocation ? <li>📍 {p.recordingLocation}</li> : null}
-                                {p.recordingOutfit ? <li>👕 {p.recordingOutfit}</li> : null}
-                                {p.recordingMaterial ? <li>🎒 {p.recordingMaterial}</li> : null}
+                          {p.recordingInstructions && (
+                            <div className="text-xs text-neutral-700 mb-2 whitespace-pre-wrap">
+                              <div className="text-[10px] uppercase tracking-wide text-neutral-500 mb-0.5">Instrucciones de grabación</div>
+                              {p.recordingInstructions}
+                            </div>
+                          )}
+
+                          {(p.recordingLocation || p.recordingOutfit || p.recordingMaterial) && (
+                            <div className="text-xs text-neutral-700 mb-1">
+                              <div className="text-[10px] uppercase tracking-wide text-neutral-500 mb-0.5">Producción</div>
+                              <ul className="pl-4 list-disc space-y-0.5">
+                                {p.recordingLocation && <li>📍 {p.recordingLocation}</li>}
+                                {p.recordingOutfit && <li>👕 {p.recordingOutfit}</li>}
+                                {p.recordingMaterial && <li>🎒 {p.recordingMaterial}</li>}
                               </ul>
                             </div>
-                          ) : null}
+                          )}
 
-                          <div className="mb-3">
-                            <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-neutral-500">
-                              Notas para editor
-                            </p>
+                          <div className="text-xs text-neutral-700 mb-1">
+                            <div className="text-[10px] uppercase tracking-wide text-neutral-500 mb-0.5">Notas para editor</div>
                             <PieceInlineText
                               pieceId={p.id}
                               field="editorNotes"
-                              initial={p.editorNotes}
-                              placeholder="Instrucciones específicas para el editor…"
+                              initialValue={p.editorNotes ?? ""}
+                              placeholder="Añade notas para el editor…"
+                              as="p"
+                              className="text-neutral-800 whitespace-pre-wrap text-xs"
                             />
                           </div>
 
-                          {p.finalFileUrl ? (
-                            <p className="mb-2 text-xs text-neutral-600">
-                              <span className="text-neutral-400">Archivo final:</span>{" "}
-                              <a
-                                href={p.finalFileUrl}
-                                className="text-blue-600 underline"
-                                target="_blank"
-                                rel="noreferrer"
-                              >
+                          {p.finalFileUrl && (
+                            <div className="text-xs mt-1">
+                              <b>Archivo final:</b>{" "}
+                              <a href={p.finalFileUrl} target="_blank" rel="noreferrer" className="underline text-blue-700 break-all">
                                 {p.finalFileUrl}
                               </a>
-                            </p>
-                          ) : null}
+                            </div>
+                          )}
 
-                          <div className="mt-3 flex justify-end border-t border-neutral-100 pt-2 text-xs print:hidden">
+                          <div className="mt-2 pt-2 border-t border-neutral-100 print:hidden">
                             <Link
                               href={`/contenido/pieza/${p.id}`}
-                              className="text-neutral-500 hover:text-neutral-900"
+                              className="text-[11px] text-neutral-500 hover:text-neutral-900"
                             >
                               Editar pieza →
                             </Link>
@@ -286,16 +333,9 @@ export default async function DossierPage({
             );
           })}
         </div>
+          );
+        })()
       )}
     </main>
   );
-}
-
-function parseBlocks(raw: string | null | undefined): unknown {
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
 }

@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   // con el shape del editor de piezas ({id, label, content, order}) para que
   // el creador humano encuentre el guion ya redactado en /contenido/pieza/[id].
   type Block = { id: string; label: string; content: string; order: number };
-  const scriptRaw: unknown[] = Array.isArray(pieceIn.script) ? pieceIn.script : [];
+  const scriptRaw: unknown[] = Array.isArray(pieceIn.blocks) ? pieceIn.blocks : Array.isArray(pieceIn.script) ? pieceIn.script : [];
   const blocks: Block[] = scriptRaw
     .map((b, i): Block | null => {
       if (!b || typeof b !== "object") return null;

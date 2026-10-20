@@ -88,3 +88,49 @@ body {
     @apply bg-primary-soft text-primary hover:opacity-80;
   }
 }
+
+
+/* Original FisioFit content styles, scoped to this module. */
+.content-panel { color: #0A0A0A; font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; letter-spacing: -0.011em; }
+.content-panel :is(h1,h2,h3,h4,h5) { letter-spacing: -0.025em; }
+@layer components {
+:where(.content-panel) .btn {
+    @apply px-4 py-2 rounded-lg text-sm font-medium border transition-all;
+    display: inline-block; gap: normal; align-items: normal; justify-content: normal;
+  }
+  :where(.content-panel) .btn-primary {
+    @apply bg-neutral-900 text-white border-neutral-900 hover:bg-neutral-800;
+  }
+  :where(.content-panel) .btn-accent {
+    @apply bg-amber-400 text-neutral-900 border-amber-400 hover:bg-amber-500 hover:border-amber-500 font-semibold;
+  }
+  :where(.content-panel) .btn-ghost {
+    @apply bg-transparent border-neutral-200 hover:bg-neutral-50;
+  }
+  :where(.content-panel) .card {
+    @apply bg-white border border-neutral-200 rounded-xl p-4;
+  }
+  :where(.content-panel) .input {
+    @apply w-full px-3 py-2 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900;
+  }
+  :where(.content-panel) .pill-ok {
+    @apply bg-emerald-50 text-emerald-800 text-xs px-2 py-0.5 rounded-full font-medium;
+  }
+  :where(.content-panel) .pill-warn {
+    @apply bg-amber-50 text-amber-800 text-xs px-2 py-0.5 rounded-full font-medium;
+  }
+  :where(.content-panel) .pill-block {
+    @apply bg-red-50 text-red-800 text-xs px-2 py-0.5 rounded-full font-medium;
+  }
+}
+/* FisioFit uses Tailwind's original radii in its content panel. */
+@layer components {
+  :where(.content-panel) .card { border-radius: 0.75rem; }
+}
+@layer utilities {
+  :where(.content-panel) .rounded-xl { border-radius: 0.75rem; }
+  :where(.content-panel) .rounded-2xl { border-radius: 1rem; }
+}
+@layer components {
+  :where(.content-panel) .input { background-color: revert; }
+}

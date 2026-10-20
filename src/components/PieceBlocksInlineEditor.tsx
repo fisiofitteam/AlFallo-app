@@ -1,167 +1,195 @@
 "use client";
-
+/**
+ * Editor inline del guion (blocks) de una pieza, para el dossier.
+ *
+ * Cada bloque tiene {label, content}. El editor:
+ *  - Muestra los bloques como en el dossier (label bold + content plano).
+ *  - Al hacer click sobre label o content los convierte en <input>/<textarea>.
+ *  - Autosize del content.
+ *  - Autosave con debounce 800ms enviando el ARRAY completo de blocks
+ *    (evitamos merge de PATCH parciales — sencillez > eficiencia dado que
+ *    los blocks nunca crecen a MB).
+ *  - "+ Añadir bloque" al final; "×" al lado de cada bloque para borrarlo.
+ *  - Al imprimir: texto plano tal cual, sin controles.
+ */
 import { useEffect, useRef, useState } from "react";
-import { Check, Loader2, Plus, X } from "lucide-react";
 
-export type PieceBlock = {
-  id?: string;
-  label: string;
-  content: string;
-};
-
-function autosize(el: HTMLTextAreaElement) {
-  el.style.height = "auto";
-  el.style.height = `${el.scrollHeight}px`;
-}
-
-function newId(): string {
-  return Math.random().toString(36).slice(2, 10);
-}
-
-function normalize(raw: unknown): PieceBlock[] {
-  if (!Array.isArray(raw)) return [];
-  const out: PieceBlock[] = [];
-  raw.forEach((b, i) => {
-    if (!b || typeof b !== "object") return;
-    const o = b as Record<string, unknown>;
-    out.push({
-      id: typeof o.id === "string" ? o.id : newId(),
-      label: typeof o.label === "string" ? o.label : `Plano ${i + 1}`,
-      content: typeof o.content === "string" ? o.content : "",
-    });
-  });
-  return out;
-}
+type Block = { id?: string; order?: number; label: string; content: string };
 
 export function PieceBlocksInlineEditor({
   pieceId,
-  initial,
+  initialBlocks,
 }: {
   pieceId: string;
-  initial: unknown;
+  initialBlocks: Block[];
 }) {
-  const [blocks, setBlocks] = useState<PieceBlock[]>(() => normalize(initial));
-  const [saving, setSaving] = useState<"idle" | "pending" | "ok" | "err">("idle");
-  const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [blocks, setBlocks] = useState<Block[]>(initialBlocks);
+  const [saved, setSaved] = useState<Block[]>(initialBlocks);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function flush(next: PieceBlock[]) {
-    setSaving("pending");
+  async function flush(next: Block[]) {
+    if (JSON.stringify(next) === JSON.stringify(saved)) return;
+    setStatus("saving");
     try {
-      const res = await fetch("/api/content/pieces", {
+      const r = await fetch("/api/content/pieces", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: pieceId, blocks: next }),
       });
-      if (!res.ok) throw new Error("bad");
-      setSaving("ok");
-      setTimeout(() => setSaving("idle"), 1200);
+      if (!r.ok) throw new Error("save-failed");
+      setSaved(next);
+      setStatus("saved");
+      setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1200);
     } catch {
-      setSaving("err");
-      setTimeout(() => setSaving("idle"), 2500);
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 2000);
     }
   }
 
-  function scheduleSave(next: PieceBlock[]) {
+  function schedule(next: Block[]) {
     setBlocks(next);
-    if (pendingTimer.current) clearTimeout(pendingTimer.current);
-    pendingTimer.current = setTimeout(() => flush(next), 800);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => flush(next), 800);
   }
 
-  function onBlurAny() {
-    if (pendingTimer.current) {
-      clearTimeout(pendingTimer.current);
-      pendingTimer.current = null;
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  function updateLabel(i: number, label: string) {
+    const next = blocks.map((b, k) => (k === i ? { ...b, label } : b));
+    schedule(next);
+  }
+  function updateContent(i: number, content: string) {
+    const next = blocks.map((b, k) => (k === i ? { ...b, content } : b));
+    schedule(next);
+  }
+  function remove(i: number) {
+    const next = blocks.filter((_, k) => k !== i);
+    schedule(next);
+  }
+  function add() {
+    // Auto-label "Plano N" siguiendo la convención del marketer/reels.
+    const nextIndex = blocks.length + 1;
+    const next = [...blocks, { id: crypto.randomUUID(), order: blocks.length, label: `Plano ${nextIndex}`, content: "" }];
+    schedule(next);
+  }
+  function flushNow() {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
     }
     flush(blocks);
   }
 
-  function updateBlock(idx: number, patch: Partial<PieceBlock>) {
-    const next = blocks.map((b, i) => (i === idx ? { ...b, ...patch } : b));
-    scheduleSave(next);
-  }
-
-  function addBlock() {
-    const label = `Plano ${blocks.length + 1}`;
-    scheduleSave([...blocks, { id: newId(), label, content: "" }]);
-  }
-
-  function removeBlock(idx: number) {
-    scheduleSave(blocks.filter((_, i) => i !== idx));
-  }
-
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">Guion</p>
-        <span className="flex items-center gap-1 text-[10px] text-neutral-400 print:hidden">
-          {saving === "pending" ? (
-            <>
-              <Loader2 size={10} className="animate-spin" /> guardando…
-            </>
-          ) : saving === "ok" ? (
-            <>
-              <Check size={10} className="text-emerald-500" /> guardado
-            </>
-          ) : saving === "err" ? (
-            <>
-              <X size={10} className="text-red-500" /> error
-            </>
-          ) : null}
-        </span>
+    <>
+      {/* Print: sólo texto */}
+      <div className="hidden print:block space-y-2">
+        {saved.map((b, i) => (
+          <div key={i} className="text-sm">
+            {b.label && (
+              <div className="text-[12px] font-bold uppercase tracking-wide" style={{ color: "#172554" }}>
+                {b.label}
+              </div>
+            )}
+            {b.content && <div className="text-neutral-800 whitespace-pre-wrap">{b.content}</div>}
+          </div>
+        ))}
       </div>
 
-      {blocks.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-3 py-2 text-xs text-neutral-400 print:hidden">
-          Sin guion todavía. Añade el primer plano abajo.
-        </p>
-      ) : null}
-
-      {blocks.map((b, i) => (
-        <div
-          key={b.id ?? i}
-          className="rounded-lg border border-neutral-200 bg-white p-2 print:border-neutral-300"
-        >
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={b.label}
-              onChange={(e) => updateBlock(i, { label: e.target.value })}
-              onBlur={onBlurAny}
-              className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-[11px] font-bold uppercase tracking-wider text-neutral-600 outline-none focus:border-neutral-200 focus:bg-white"
-            />
-            <button
-              type="button"
-              onClick={() => removeBlock(i)}
-              title="Borrar bloque"
-              className="rounded p-1 text-neutral-400 hover:bg-red-50 hover:text-red-600 print:hidden"
-            >
-              <X size={12} />
-            </button>
-          </div>
-          <textarea
-            rows={2}
-            value={b.content}
-            onChange={(e) => {
-              updateBlock(i, { content: e.target.value });
-              autosize(e.currentTarget);
-            }}
-            ref={(el) => {
-              if (el) autosize(el);
-            }}
-            onBlur={onBlurAny}
-            placeholder="Idea del plano…"
-            className="mt-1 w-full resize-none rounded border border-transparent bg-transparent px-1 py-0.5 text-sm text-neutral-800 outline-none focus:border-neutral-200 focus:bg-white print:border-transparent print:bg-transparent"
-          />
+      {/* Editable en pantalla */}
+      <div className="print:block space-y-2 hidden">{null}</div>
+      <div className="space-y-2 print:hidden">
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] uppercase tracking-wide text-neutral-500">Guion</div>
+          <span className="text-[9px] text-neutral-400 select-none">
+            {status === "saving" && "guardando…"}
+            {status === "saved" && <span className="text-emerald-600">✓ guardado</span>}
+            {status === "error" && <span className="text-red-600">✕ error</span>}
+          </span>
         </div>
-      ))}
+        {blocks.length === 0 ? (
+          <p className="text-xs text-neutral-400 italic">Sin guion aún.</p>
+        ) : (
+          blocks.map((b, i) => (
+            <BlockRow
+              key={i}
+              block={b}
+              onLabel={(v) => updateLabel(i, v)}
+              onContent={(v) => updateContent(i, v)}
+              onRemove={() => remove(i)}
+              onBlur={flushNow}
+            />
+          ))
+        )}
+        <button
+          type="button"
+          onClick={add}
+          className="text-[11px] text-neutral-500 hover:text-neutral-900 transition-colors"
+        >
+          + Añadir bloque
+        </button>
+      </div>
+    </>
+  );
+}
 
-      <button
-        type="button"
-        onClick={addBlock}
-        className="inline-flex items-center gap-1 rounded-lg border border-dashed border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-500 hover:border-neutral-500 hover:text-neutral-800 print:hidden"
-      >
-        <Plus size={12} /> Añadir bloque
-      </button>
+function BlockRow({
+  block,
+  onLabel,
+  onContent,
+  onRemove,
+  onBlur,
+}: {
+  block: Block;
+  onLabel: (v: string) => void;
+  onContent: (v: string) => void;
+  onRemove: () => void;
+  onBlur: () => void;
+}) {
+  const ta = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const el = ta.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = el.scrollHeight + "px";
+  }, [block.content]);
+
+  return (
+    <div className="group relative pl-2 border-l-2 border-transparent hover:border-neutral-200 transition-colors">
+      <div className="flex items-center gap-2">
+        <input
+          value={block.label}
+          onChange={(e) => onLabel(e.target.value)}
+          onBlur={onBlur}
+          placeholder="Etiqueta (Plano 1, hook…)"
+          className="text-[12px] font-bold uppercase tracking-wide bg-transparent border-none focus:outline-none focus:bg-neutral-50 rounded px-1 -mx-1 hover:bg-neutral-50/60 flex-1 min-w-0"
+          style={{ color: "#172554" }}
+        />
+        <button
+          type="button"
+          onClick={() => {
+            if (confirm("¿Borrar este bloque del guion?")) onRemove();
+          }}
+          className="text-[10px] text-neutral-300 opacity-0 group-hover:opacity-100 hover:text-red-600 transition-all px-1"
+          title="Borrar bloque"
+        >
+          ×
+        </button>
+      </div>
+      <textarea
+        ref={ta}
+        value={block.content}
+        onChange={(e) => onContent(e.target.value)}
+        onBlur={onBlur}
+        placeholder="Idea del plano…"
+        rows={1}
+        className="text-sm text-neutral-800 whitespace-pre-wrap bg-transparent resize-none focus:outline-none focus:bg-neutral-50 rounded px-1 -mx-1 hover:bg-neutral-50/60 w-full"
+      />
     </div>
   );
 }

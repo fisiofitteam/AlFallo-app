@@ -1,16 +1,19 @@
 "use client";
 
-import { Printer } from "lucide-react";
-
+/**
+ * Botón "Imprimir / PDF" del dossier. Usa window.print() — el navegador
+ * ofrece "Guardar como PDF" en el diálogo, así que sirve tanto para papel
+ * como para descargar. Los estilos print: de Tailwind ocultan el navegador
+ * y ajustan saltos de página por semana.
+ */
 export function DossierPrintButton() {
   return (
     <button
-      type="button"
       onClick={() => window.print()}
-      className="inline-flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-sm hover:bg-neutral-50 print:hidden"
-      title="Imprimir o exportar a PDF"
+      className="text-xs font-medium px-3 py-2 rounded-lg"
+      style={{ background: "#0A0A0A", color: "#FAFAFA" }}
     >
-      <Printer size={14} /> Imprimir
+      🖨️ Imprimir / PDF
     </button>
   );
 }

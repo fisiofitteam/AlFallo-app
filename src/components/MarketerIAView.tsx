@@ -1,13 +1,31 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { Loader2, Paperclip, X } from "lucide-react";
-import { upload } from "@vercel/blob/client";
-import { isoWeekFromDate } from "@/lib/content-templates";
+// (import intencionalmente en su sitio; el Link se usa en la lista de piezas
+// cuando ya han sido añadidas al calendario, para abrir su ficha de edición)
+import {
+  FORMATS,
+  GOALS,
+  GOAL_COLOR_CLASSES,
+  goalColor,
+  formatIcon,
+  formatLabelOnly,
+  type GoalKey,
+} from "@/lib/content-formats";
+import { DAY_LABELS, isoWeekFromDate } from "@/lib/content-templates";
 
-type GoalKey = "atraer" | "conectar" | "educar" | "convertir" | "lanzamiento";
-type ScriptBlock = { label: string; content: string };
+/**
+ * Marketer IA: panel izq (brief) → panel dcha (estrategia propuesta) con
+ * botones para añadir piezas concretas al calendario. Sin persistencia
+ * de sesión (el CEO no guarda el brief, cada tirada es de usar y tirar).
+ */
+
+type MarketerBlock = {
+  label: string;
+  content: string;
+};
+
 type Piece = {
   dayOfWeek: number;
   format: string;
@@ -15,8 +33,9 @@ type Piece = {
   hook: string;
   goals: GoalKey[];
   rationale: string;
-  script?: ScriptBlock[];
+  blocks?: MarketerBlock[];
 };
+
 type Week = {
   weekOffset: number;
   centralTheme: string;
@@ -25,31 +44,60 @@ type Week = {
   limitingBeliefs?: string[];
   pieces: Piece[];
 };
-type Result = { strategy: string; weeks: Week[] };
 
-const DAY_LABELS = ["", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+type Result = {
+  strategy: string;
+  weeks: Week[];
+  warning?: string | null;
+};
 
+const WEEK_TYPE_LABEL: Record<string, string> = {
+  educativa: "Educativa",
+  objeciones: "Objeciones",
+  lanzamiento: "Lanzamiento",
+  recuperacion: "Recuperación",
+};
+
+/**
+ * Devuelve el próximo lunes desde hoy en UTC. Base por defecto cuando el
+ * CEO no elige "empezar semana del...".
+ */
 function nextMondayUtc(): Date {
   const now = new Date();
   const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-  const dow = d.getUTCDay();
+  const dow = d.getUTCDay(); // 0=Dom .. 6=Sab
   const daysUntilMonday = dow === 1 ? 7 : (8 - dow) % 7 || 7;
   d.setUTCDate(d.getUTCDate() + daysUntilMonday);
   return d;
 }
+
+/**
+ * Formatea un Date como "YYYY-MM-DD" para input type="date".
+ */
 function toDateInputValue(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(
-    d.getUTCDate(),
-  ).padStart(2, "0")}`;
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
+
+/**
+ * Dado un YYYY-MM-DD, devuelve el LUNES de esa semana ISO en UTC.
+ * El CEO puede elegir cualquier fecha; snappeamos al lunes para que la
+ * base sea siempre un inicio de semana.
+ */
 function snapToMondayUtc(iso: string): Date {
   const [y, m, d] = iso.split("-").map(Number);
   const day = new Date(Date.UTC(y, m - 1, d));
-  const dow = day.getUTCDay();
+  const dow = day.getUTCDay(); // 0=Dom
   const backToMonday = dow === 0 ? 6 : dow - 1;
   day.setUTCDate(day.getUTCDate() - backToMonday);
   return day;
 }
+
+/**
+ * Suma `offset` semanas al lunes base y devuelve el Date resultante.
+ */
 function mondayForOffset(baseMonday: Date, offset: number): Date {
   const d = new Date(baseMonday);
   d.setUTCDate(d.getUTCDate() + offset * 7);
@@ -59,51 +107,40 @@ function mondayForOffset(baseMonday: Date, offset: number): Date {
 export function MarketerIAView() {
   const [brief, setBrief] = useState("");
   const [targetDate, setTargetDate] = useState("");
-  const [startWeek, setStartWeek] = useState(() => toDateInputValue(nextMondayUtc()));
+  // Semana de inicio de la estrategia. Por defecto, el próximo lunes desde
+  // hoy. El input se snappea al lunes automáticamente si el CEO elige otro
+  // día. Se envía al backend y se usa para posicionar todas las weekOffset.
+  const [startWeek, setStartWeek] = useState<string>(() => toDateInputValue(nextMondayUtc()));
   const [weeksAhead, setWeeksAhead] = useState(2);
   const [mixReel, setMixReel] = useState(3);
   const [mixCarousel, setMixCarousel] = useState(1);
   const [mixInfographic, setMixInfographic] = useState(0);
   const [mixImage, setMixImage] = useState(0);
   const [mixLive, setMixLive] = useState(0);
+  // Si el CEO desactiva este toggle, la IA solo devuelve hook + título + goals
+  // por pieza, sin expandir los 4 bloques del guion. Sirve para hacer una
+  // tirada rápida de ideas cuando el guion lo va a redactar él a mano.
+  const [includeScript, setIncludeScript] = useState(true);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
-  const [added, setAdded] = useState<Record<string, string>>({});
-
-  // PDF opcional de referencia para ESTA generación (no se persiste).
-  const [attachment, setAttachment] = useState<{ url: string; name: string } | null>(null);
-  const [uploadingPdf, setUploadingPdf] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const pdfInputRef = useRef<HTMLInputElement>(null);
-
-  async function handlePdfSelected(file: File | null) {
-    if (!file) return;
-    setUploadError(null);
-    setUploadingPdf(true);
-    try {
-      const key = `marketer-oneoff/${Date.now()}-${file.name}`;
-      const blob = await upload(key, file, {
-        access: "public",
-        handleUploadUrl: "/api/biblioteca/upload-doc",
-      });
-      setAttachment({ url: blob.url, name: file.name });
-    } catch (e) {
-      setUploadError((e as Error).message || "No se pudo subir el PDF.");
-    } finally {
-      setUploadingPdf(false);
-      if (pdfInputRef.current) pdfInputRef.current.value = "";
-    }
-  }
-
-  function removeAttachment() {
-    setAttachment(null);
-  }
+  // PDF adjunto opcional (plan trimestral, brand book, resultados…).
+  // Se convierte a base64 en cliente y se manda en el body; NO se guarda
+  // persistente — se usa solo para esta tirada.
+  const [pdfData, setPdfData] = useState<string | null>(null);
+  const [pdfName, setPdfName] = useState<string | null>(null);
+  const [pdfSizeKb, setPdfSizeKb] = useState<number | null>(null);
+  // 4 MB es el techo cómodo: en base64 el body sube a ~5.4 MB, dentro
+  // del límite estándar de request de Vercel (4.5 MB no aplica porque
+  // el body ya viene JSON, pero mantenemos margen).
+  const PDF_MAX_MB = 4;
+  // Estado de "añadida al calendario" por índice compuesto weekOffset|dayOfWeek|posicion
+  const [added, setAdded] = useState<Record<string, string>>({}); // key → pieceId
 
   async function generate() {
     if (brief.trim().length < 10) {
-      setError("Escribe un brief más detallado");
+      setError("Escribe un brief más detallado (mínimo 10 caracteres)");
       return;
     }
     setBusy(true);
@@ -126,19 +163,23 @@ export function MarketerIAView() {
           startWeek: toDateInputValue(snapToMondayUtc(startWeek)),
           weeksAhead,
           piecesPerWeek: Object.keys(piecesPerWeek).length > 0 ? piecesPerWeek : undefined,
-          attachment: attachment ?? undefined,
+          includeScript,
+          pdfBase64: pdfData || undefined,
+          pdfName: pdfName || undefined,
         }),
       });
-      // Parseo defensivo: si Vercel devuelve HTML por timeout, .json() peta.
+      // Parseo defensivo: si el server devuelve texto plano (timeout de
+      // Vercel, error de infraestructura) el .json() peta con "Unexpected
+      // token 'A'…". Leemos texto y probamos a parsear a mano.
       const raw = await r.text();
-      let d: { ok?: boolean; strategy?: string; weeks?: Week[]; error?: string };
+      let d: any;
       try {
         d = JSON.parse(raw);
       } catch {
         setError(
           r.status === 504
-            ? "La IA tardó demasiado (>5 min). Prueba menos semanas."
-            : `Respuesta no válida (${r.status}): ${raw.slice(0, 200)}`,
+            ? "La IA tardó demasiado (>5 min). Prueba con menos semanas o brief más corto."
+            : `Respuesta no válida del servidor (${r.status}): ${raw.slice(0, 200)}`,
         );
         return;
       }
@@ -146,9 +187,9 @@ export function MarketerIAView() {
         setError(d?.error || `Error ${r.status}`);
         return;
       }
-      setResult({ strategy: d.strategy ?? "", weeks: d.weeks ?? [] });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Error inesperado");
+      setResult({ strategy: d.strategy, weeks: d.weeks.map((week: Week) => ({ ...week, pieces: week.pieces.map((piece: Piece & { script?: MarketerBlock[] }) => ({ ...piece, blocks: piece.blocks ?? piece.script })) })), warning: d.warning ?? null });
+    } catch (e: any) {
+      setError(e?.message || "Error inesperado");
     } finally {
       setBusy(false);
     }
@@ -156,6 +197,7 @@ export function MarketerIAView() {
 
   async function addPiece(week: Week, piece: Piece, key: string) {
     if (added[key]) return;
+    // Marcar optimista para bloquear doble click.
     setAdded((p) => ({ ...p, [key]: "loading" }));
     try {
       const baseMonday = snapToMondayUtc(startWeek);
@@ -173,14 +215,7 @@ export function MarketerIAView() {
             weekType: week.weekType,
             limitingBeliefs: week.limitingBeliefs ?? [],
           },
-          piece: {
-            dayOfWeek: piece.dayOfWeek,
-            format: piece.format,
-            title: piece.title,
-            hook: piece.hook,
-            goals: piece.goals,
-            script: piece.script ?? [],
-          },
+          piece,
         }),
       });
       const d = await r.json();
@@ -194,13 +229,13 @@ export function MarketerIAView() {
         return;
       }
       setAdded((p) => ({ ...p, [key]: d.pieceId }));
-    } catch (e: unknown) {
+    } catch (e: any) {
       setAdded((p) => {
         const n = { ...p };
         delete n[key];
         return n;
       });
-      alert(e instanceof Error ? e.message : "Error inesperado");
+      alert(e?.message || "Error inesperado");
     }
   }
 
@@ -217,247 +252,348 @@ export function MarketerIAView() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
-      {/* Panel izq: brief + params */}
-      <aside className="space-y-3">
+    <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-4">
+      {/* Panel izq: brief */}
+      <aside className="card space-y-3 self-start lg:sticky lg:top-4">
         <div>
-          <label className="text-xs font-medium text-muted">Brief</label>
+          <label className="text-xs text-neutral-600 block mb-1">Brief / prompt</label>
           <textarea
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-surface p-2 text-sm"
-            style={{ minHeight: 180 }}
-            placeholder='Ej. "Lanzamiento de Performance el 15 de octubre. 2 semanas antes ataco el mito de que hay que quitar hidratos para definir, y en la semana de lanzamiento saco 2 testimonios reales."'
+            className="w-full text-sm p-2 rounded-lg"
+            style={{ border: "1px solid #E5E5E5", minHeight: 160 }}
+            placeholder='Ej. "Lanzamiento del programa CONSOLIDA el 15 de octubre. Quiero 2 semanas educativas atacando el mito de que hay que descansar cuando duele el hombro, y luego una semana de lanzamiento con testimonios."'
             disabled={busy}
           />
         </div>
+
         <div>
-          <label className="text-xs font-medium text-muted">Empezar semana del…</label>
+          <label className="text-xs text-neutral-600 block mb-1">PDF de apoyo (opcional)</label>
+          {pdfData ? (
+            <div
+              className="flex items-center justify-between gap-2 p-2 rounded-lg text-xs"
+              style={{ border: "1px solid #E5E5E5", background: "#FAFAFA" }}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="font-medium truncate">📄 {pdfName}</div>
+                {pdfSizeKb != null && (
+                  <div className="text-[10px] text-neutral-500">
+                    {pdfSizeKb >= 1024 ? `${(pdfSizeKb / 1024).toFixed(1)} MB` : `${pdfSizeKb} KB`}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setPdfData(null); setPdfName(null); setPdfSizeKb(null); }}
+                disabled={busy}
+                className="text-xs text-red-600"
+              >
+                ✕ Quitar
+              </button>
+            </div>
+          ) : (
+            <label
+              className="block text-xs cursor-pointer p-2 rounded-lg text-center"
+              style={{ border: "1px dashed #D4D4D4", color: "#525252" }}
+            >
+              <span>📎 Adjuntar PDF (máx {PDF_MAX_MB} MB)</span>
+              <input
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                disabled={busy}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  if (file.type !== "application/pdf") {
+                    setError("El archivo debe ser un PDF.");
+                    return;
+                  }
+                  if (file.size > PDF_MAX_MB * 1024 * 1024) {
+                    setError(`El PDF supera los ${PDF_MAX_MB} MB.`);
+                    return;
+                  }
+                  const buf = await file.arrayBuffer();
+                  // btoa acepta binario en chunks. Para PDFs de <10MB va bien
+                  // sin hacerlo por trozos.
+                  let bin = "";
+                  const bytes = new Uint8Array(buf);
+                  const CHUNK = 0x8000;
+                  for (let i = 0; i < bytes.length; i += CHUNK) {
+                    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+                  }
+                  setPdfData(btoa(bin));
+                  setPdfName(file.name);
+                  setPdfSizeKb(Math.round(file.size / 1024));
+                  setError(null);
+                }}
+              />
+            </label>
+          )}
+          <p className="text-[10px] text-neutral-500 mt-1">
+            La IA lo lee entero y lo usa como contexto primario para la estrategia. No se guarda — solo se usa en esta tirada.
+          </p>
+        </div>
+
+        <div>
+          <label className="text-xs text-neutral-600 block mb-1">Empezar semana del…</label>
           <input
             type="date"
             value={startWeek}
             onChange={(e) => setStartWeek(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-surface p-1.5 text-sm"
+            className="input text-sm w-full"
             disabled={busy}
           />
+          <p className="text-[10px] text-neutral-500 mt-1">
+            {(() => {
+              const monday = snapToMondayUtc(startWeek);
+              return `Snap al lunes ${monday.toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}`;
+            })()}
+          </p>
         </div>
+
         <div>
-          <label className="text-xs font-medium text-muted">Fecha objetivo (opcional)</label>
+          <label className="text-xs text-neutral-600 block mb-1">Fecha objetivo (opcional)</label>
           <input
             type="date"
             value={targetDate}
             onChange={(e) => setTargetDate(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-surface p-1.5 text-sm"
+            className="input text-sm w-full"
             disabled={busy}
           />
+          <p className="text-[10px] text-neutral-500 mt-1">Si es un lanzamiento, la fecha del "día X".</p>
         </div>
+
         <div>
-          <label className="text-xs font-medium text-muted">Semanas a planificar</label>
-          <div className="mt-1 flex gap-1">
+          <label className="text-xs text-neutral-600 block mb-1">Semanas a planificar</label>
+          <div className="flex gap-1">
             {[1, 2, 3, 4].map((n) => (
               <button
                 key={n}
                 onClick={() => setWeeksAhead(n)}
                 disabled={busy}
-                className={`rounded-lg border px-3 py-1 text-xs transition ${
+                className="text-xs px-3 py-1.5 rounded-lg border"
+                style={
                   weeksAhead === n
-                    ? "border-primary bg-primary text-primary-fg"
-                    : "border-border bg-surface hover:bg-surface-2"
-                }`}
+                    ? { background: "#0A0A0A", color: "#FAFAFA", borderColor: "#0A0A0A" }
+                    : { background: "#FFFFFF", color: "#0A0A0A", borderColor: "#E5E5E5" }
+                }
               >
                 {n}
               </button>
             ))}
           </div>
         </div>
+
         <div>
-          <label className="text-xs font-medium text-muted">Mezcla por semana</label>
-          <div className="mt-1 grid grid-cols-2 gap-2 text-xs">
+          <label className="text-xs text-neutral-600 block mb-1">Mezcla por semana</label>
+          <div className="grid grid-cols-2 gap-2">
             <MixInput label="🎬 Reels" value={mixReel} onChange={setMixReel} disabled={busy} />
-            <MixInput label="📚 Carruseles" value={mixCarousel} onChange={setMixCarousel} disabled={busy} />
-            <MixInput label="📊 Infografías" value={mixInfographic} onChange={setMixInfographic} disabled={busy} />
-            <MixInput label="📷 Imagen" value={mixImage} onChange={setMixImage} disabled={busy} />
-            <MixInput label="🔴 Live" value={mixLive} onChange={setMixLive} disabled={busy} />
+            <MixInput label="🎞️ Carrusel" value={mixCarousel} onChange={setMixCarousel} disabled={busy} />
+            <MixInput label="📝 Infografía" value={mixInfographic} onChange={setMixInfographic} disabled={busy} />
+            <MixInput label="📸 Foto" value={mixImage} onChange={setMixImage} disabled={busy} />
+            <MixInput label="🔴 Directo" value={mixLive} onChange={setMixLive} disabled={busy} />
           </div>
         </div>
+
         <div>
-          <label className="text-xs font-medium text-muted">PDF de referencia (opcional)</label>
-          <p className="mt-0.5 text-[11px] text-muted">
-            Hasta 50 MB. La IA lo lee para esta generación concreta — no se guarda.
-          </p>
-          {attachment ? (
-            <div className="mt-1 flex items-center gap-2 rounded-lg border border-border bg-bg px-3 py-2 text-xs">
-              <Paperclip size={12} className="text-muted" />
-              <a
-                href={attachment.url}
-                target="_blank"
-                rel="noreferrer"
-                className="min-w-0 flex-1 truncate hover:text-primary hover:underline"
-              >
-                {attachment.name}
-              </a>
-              <button
-                type="button"
-                onClick={removeAttachment}
-                disabled={busy}
-                className="rounded-md p-1 text-muted hover:text-red-600 disabled:opacity-50"
-                title="Quitar PDF"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          ) : (
-            <label className="mt-1 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-border bg-bg px-3 py-2 text-xs font-medium hover:border-primary">
-              {uploadingPdf ? (
-                <>
-                  <Loader2 size={12} className="animate-spin" /> Subiendo…
-                </>
-              ) : (
-                <>
-                  <Paperclip size={12} /> Adjuntar PDF
-                </>
-              )}
-              <input
-                ref={pdfInputRef}
-                type="file"
-                accept="application/pdf"
-                className="hidden"
-                onChange={(e) => handlePdfSelected(e.target.files?.[0] ?? null)}
-                disabled={uploadingPdf || busy}
-              />
-            </label>
-          )}
-          {uploadError ? (
-            <p className="mt-1 text-[11px] text-red-600">{uploadError}</p>
-          ) : null}
+          <label className="flex items-start gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeScript}
+              onChange={(e) => setIncludeScript(e.target.checked)}
+              disabled={busy}
+              className="mt-0.5 h-4 w-4 accent-neutral-900 cursor-pointer"
+            />
+            <span>
+              <span className="text-xs font-medium text-neutral-800 block">Con guion completo</span>
+              <span className="text-[10px] text-neutral-500 block leading-snug">
+                La IA redacta los 4 bloques (P1 hook · P2 giro · P3 prueba · P4 CTA). Si lo desactivas, solo devuelve el hook y el título — más rápido y barato.
+              </span>
+            </span>
+          </label>
         </div>
+
+        {error && (
+          <div className="rounded-lg p-2 text-xs" style={{ background: "#FEE2E2", color: "#7F1D1D", border: "1px solid #FCA5A5" }}>
+            {error}
+          </div>
+        )}
 
         <button
           onClick={generate}
-          disabled={busy || uploadingPdf}
-          className="w-full rounded-lg bg-primary py-2 font-medium text-primary-fg transition hover:opacity-90 disabled:opacity-50"
+          disabled={busy || brief.trim().length < 10}
+          className="w-full text-sm font-semibold px-3 py-2.5 rounded-lg disabled:opacity-40"
+          style={{ background: "#0A0A0A", color: "#FAFAFA" }}
         >
-          {busy ? "Generando…" : "🧠 Generar estrategia"}
+          {busy ? "⏳ Pensando (10-20s)…" : "✨ Generar estrategia"}
         </button>
-        <p className="text-xs text-muted">
-          <Link href="/contenido/marketer/brief" className="underline hover:text-text">
-            Editar brief de marca
-          </Link>{" "}
-          que la IA usa como base.
-        </p>
-        {error && <p className="text-xs text-red-600">{error}</p>}
       </aside>
 
       {/* Panel dcha: resultado */}
-      <section>
+      <section className="min-w-0">
         {!result && !busy && (
-          <p className="text-sm italic text-muted">
-            Escribe un brief y pulsa &quot;Generar estrategia&quot;. La IA propondrá semanas y piezas
-            concretas — con un clic las añades al calendario.
-          </p>
+          <div className="card text-center py-16 text-neutral-500">
+            <p className="text-sm">Escribe un brief y pulsa <b>Generar estrategia</b>.</p>
+            <p className="text-xs mt-2">La IA verá tu Brief IA, temas recientes ya publicados y la mezcla que le pidas.</p>
+          </div>
         )}
+
         {busy && (
-          <p className="text-sm text-muted">
-            Generando… puede tardar 30–90 segundos con briefs largos.
-          </p>
+          <div className="card text-center py-16 text-neutral-500">
+            <p className="text-sm">⏳ La IA está trabajando…</p>
+            <p className="text-xs mt-2">Suele tardar 10-20 segundos.</p>
+          </div>
         )}
+
         {result && (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <h3 className="mb-1 font-semibold">Arco narrativo</h3>
-              <p className="whitespace-pre-wrap text-sm">{result.strategy}</p>
-              <button
-                onClick={addAll}
-                className="mt-3 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
+            {result.warning && (
+              <div
+                className="rounded-lg p-3 text-xs"
+                style={{ background: "#FEF3C7", color: "#78350F", border: "1px solid #FCD34D" }}
               >
-                Añadir TODAS las piezas al calendario
-              </button>
-            </div>
-            {result.weeks.map((w) => (
-              <div key={w.weekOffset} className="rounded-2xl border border-border p-4">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-neutral-200 px-2 py-0.5 text-xs">
-                    Semana +{w.weekOffset}
-                  </span>
-                  <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-900">
-                    {w.weekType}
-                  </span>
-                  <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs">{w.bodyZone}</span>
+                <div className="font-semibold mb-0.5">⚠️ Mezcla incompleta</div>
+                <div>{result.warning}</div>
+              </div>
+            )}
+            {/* Resumen + acción global */}
+            <div className="card space-y-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-neutral-500 mb-1">Estrategia propuesta</div>
+                <p className="text-sm text-neutral-800 leading-relaxed">{result.strategy}</p>
+              </div>
+              <div className="flex justify-between items-center gap-2 flex-wrap">
+                <div className="text-xs text-neutral-500">
+                  {result.weeks.length} semana{result.weeks.length === 1 ? "" : "s"} · {result.weeks.reduce((n, w) => n + w.pieces.length, 0)} piezas
                 </div>
-                <h4 className="font-medium">{w.centralTheme}</h4>
-                {w.limitingBeliefs && w.limitingBeliefs.length > 0 && (
-                  <ul className="mt-1 list-disc pl-4 text-xs text-muted">
-                    {w.limitingBeliefs.map((b, i) => (
-                      <li key={i}>{b}</li>
-                    ))}
-                  </ul>
-                )}
-                <ul className="mt-3 space-y-2">
-                  {w.pieces.map((p, i) => {
-                    const key = `${w.weekOffset}|${p.dayOfWeek}|${i}`;
-                    const state = added[key];
-                    return (
-                      <li key={key} className="rounded-lg bg-neutral-50 p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <div className="mb-1 flex flex-wrap gap-1 text-xs">
-                              <span className="rounded border border-border bg-white px-2 py-0.5">
-                                {DAY_LABELS[p.dayOfWeek] ?? `Día ${p.dayOfWeek}`}
-                              </span>
-                              <span className="rounded border border-border bg-white px-2 py-0.5">
-                                {p.format}
-                              </span>
-                              {p.goals.map((g) => (
-                                <span key={g} className="rounded bg-purple-100 px-2 py-0.5 text-purple-900">
-                                  {g}
+                <button
+                  onClick={addAll}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg"
+                  style={{ background: "#065F46", color: "#FAFAFA" }}
+                >
+                  ➕ Añadir todas al calendario
+                </button>
+              </div>
+            </div>
+
+            {/* Semanas */}
+            {result.weeks.map((week) => {
+              const baseMonday = snapToMondayUtc(startWeek);
+              const monday = mondayForOffset(baseMonday, week.weekOffset);
+              const startStr = monday.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+              const end = new Date(monday);
+              end.setUTCDate(end.getUTCDate() + 6);
+              const endStr = end.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+              return (
+                <div key={week.weekOffset} className="card">
+                  <div className="border-b border-neutral-200 pb-2 mb-3">
+                    <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                      <h3 className="text-base font-semibold">
+                        Semana {week.weekOffset + 1}
+                        <span className="text-neutral-500 font-normal"> · {startStr} → {endStr}</span>
+                      </h3>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700">
+                        {WEEK_TYPE_LABEL[week.weekType] ?? week.weekType}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-sm text-neutral-800">
+                      <b>Tema:</b> {week.centralTheme || <span className="italic text-neutral-400">sin tema</span>}
+                      {week.bodyZone && <span className="text-neutral-500"> · {week.bodyZone}</span>}
+                    </div>
+                    {week.limitingBeliefs && week.limitingBeliefs.length > 0 && (
+                      <div className="text-xs text-neutral-600 mt-1">
+                        <b>Creencias a atacar:</b> {week.limitingBeliefs.join(" · ")}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    {week.pieces.map((piece, i) => {
+                      const key = `${week.weekOffset}|${piece.dayOfWeek}|${i}`;
+                      const state = added[key];
+                      const isAdded = state && state !== "loading";
+                      const isLoading = state === "loading";
+                      const dayLabel = DAY_LABELS[piece.dayOfWeek] ?? `Día ${piece.dayOfWeek}`;
+                      return (
+                        <div
+                          key={key}
+                          className="rounded-lg p-3 border"
+                          style={{
+                            background: isAdded ? "#F0FDF4" : "#FAFAFA",
+                            borderColor: isAdded ? "#86EFAC" : "#E5E5E5",
+                          }}
+                        >
+                          <div className="flex items-baseline justify-between gap-3 flex-wrap mb-1">
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                              <span>{formatIcon(piece.format)}</span>
+                              <span className="text-sm font-semibold">{piece.title}</span>
+                              <span className="text-[10px] text-neutral-500">({formatLabelOnly(piece.format)})</span>
+                            </div>
+                            <span className="text-xs font-medium text-neutral-700 capitalize">📅 {dayLabel}</span>
+                          </div>
+                          {piece.goals.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1.5">
+                              {piece.goals.map((g) => (
+                                <span key={g} className={`text-[10px] px-1.5 py-0.5 rounded ${GOAL_COLOR_CLASSES[goalColor(g)]}`}>
+                                  {GOALS.find((G) => G.value === g)?.label ?? g}
                                 </span>
                               ))}
                             </div>
-                            <div className="text-sm font-medium">{p.title}</div>
-                            <div className="mt-1 text-xs text-neutral-700">
-                              <b>Idea:</b> {p.hook}
+                          )}
+                          {piece.hook && (
+                            <div className="mb-1">
+                              <div className="text-[10px] uppercase tracking-wide text-neutral-500">💡 Idea principal</div>
+                              <p className="text-sm italic text-neutral-800">"{piece.hook}"</p>
                             </div>
-                            <div className="mt-1 text-xs italic text-muted">{p.rationale}</div>
-                            {p.format === "reel" && p.script && p.script.length > 0 && (
-                              <details className="mt-2 rounded-lg border border-neutral-200 bg-white p-2 text-xs">
-                                <summary className="cursor-pointer font-medium text-neutral-700">
-                                  🎬 Guion del reel ({p.script.length} bloques)
-                                </summary>
-                                <div className="mt-2 space-y-2">
-                                  {p.script.map((b, si) => (
-                                    <div key={si}>
-                                      <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                                        {b.label}
-                                      </div>
-                                      <p className="mt-0.5 whitespace-pre-wrap leading-snug text-neutral-800">
-                                        {b.content}
-                                      </p>
-                                    </div>
-                                  ))}
-                                </div>
-                              </details>
+                          )}
+                          {piece.rationale && (
+                            <div className="text-[11px] text-neutral-600 italic">{piece.rationale}</div>
+                          )}
+                          {piece.blocks && piece.blocks.length > 0 && (
+                            <details className="mt-2 rounded-md" style={{ border: "1px solid #E5E5E5", background: "#FAFAFA" }}>
+                              <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden px-2.5 py-1.5 flex items-center justify-between gap-2">
+                                <span className="text-[10px] uppercase tracking-wide text-neutral-500">🎬 Guion por planos</span>
+                                <span className="text-[10px] text-neutral-500">{piece.blocks.length} bloque{piece.blocks.length === 1 ? "" : "s"}</span>
+                              </summary>
+                              <div className="px-2.5 pb-2.5 pt-1 space-y-2">
+                                {piece.blocks.map((b, bi) => (
+                                  <div key={bi}>
+                                    <div className="text-[10px] uppercase tracking-wide text-neutral-500">{b.label || `Plano ${bi + 1}`}</div>
+                                    <div className="text-xs text-neutral-800 whitespace-pre-wrap">{b.content}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+                          <div className="mt-2 flex justify-end">
+                            {isAdded ? (
+                              <Link
+                                href={`/contenido/pieza/${state}`}
+                                className="text-xs font-medium px-3 py-1 rounded-md"
+                                style={{ background: "#065F46", color: "#FAFAFA" }}
+                              >
+                                ✓ Añadida · abrir ficha
+                              </Link>
+                            ) : (
+                              <button
+                                onClick={() => addPiece(week, piece, key)}
+                                disabled={isLoading}
+                                className="text-xs font-medium px-3 py-1 rounded-md disabled:opacity-40"
+                                style={{ background: "#0A0A0A", color: "#FAFAFA" }}
+                              >
+                                {isLoading ? "⏳" : "➕ Añadir al calendario"}
+                              </button>
                             )}
                           </div>
-                          <button
-                            onClick={() => addPiece(w, p, key)}
-                            disabled={!!state}
-                            className={`shrink-0 rounded px-3 py-1 text-xs transition ${
-                              state === "loading"
-                                ? "bg-neutral-300"
-                                : state
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-black text-white hover:bg-neutral-800"
-                            }`}
-                          >
-                            {state === "loading" ? "…" : state ? "✓ Añadida" : "+ Añadir"}
-                          </button>
                         </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
@@ -465,29 +601,19 @@ export function MarketerIAView() {
   );
 }
 
-function MixInput({
-  label,
-  value,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  value: number;
-  onChange: (n: number) => void;
-  disabled?: boolean;
-}) {
+function MixInput({ label, value, onChange, disabled }: { label: string; value: number; onChange: (n: number) => void; disabled?: boolean }) {
   return (
-    <label className="flex items-center gap-1">
-      <span className="flex-1">{label}</span>
+    <label className="flex items-center gap-2">
       <input
         type="number"
         min={0}
         max={7}
         value={value}
+        onChange={(e) => onChange(Math.max(0, Math.min(7, Math.round(Number(e.target.value) || 0))))}
+        className="input text-sm w-12 text-right tabular-nums"
         disabled={disabled}
-        onChange={(e) => onChange(Math.max(0, Math.min(7, Number(e.target.value) || 0)))}
-        className="w-12 rounded border border-border p-0.5 text-center"
       />
+      <span className="text-[11px] text-neutral-600">{label}</span>
     </label>
   );
 }

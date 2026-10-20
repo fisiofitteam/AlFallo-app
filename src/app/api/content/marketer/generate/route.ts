@@ -304,7 +304,7 @@ async function runGenerate(req: NextRequest) {
     const msg = await client().messages.create({
       model: MODEL,
       max_tokens: MAX_OUTPUT_TOKENS,
-      system: systemPrompt(brief),
+      system: systemPrompt(brief) + (body.includeScript === false ? "\nPRIORIDAD PARA ESTA PETICIÓN: devuelve solo ideas, sin desarrollar los bloques del guion ni el campo script." : ""),
       tools: [tool],
       tool_choice: { type: "tool", name: "submit_strategy" },
       messages: [{ role: "user", content: userContent }],

@@ -1,8 +1,11 @@
+import { canManageContent } from "@/lib/roles";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
-import { canManageContent } from "@/lib/roles";
 import { PieceEditor } from "@/components/PieceEditor";
+import { metaConfigured, getMediaInsights, getRecentMedia, type MetaPost } from "@/lib/meta";
+
+export const dynamic = "force-dynamic";
 
 export default async function PiecePage({ params }: { params: { id: string } }) {
   const user = (await getActiveProfessional())!;
@@ -29,13 +32,32 @@ export default async function PiecePage({ params }: { params: { id: string } }) 
 
   const blocks = JSON.parse(piece.blocks) as { id: string; label: string; content: string; order: number }[];
 
-  // El primer bloque del guion es SIEMPRE el gancho. Si la pieza no lo trae
-  // (piezas antiguas o plantillas que no lo definen), lo inyectamos aquí en
-  // render — no se persiste hasta que el usuario edite y guarde.
-  const hasGancho = blocks.length > 0 && blocks[0].label.trim().toLowerCase() === "gancho";
-  if (!hasGancho) {
-    blocks.unshift({ id: `gancho-${piece.id}`, label: "Gancho", content: "", order: 0 });
-    blocks.forEach((b, i) => (b.order = i));
+  // ── Instagram: sincroniza métricas si la pieza está vinculada; si no, sugiere
+  // el post por fecha de publicación (week.startDate + dayOfWeek). ──────────────
+  let metrics = {
+    reach: piece.metricsReach, saves: piece.metricsSaves,
+    shares: piece.metricsShares, comments: piece.metricsComments, likes: piece.metricsLikes,
+    filledAt: piece.metricsFilledAt?.toISOString() ?? null,
+  };
+  let igSuggestion: MetaPost | null = null;
+  let igRecent: MetaPost[] = [];
+
+  if (metaConfigured()) {
+    if (piece.igMediaId) {
+      try {
+        const m = await getMediaInsights(piece.igMediaId);
+        const now = new Date();
+        metrics = { reach: m.reach, saves: m.saved, shares: m.shares, comments: m.comments, likes: m.likes, filledAt: now.toISOString() };
+      } catch {}
+    } else {
+      try {
+        igRecent = await getRecentMedia(15);
+        const pub = new Date(piece.week.startDate);
+        pub.setUTCDate(pub.getUTCDate() + (piece.dayOfWeek - 1));
+        const pubKey = pub.toISOString().slice(0, 10);
+        igSuggestion = igRecent.find((p) => p.timestamp.slice(0, 10) === pubKey) ?? null;
+      } catch {}
+    }
   }
 
   return (
@@ -50,6 +72,7 @@ export default async function PiecePage({ params }: { params: { id: string } }) 
         goal: piece.goal,
         ctaType: piece.ctaType,
         dmKeyword: piece.dmKeyword,
+        hook: piece.hook,
         recordingInstructions: piece.recordingInstructions,
         blocks,
         caption: piece.caption,
@@ -60,13 +83,20 @@ export default async function PiecePage({ params }: { params: { id: string } }) 
         finalFileUrl: piece.finalFileUrl,
         editorNotes: piece.editorNotes,
         status: piece.status,
-        metricsReach: piece.metricsReach,
-        metricsSaves: piece.metricsSaves,
-        metricsShares: piece.metricsShares,
-        metricsComments: piece.metricsComments,
+        metricsReach: metrics.reach,
+        metricsSaves: metrics.saves,
+        metricsShares: metrics.shares,
+        metricsComments: metrics.comments,
+        metricsLikes: metrics.likes,
         metricsDmKeyword: piece.metricsDmKeyword,
         metricsConversions: piece.metricsConversions,
-        metricsFilledAt: piece.metricsFilledAt?.toISOString() ?? null,
+        metricsFilledAt: metrics.filledAt,
+        igMediaId: piece.igMediaId,
+      }}
+      instagram={{
+        metaEnabled: metaConfigured(),
+        suggestion: igSuggestion,
+        recent: igRecent,
       }}
       week={{
         id: piece.week.id,
@@ -75,6 +105,7 @@ export default async function PiecePage({ params }: { params: { id: string } }) 
       }}
       prevId={prevId}
       nextId={nextId}
+      canUseAI={user.role === "ceo"}
     />
   );
 }

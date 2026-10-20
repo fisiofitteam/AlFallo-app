@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { PieceInstagramLink } from "@/components/PieceInstagramLink";
+import { AiGenerateModal } from "@/components/AiGenerateModal";
 import {
   DAY_LABELS,
   PIECE_STATUS,
@@ -31,6 +33,7 @@ type Piece = {
   goal: string;
   ctaType: string;
   dmKeyword: string | null;
+  hook: string | null;
   recordingInstructions: string | null;
   blocks: Block[];
   caption: string | null;
@@ -45,10 +48,15 @@ type Piece = {
   metricsSaves: number | null;
   metricsShares: number | null;
   metricsComments: number | null;
+  metricsLikes: number | null;
   metricsDmKeyword: number | null;
   metricsConversions: number | null;
   metricsFilledAt: string | null;
+  igMediaId: string | null;
 };
+
+export type IgPost = { id: string; caption: string; timestamp: string; permalink: string; reach: number; likes: number };
+export type InstagramProps = { metaEnabled: boolean; suggestion: IgPost | null; recent: IgPost[] };
 
 const STATUS_BADGE: Record<string, string> = {
   neutral: "bg-neutral-100 text-neutral-700 border-neutral-200",
@@ -66,17 +74,23 @@ export function PieceEditor({
   week,
   prevId,
   nextId,
+  instagram,
+  canUseAI = false,
 }: {
   piece: Piece;
   week: { id: string; centralTheme: string; leadMagnetKeyword: string | null };
   prevId: string | null;
   nextId: string | null;
+  instagram?: InstagramProps;
+  /** Si true (CEO) muestra el botón de generación con IA en la cabecera. */
+  canUseAI?: boolean;
 }) {
   const router = useRouter();
   const [piece, setPiece] = useState(initialPiece);
   const [recordingMode, setRecordingMode] = useState(false);
   const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
 
   // Autosave: debounce
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -155,18 +169,15 @@ export function PieceEditor({
     const next = currentGoals.includes(g)
       ? currentGoals.filter((x) => x !== g)
       : [...currentGoals, g];
-    // El backend espera un array y serializa él mismo a JSON.
-    // Tras el PATCH el server devuelve la pieza con goals como string JSON,
-    // por eso lo guardamos también como string en el estado local para que
-    // parseGoals(piece.goals) siga funcionando.
-    update("goals", JSON.stringify(next) as any);
-    // Ojo: update() lleva el valor al pendingPayloadRef tal cual.
-    // Forzamos que se envíe como array al backend usando un fetch directo.
-    fetch("/api/content/pieces", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: piece.id, goals: next }),
-    });
+    // State local: goals se persiste como string JSON en la BD, así que
+    // aquí también lo guardamos como string para que parseGoals(piece.goals)
+    // siga funcionando en el render.
+    setPiece((p) => ({ ...p, goals: JSON.stringify(next) }));
+    // Cola de guardado: SIEMPRE array. El endpoint PATCH solo procesa
+    // goals si Array.isArray(rest.goals); si le llegaba un string (el JSON
+    // stringify de arriba), lo reseteaba a "[]" — este era el bug del
+    // "guardo y al refrescar se borran las etiquetas".
+    queueSave({ goals: next as any });
   }
 
   // ===== MODO GRABACIÓN =====
@@ -186,8 +197,8 @@ export function PieceEditor({
       {/* Cabecera fija */}
       <header className="mb-4">
         <div className="flex items-center gap-3 mb-2 flex-wrap">
-          <Link href="/contenido" className="text-xs text-neutral-500 hover:text-neutral-900">
-            ← Esta semana
+          <Link href="/contenido/calendario" className="text-xs text-neutral-500 hover:text-neutral-900">
+            ← Calendario
           </Link>
           <span className="text-xs text-neutral-300">·</span>
           <span className="text-xs text-neutral-500">{week.centralTheme || "Sin tema"}</span>
@@ -212,7 +223,7 @@ export function PieceEditor({
               />
               <select
                 className="text-xs bg-neutral-50 border border-neutral-200 rounded px-2 py-0.5 cursor-pointer"
-                value={piece.format}
+                value={piece.format === "historia" ? "story" : piece.format}
                 onChange={(e) => update("format", e.target.value)}
                 title="Cambiar formato"
               >
@@ -268,6 +279,21 @@ export function PieceEditor({
               ))}
             </select>
 
+            {canUseAI && (
+              <button
+                onClick={() => setAiOpen(true)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity hover:opacity-90"
+                style={{
+                  background: "linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%)",
+                  color: "#0A0A0A",
+                  border: "none",
+                }}
+                title="Generar guion con Claude Opus 4.7 usando tu Brief IA"
+              >
+                ✨ Generar con IA
+              </button>
+            )}
+
             <button
               onClick={() => setRecordingMode(true)}
               className="btn btn-accent text-xs"
@@ -316,20 +342,30 @@ export function PieceEditor({
       <div className="grid grid-cols-1 lg:grid-cols-[60%_40%] gap-4">
         {/* COLUMNA IZQUIERDA: guion editable */}
         <section className="space-y-3">
-          {/* Instrucciones para quien graba (el guión lo escribe el creador;
-              graba otra persona y necesita entender en qué consiste el reel). */}
+          {/* Idea principal — descripción corta de la pieza (no el hook literal
+              del guion). Es lo que rellena el Marketer IA al proponer piezas
+              y lo que sirve al equipo para saber "de qué va" la pieza sin
+              tener que leer el guion entero. */}
           <div className="border-2 border-amber-200 rounded-lg p-3 bg-amber-50/40">
             <label className="text-[10px] uppercase text-amber-700 font-semibold tracking-wide mb-1 block">
-              📝 Instrucciones para grabación
+              💡 Idea principal
             </label>
             <textarea
-              className="w-full bg-transparent border-0 outline-none text-sm resize-none"
-              rows={3}
-              value={piece.recordingInstructions ?? ""}
-              onChange={(e) => update("recordingInstructions", e.target.value)}
-              placeholder="Contexto para quien graba: de qué va el reel, tono, cortes clave, ejemplos visuales..."
+              className="w-full bg-transparent border-0 outline-none text-base font-medium resize-none"
+              rows={2}
+              value={piece.hook ?? ""}
+              onChange={(e) => update("hook", e.target.value)}
+              placeholder="Ej. Reel confrontacional sobre por qué el descanso no cura el hombro. Termina con CTA al webinar."
             />
           </div>
+
+          {piece.recordingInstructions !== null && (
+            <div className="mb-4 rounded-lg border border-neutral-200 p-3">
+              <label className="block text-xs font-medium text-neutral-500 mb-1">Instrucciones de grabación</label>
+              <textarea className="input" value={piece.recordingInstructions} rows={3}
+                onChange={(e) => update("recordingInstructions", e.target.value)} />
+            </div>
+          )}
 
           {/* Bloques de la estructura */}
           <BlocksEditor blocks={piece.blocks} onChange={updateBlocks} format={piece.format} />
@@ -378,6 +414,14 @@ export function PieceEditor({
 
           {/* Métricas (desbloqueadas solo si status = published) */}
           <ProductionBlock title="📈 Métricas">
+            {instagram?.metaEnabled && (
+              <PieceInstagramLink
+                pieceId={piece.id}
+                igMediaId={piece.igMediaId}
+                suggestion={instagram.suggestion}
+                recent={instagram.recent}
+              />
+            )}
             <MetricsForm
               piece={piece}
               update={update}
@@ -386,6 +430,24 @@ export function PieceEditor({
           </ProductionBlock>
         </aside>
       </div>
+
+      {aiOpen && (
+        <AiGenerateModal
+          pieceId={piece.id}
+          format={piece.format}
+          initialHook={piece.hook ?? ""}
+          existingBlocks={piece.blocks}
+          existingCaption={piece.caption}
+          onClose={() => setAiOpen(false)}
+          onApply={(patch) => {
+            // Aplicamos cada parte con sus respectivos updaters para que
+            // el autosave los gestione igual que cualquier otra edición.
+            if (typeof patch.hook === "string") update("hook", patch.hook);
+            if (Array.isArray(patch.blocks)) updateBlocks(patch.blocks);
+            if (typeof patch.caption === "string") update("caption", patch.caption);
+          }}
+        />
+      )}
     </main>
   );
 }
@@ -637,6 +699,7 @@ function MetricsForm({
     <>
       <div className="grid grid-cols-2 gap-2">
         <MetricInput label="Alcance" field="metricsReach" />
+        <MetricInput label="Likes" field="metricsLikes" />
         <MetricInput label="Guardados" field="metricsSaves" />
         <MetricInput label="Compartidos" field="metricsShares" />
         <MetricInput label="Comentarios" field="metricsComments" />
@@ -692,13 +755,13 @@ function RecordingMode({
 
       {/* Guion en grande */}
       <div className="max-w-3xl mx-auto px-6 py-8 pb-32">
-        {piece.recordingInstructions && (
+        {piece.hook && (
           <div className="mb-10 pb-6 border-b-2" style={{ borderColor: "#F59E0B" }}>
             <div className="text-xs uppercase tracking-wider mb-2 font-semibold" style={{ color: "#F59E0B" }}>
-              📝 Instrucciones
+              ⚡ Hook
             </div>
-            <p className="text-xl leading-relaxed whitespace-pre-wrap" style={{ color: "#0A0A0A", letterSpacing: "-0.01em" }}>
-              {piece.recordingInstructions}
+            <p className="text-3xl font-semibold leading-tight" style={{ color: "#0A0A0A", letterSpacing: "-0.015em" }}>
+              {piece.hook}
             </p>
           </div>
         )}

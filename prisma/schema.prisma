@@ -428,6 +428,11 @@ model ContentWeek {
 
   @@index([year, weekNumber])
   @@index([status])
+
+  // Compatibilidad con el panel de contenido de FisioFit.
+  weekStoriesInstructions String? @default("")
+  strategyPdfUrl  String?
+  strategyPdfName String?  // nombre original del fichero, para el link
 }
 
 model ContentPiece {
@@ -476,6 +481,10 @@ model ContentPiece {
 
   @@index([weekId, dayOfWeek])
   @@index([status])
+
+  // Compatibilidad con el panel de contenido de FisioFit.
+  metricsLikes           Int?
+  igMediaId              String?                      // post de Instagram vinculado
 }
 
 model LeadMagnet {
@@ -507,6 +516,18 @@ model ClinicalCase {
   updatedAt       DateTime  @updatedAt
 
   @@index([patientId])
+
+  // Compatibilidad con el panel de contenido de FisioFit.
+  initialSituation       String?                        // "Cómo estaba / dolor principal"
+  initialSituationVideos String  @default("[]")
+  process                String?                        // "Cómo ha sido su proceso"
+  processVideos          String  @default("[]")
+  obstacles              String?                        // "Obstáculos que ha superado"
+  obstaclesVideos        String  @default("[]")
+  achievements           String?                        // "Qué ha conseguido"
+  achievementsVideos     String  @default("[]")
+  shortSummary           String?
+  aiDraftedAt            DateTime?
 }
 
 model WinningHook {
@@ -2038,4 +2059,94 @@ model AiSessionExample {
   @@index([kind])
   @@index([title])
   @@index([focusTags])
+}
+
+
+model ContentStoryTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  jsonSlides  String   @db.Text                        // JSON array de slides
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([createdById, updatedAt])
+}
+
+
+model StoryTemplateSlot {
+  id           String   @id @default(cuid())
+  dayOfWeek    Int      @unique  // 1..7 (Lun..Dom)
+  formatName   String              // "Café con Ales", "Caso de éxito + CTA"
+  emoji        String?
+  color        String?             // hex u opcional para tint
+  updatedAt    DateTime @updatedAt
+
+  ideas        StoryIdea[]
+
+  @@index([dayOfWeek])
+}
+
+
+model StoryIdea {
+  id             String   @id @default(cuid())
+  templateSlotId String
+  templateSlot   StoryTemplateSlot @relation(fields: [templateSlotId], references: [id], onDelete: Cascade)
+
+  text           String
+  done           Boolean  @default(false)
+  order          Int      @default(0)
+  doneAt         DateTime?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([templateSlotId, done, order])
+}
+
+
+model CarouselLibraryEntry {
+  id          String   @id @default(cuid())
+  topic       String                                // "dolor hombro atletas crossfit"
+  category    String?                               // "errores" | "caso_clinico" | "educativo" | "mito" | "frustracion" | otro
+  slidesJson  String                                // JSON [{ n, title?, subtitle?, body?, note? }]
+  captionText String?                               // pie del post en Instagram
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([createdAt])
+}
+
+
+model CarouselVisualTemplate {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  slideJson    String
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
+
+model Carousel {
+  id          String   @id @default(cuid())
+  title       String                                // etiqueta libre para el listado
+  brief       String                                // brief que el user escribió al generar
+  category    String?                               // misma taxonomía que biblioteca
+  slidesJson  String                                // JSON de slides
+  captionText String?                               // pie del post en IG (generado o editado)
+  visualJson  String?                               // JSON con layout+overrides visuales por slide
+  status      String   @default("draft")            // draft | published | archived
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
 }
