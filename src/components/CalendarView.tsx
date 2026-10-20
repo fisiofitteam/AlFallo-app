@@ -485,7 +485,7 @@ function MonthGrid({
                         alert("Error al mover la pieza");
                       }
                     }}
-                    className={`group min-h-[120px] p-1.5 border-r border-neutral-100 last:border-r-0 cursor-pointer hover:bg-amber-50/30 transition-colors ${
+                    className={`group min-w-0 min-h-[96px] p-1.5 border-r border-neutral-100 last:border-r-0 cursor-pointer hover:bg-amber-50/30 transition-colors ${
                       isOtherMonth ? "bg-neutral-50/50" : "bg-white"
                     } ${isToday ? "bg-amber-50" : ""}`}
                     title="Click para añadir evento · Arrastra piezas aquí"

@@ -23,10 +23,10 @@ const TABS: Tab[] = [
 export function ContentNav({ active, role, showMarketer = false }: { active: string; role?: string; showMarketer?: boolean }) {
   const visibleTabs = TABS.filter((t) => t.key === "marketer" ? showMarketer : !t.ceoOnly || role === "ceo");
   return (
-    <div className="mb-4 flex gap-1 border-b border-neutral-200 overflow-x-auto">
+    <div className="mb-3 flex min-w-0 max-w-full gap-1 border-b border-neutral-200 overflow-x-auto">
       {visibleTabs.map((tab) => {
         const isActive = active === tab.key;
-        const className = `px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+        const className = `px-3 py-1.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
           isActive ? "border-neutral-900 text-neutral-900" : "border-transparent text-neutral-500 hover:text-neutral-900"
         }`;
         // external=true → <a> normal (fuerza full-page navigation al HTML

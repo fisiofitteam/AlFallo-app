@@ -134,3 +134,10 @@ body {
 @layer components {
   :where(.content-panel) .input { background-color: revert; }
 }
+
+/* Compact desktop content panel; retain normal touch sizing on mobile. */
+.content-panel { min-width: 0; max-width: 100%; }
+@media screen and (min-width: 768px) {
+  .content-panel { zoom: 0.9; }
+  main:has(> .content-panel) { padding: 1.25rem; }
+}
