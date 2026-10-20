@@ -92,7 +92,7 @@ body {
 
 /* Original FisioFit content styles, scoped to this module. */
 .content-panel { color: #0A0A0A; font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; letter-spacing: -0.011em; }
-.content-panel :is(h1,h2,h3,h4,h5) { letter-spacing: -0.025em; }
+:where(.content-panel) :is(h1,h2,h3,h4,h5) { letter-spacing: -0.025em; }
 @layer components {
 :where(.content-panel) .btn {
     @apply px-4 py-2 rounded-lg text-sm font-medium border transition-all;
