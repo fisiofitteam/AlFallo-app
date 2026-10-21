@@ -86,6 +86,21 @@ export default async function ClientsPage({
   // recientes (cumplimiento). Los check-ins los acotamos en un único query
   // global y los agrupamos en memoria — mucho más barato que un include
   // anidado por cliente con muchos check-ins.
+  // Los contadores son independientes de las filas paginadas. Iniciarlos
+  // antes evita otra cascada de consultas a Neon al terminar de cargar la lista.
+  const countsPromise = manager
+    ? Promise.all([
+        prisma.client.count({ where: { ...baseScope } }),
+        prisma.client.count({ where: { ...baseScope, nutritionistId: prof.id } }),
+        prisma.client.count({ where: { ...baseScope, nutritionistId: null } }),
+        prisma.client.groupBy({
+          by: ["nutritionistId"],
+          where: { ...baseScope, nutritionistId: { not: null } },
+          _count: { _all: true },
+        }),
+      ])
+    : null;
+
   const [clients, nutris, considerations] = await Promise.all([
     prisma.client.findMany({
       where: { ...baseScope, ...filterWhere, ...whereSearch },
@@ -170,17 +185,8 @@ export default async function ClientsPage({
     unassigned: number;
     byNutri: Map<string, number>;
   } = { all: 0, mine: 0, unassigned: 0, byNutri: new Map() };
-  if (manager) {
-    const [all, mine, unassigned, perNutri] = await Promise.all([
-      prisma.client.count({ where: { ...baseScope } }),
-      prisma.client.count({ where: { ...baseScope, nutritionistId: prof.id } }),
-      prisma.client.count({ where: { ...baseScope, nutritionistId: null } }),
-      prisma.client.groupBy({
-        by: ["nutritionistId"],
-        where: { ...baseScope, nutritionistId: { not: null } },
-        _count: { _all: true },
-      }),
-    ]);
+  if (countsPromise) {
+    const [all, mine, unassigned, perNutri] = await countsPromise;
     const map = new Map<string, number>();
     for (const row of perNutri) {
       if (row.nutritionistId) map.set(row.nutritionistId, row._count._all);

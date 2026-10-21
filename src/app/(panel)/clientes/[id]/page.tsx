@@ -122,55 +122,42 @@ export default async function ClientDetailPage({
   const manager = isManagerRole(prof.role);
   const active = parseSection(searchParams.tab);
 
-  // Consideraciones especiales: las cargamos una sola vez para alimentar el
-  // selector de la pestaña "Ficha nutricional".
-  const specialConsiderations = await getAllSpecialConsiderations();
+  // Consultas condicionadas por pestaña: antes se pedían plantillas,
+  // profesionales y métricas aun cuando esas secciones no estaban abiertas.
+  const needsPlans = active === "plan" || active === "semanal";
+  const selectedPlan = needsPlans && searchParams.planId
+    ? client.plans.find((p) => p.id === searchParams.planId)
+    : undefined;
+  const [specialConsiderations, competitionTemplates, nutritionTemplates, nutritionists, customMetrics, selectedPlanData] = await Promise.all([
+    active === "ficha" ? getAllSpecialConsiderations() : Promise.resolve([]),
+    needsPlans ? getAllCompetitionTemplates() : Promise.resolve([]),
+    needsPlans
+      ? import("@/lib/nutritionTemplates").then(({ listTemplates }) => listTemplates())
+      : Promise.resolve([]),
+    active === "ajustes" && manager
+      ? prisma.professional.findMany({
+          where: { isActive: true, role: { in: ["ceo", "head_coach", "nutricionista"] } },
+          select: { id: true, fullName: true },
+          orderBy: { fullName: "asc" },
+        })
+      : Promise.resolve([]),
+    active === "evolucion"
+      ? prisma.customMetric.findMany({ where: { clientId: client.id }, orderBy: { order: "asc" } })
+      : Promise.resolve([]),
+    selectedPlan ? loadPlanForBuilder(selectedPlan.id) : Promise.resolve(null),
+  ]);
   const selectedConsiderationIds = client.profile?.specialConsiderationIds ?? [];
-  // Plantillas disponibles al añadir un plan: pauta (NutritionTemplate) +
-  // competición (CompetitionPlanTemplate). Las gestiona el equipo en
-  // Biblioteca.
-  const competitionTemplates = await getAllCompetitionTemplates();
   const competitionTemplateOptions = competitionTemplates.map((t) => ({
-    id: t.id,
-    name: t.name,
-    description: t.description,
+    id: t.id, name: t.name, description: t.description,
   }));
-  const { listTemplates: listNutritionTemplates } = await import(
-    "@/lib/nutritionTemplates"
-  );
-  const nutritionTemplates = await listNutritionTemplates();
   const nutritionTemplateOptions = nutritionTemplates.map((t) => ({
-    id: t.id,
-    sex: t.sex,
-    goal: t.goal,
-    name: t.name,
-    description: t.description,
-    macros: t.macros,
+    id: t.id, sex: t.sex, goal: t.goal, name: t.name,
+    description: t.description, macros: t.macros,
   }));
-
-  // Pestañas Plan/Semanal: galería ↔ detalle.
-  // - Sin ?planId  → galería con cards (name + descripción + macros).
-  // - Con ?planId  → cargamos ese plan y pintamos el builder / vista semanal.
-  // Si el ?planId no pertenece al cliente, lo ignoramos y caemos en galería.
-  let activePlanData: Awaited<ReturnType<typeof loadPlanForBuilder>> = null;
-  let planCards: Awaited<ReturnType<typeof getPlanCardsForClient>> = [];
-  if (active === "plan" || active === "semanal") {
-    if (searchParams.planId) {
-      const valid = client.plans.find((p) => p.id === searchParams.planId);
-      if (valid) activePlanData = await loadPlanForBuilder(valid.id);
-    }
-    if (!activePlanData) {
-      planCards = await getPlanCardsForClient(client.id);
-    }
-  }
-
-  const nutritionists = manager
-    ? await prisma.professional.findMany({
-        where: { isActive: true, role: { in: ["ceo", "head_coach", "nutricionista"] } },
-        select: { id: true, fullName: true },
-        orderBy: { fullName: "asc" },
-      })
-    : [];
+  // El plan seleccionado debe pertenecer al cliente, como antes.
+  const activePlanData: Awaited<ReturnType<typeof loadPlanForBuilder>> = selectedPlanData;
+  const planCards: Awaited<ReturnType<typeof getPlanCardsForClient>> =
+    needsPlans && !activePlanData ? await getPlanCardsForClient(client.id) : [];
 
   // Series para la pestaña Evolución (orden cronológico). El primer punto
   // sale de la ficha nutricional (si tiene el dato) — es la foto de partida
@@ -205,10 +192,6 @@ export default async function ClientDetailPage({
 
   // Métricas personalizadas + sus valores en los check-ins, agrupados por
   // métrica para pintar una gráfica por cada una.
-  const customMetrics = await prisma.customMetric.findMany({
-    where: { clientId: client.id },
-    orderBy: { order: "asc" },
-  });
   const customValues =
     customMetrics.length > 0
       ? await prisma.customMetricValue.findMany({
