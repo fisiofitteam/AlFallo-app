@@ -46,10 +46,12 @@ function parseFilter(value: string | undefined): {
   return { kind: "all" };
 }
 
+const PAGE_SIZE = 50;
+
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: { q?: string; filter?: string };
+  searchParams: { q?: string; filter?: string; page?: string };
 }) {
   const prof = await requireProfessional();
   if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/");
@@ -58,6 +60,8 @@ export default async function ClientsPage({
   const filter = parseFilter(searchParams.filter);
   const manager = isManagerRole(prof.role);
   const baseScope = clientScopeWhere(prof);
+  const pageParam = Math.max(1, Math.floor(Number(searchParams.page) || 1));
+  const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
 
   // Filtro aplicado por encima del scope del rol.
   let filterWhere: Record<string, unknown> = {};
@@ -97,6 +101,8 @@ export default async function ClientsPage({
         },
       },
       orderBy: { createdAt: "desc" },
+      take: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
     }),
     manager
       ? prisma.professional.findMany({
@@ -134,7 +140,10 @@ export default async function ClientsPage({
       ? prisma.checkIn.findMany({
           where: {
             clientId: { in: clientIds },
-            date: { gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) },
+            // 60 días es suficiente para el % de cumplimiento semanal que
+            // pinta la card. Antes traíamos 365d y multiplicaba por 6 la
+            // carga de la query sin aportar nada visual.
+            date: { gte: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000) },
           },
           select: { clientId: true, date: true },
         })
@@ -384,7 +393,56 @@ export default async function ClientsPage({
           })}
         </div>
       )}
+
+      {/* Paginación mínima: Prev/Next basado en PAGE_SIZE. Si no llenó la
+          página sabemos que no hay más (evita un count() extra). */}
+      {clients.length > 0 && (page > 1 || clients.length === PAGE_SIZE) ? (
+        <nav className="mt-6 flex items-center justify-between gap-2 text-sm">
+          <PaginationLink
+            label="← Anterior"
+            disabled={page <= 1}
+            searchParams={searchParams}
+            page={page - 1}
+          />
+          <span className="text-xs text-muted">Página {page}</span>
+          <PaginationLink
+            label="Siguiente →"
+            disabled={clients.length < PAGE_SIZE}
+            searchParams={searchParams}
+            page={page + 1}
+          />
+        </nav>
+      ) : null}
     </div>
+  );
+}
+
+function PaginationLink({
+  label,
+  disabled,
+  page,
+  searchParams,
+}: {
+  label: string;
+  disabled: boolean;
+  page: number;
+  searchParams: { q?: string; filter?: string; page?: string };
+}) {
+  const sp = new URLSearchParams();
+  if (searchParams.q) sp.set("q", searchParams.q);
+  if (searchParams.filter) sp.set("filter", searchParams.filter);
+  if (page > 1) sp.set("page", String(page));
+  const href = `/clientes${sp.toString() ? `?${sp.toString()}` : ""}`;
+  if (disabled) {
+    return <span className="rounded-xl border border-border px-3 py-2 text-muted opacity-50">{label}</span>;
+  }
+  return (
+    <Link
+      href={href}
+      className="rounded-xl border border-border bg-surface px-3 py-2 text-text hover:border-primary"
+    >
+      {label}
+    </Link>
   );
 }
 

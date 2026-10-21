@@ -15,6 +15,7 @@ import {
 } from "@/lib/finance";
 import { Field, Select, TextInput } from "@/components/form-ui";
 import { ensureRecurringExpensesForMonth } from "@/lib/recurringExpenses";
+import { withHeartbeatCache } from "@/lib/heartbeat-cache";
 import { getTaxSettings, monthTaxEstimate, quarterTaxEstimate } from "@/lib/taxes";
 import {
   createPayroll,
@@ -41,8 +42,13 @@ function currentPeriod(): string {
 export async function FinanzasTab() {
   // Antes de leer, nos aseguramos de materializar los gastos fijos del mes
   // en curso. Idempotente — el unique (recurringExpenseId, periodKey) evita
-  // duplicados.
-  await ensureRecurringExpensesForMonth();
+  // duplicados. Cacheado 5 min para no dispararlo en cada visita.
+  const nowDate = new Date();
+  await withHeartbeatCache(
+    `recurring-expenses:${nowDate.getUTCFullYear()}-${nowDate.getUTCMonth()}-${nowDate.getUTCDate()}`,
+    5 * 60 * 1000,
+    () => ensureRecurringExpensesForMonth(nowDate),
+  );
 
   const now = new Date();
   const [

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireProfessional } from "@/lib/session";
 import { CLIENT_ACCESS_ROLES } from "@/lib/clients";
 import { ensureRenewalNotifications, periodProgress } from "@/lib/subscriptions";
+import { withHeartbeatCache } from "@/lib/heartbeat-cache";
 
 export const metadata = { title: "Renovaciones · Al Fallo" };
 export const dynamic = "force-dynamic";
@@ -38,7 +39,12 @@ export default async function RenovacionesPage() {
   const prof = await requireProfessional();
   if (!CLIENT_ACCESS_ROLES.includes(prof.role)) redirect("/");
 
-  await ensureRenewalNotifications();
+  const now = new Date();
+  await withHeartbeatCache(
+    `renewal-notifications:${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}`,
+    5 * 60 * 1000,
+    () => ensureRenewalNotifications(now),
+  );
 
   const periods = await prisma.subscriptionPeriod.findMany({
     where: { status: "active" },
@@ -55,7 +61,6 @@ export default async function RenovacionesPage() {
     },
   });
 
-  const now = new Date();
   const rows = periods.map((p) => ({
     period: p,
     daysLeft: daysUntil(p.endDate, now),

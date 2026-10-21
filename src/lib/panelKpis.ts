@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ensureRenewalNotifications } from "@/lib/subscriptions";
+import { withHeartbeatCache } from "@/lib/heartbeat-cache";
 
 export type Kpi = {
   key: string;
@@ -20,7 +21,13 @@ export async function getPanelKpis(now = new Date()): Promise<Kpi[]> {
 
   // Hearbeat: al cargar el panel garantizamos que los periodos en la ventana
   // de aviso tengan su notificación. Idempotente (dedup por refKey).
-  ensureRenewalNotifications(now).catch((e) => console.error("ensureRenewalNotifications", e));
+  // Cache 5 min: suficiente para que no se dispare en cada click dentro
+  // del panel. El job es idempotente — no pasa nada si se omite.
+  withHeartbeatCache(
+    `renewal-notifications:${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}`,
+    5 * 60 * 1000,
+    () => ensureRenewalNotifications(now),
+  ).catch((e) => console.error("ensureRenewalNotifications", e));
 
   const [totalClientes, sinAsignar, renovanEn30d, formulariosPendientes, llamadas7d] = await Promise.all([
     prisma.client.count(),
