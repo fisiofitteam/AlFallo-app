@@ -141,3 +141,13 @@ body {
   .content-panel { zoom: 0.9; }
   main:has(> .content-panel) { padding: 1.25rem; }
 }
+
+/* Landing pública de reservas: identidad propia, independiente del panel. */
+.al-fallo-booking { --c-primary: #e6197e; color-scheme: dark; }
+.al-fallo-gradient-text {
+  background: linear-gradient(105deg, #ffb6dd 8%, #ff66b0 48%, #e6197e 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.al-fallo-booking input:focus-visible,
+.al-fallo-booking textarea:focus-visible,
+.al-fallo-booking button:focus-visible { outline: 2px solid #ff83bb; outline-offset: 3px; }

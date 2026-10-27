@@ -15,6 +15,8 @@ import {
   madridDateAt,
   weekStartOf,
   timeToMinutes,
+  getBlocksInRange,
+  isSlotBlocked,
 } from "@/lib/agendaTemplate";
 
 export const MIN_HOURS_AHEAD = 24;
@@ -34,7 +36,10 @@ export async function getAvailableSlots(): Promise<SlotInfo[]> {
   const maxStart = new Date(now.getTime() + MAX_DAYS_AHEAD * 86400 * 1000);
 
   // 1) Cargar franjas (plantilla u overrides) para todo el rango
-  const shiftsByWeek = await getShiftsForDateRange(now, maxStart);
+  const [shiftsByWeek, blocks] = await Promise.all([
+    getShiftsForDateRange(now, maxStart),
+    getBlocksInRange(now, maxStart),
+  ]);
 
   // 2) Generar candidatos
   const candidates: SlotInfo[] = [];
@@ -61,6 +66,7 @@ export async function getAvailableSlots(): Promise<SlotInfo[]> {
         if (startDate < minStart) continue;
         if (startDate > maxStart) continue;
         const endDate = new Date(startDate.getTime() + duration * 60 * 1000);
+        if (isSlotBlocked(ymd, m, m + duration, blocks)) continue;
         candidates.push({
           startISO: startDate.toISOString(),
           endISO: endDate.toISOString(),

@@ -30,7 +30,7 @@ export async function GET() {
   } catch (e: any) {
     console.error("Get slots error:", e);
     return NextResponse.json(
-      { ok: false, error: e.message || "No se pudieron cargar los slots" },
+      { ok: false, error: "Ahora mismo no podemos consultar la disponibilidad. Vuelve a intentarlo." },
       { status: 500 }
     );
   }

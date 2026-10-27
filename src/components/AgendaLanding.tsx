@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { AgendaLandingCopy } from "@/lib/landing-content";
+import { BrandLogo } from "@/components/brand-mark";
 
 type Slot = {
   startISO: string;
@@ -260,25 +261,24 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
 
   return (
     <main
-      className="min-h-screen relative"
+      className="al-fallo-booking min-h-screen relative overflow-hidden"
       style={{
-        backgroundColor: "#0A0A0A",
-        backgroundImage: "url('/box.jpg')",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundAttachment: "fixed",
+        backgroundColor: "#130b17",
+        backgroundImage: "radial-gradient(ellipse at 86% 3%, rgba(230,25,126,.28), transparent 40%), radial-gradient(ellipse at 0% 84%, rgba(132,30,96,.20), transparent 46%), linear-gradient(155deg, #1d0e20 0%, #110a17 55%, #180d20 100%)",
         color: "#FAFAFA",
       }}
     >
       {/* Overlay sutil para que la imagen del box se vea con buena legibilidad */}
       <div
         className="absolute inset-0"
-        style={{ background: "rgba(10, 10, 10, 0.72)" }}
+        style={{ background: "linear-gradient(180deg, rgba(10,5,15,.04),rgba(10,5,15,.25))", pointerEvents: "none" }}
       />
 
       <div className="relative max-w-2xl mx-auto px-5 py-10 pb-20">
         {/* Header */}
-        <header className="mb-8 text-center">
+        <header className="mb-9 text-center">
+          <div className="mb-7 flex justify-center"><span className="rounded-2xl border border-[#e6197e]/30 bg-[#e6197e]/10 px-5 py-3 text-white shadow-lg shadow-pink-900/10"><BrandLogo /></span></div>
+          <div className="mx-auto mb-4 w-fit rounded-full border border-[#fa78b5]/30 bg-[#e6197e]/10 px-4 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#ffa3d1]">Valoración nutricional · Sin coste</div>
           <h1
             className="font-bold leading-none mb-4"
             style={{
@@ -287,37 +287,42 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
             }}
           >
             {copy.heroTitle1}<br />
-            <span className="brand-gradient-text">{copy.heroTitle2}</span>
+            <span className="al-fallo-gradient-text">{copy.heroTitle2}</span>
           </h1>
-          <p className="text-sm sm:text-base whitespace-pre-line" style={{ color: "#A3A3A3" }}>
+          <p className="text-sm sm:text-base whitespace-pre-line" style={{ color: "#d2b8c9" }}>
             {copy.heroSubtitle}
           </p>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs font-semibold text-[#e6d2df]">
+            <span>✓ Adaptado a tu entrenamiento</span>
+            <span>✓ Videollamada con el equipo</span>
+            <span>✓ Sin compromiso</span>
+          </div>
         </header>
 
         {/* Tarjeta principal */}
         <section
           className="rounded-2xl p-5 sm:p-6"
-          style={{ background: "rgba(20, 20, 20, 0.85)", border: "1px solid #262626", backdropFilter: "blur(8px)" }}
+          style={{ background: "rgba(39, 22, 43, 0.88)", border: "1px solid #41283e", backdropFilter: "blur(8px)" }}
         >
           {/* Indicador de pasos */}
-          <div className="flex items-center gap-2 mb-6 text-xs" style={{ color: "#737373" }}>
+          <div className="flex items-center gap-2 mb-6 text-xs" style={{ color: "#bea5b7" }}>
             <span
               className="px-2 py-1 rounded-md font-semibold"
               style={{
-                background: step === 1 ? "#FAFAFA" : "transparent",
-                color: step === 1 ? "#0A0A0A" : "#737373",
-                border: step === 1 ? "none" : "1px solid #262626",
+                background: step === 1 ? "#e6197e" : "transparent",
+                color: step === 1 ? "#fff" : "#bea5b7",
+                border: step === 1 ? "none" : "1px solid #41283e",
               }}
             >
               1. Cuéntanos
             </span>
-            <span style={{ color: "#404040" }}>→</span>
+            <span style={{ color: "#5a3854" }}>→</span>
             <span
               className="px-2 py-1 rounded-md font-semibold"
               style={{
-                background: step === 2 ? "#FAFAFA" : "transparent",
-                color: step === 2 ? "#0A0A0A" : "#737373",
-                border: step === 2 ? "none" : "1px solid #262626",
+                background: step === 2 ? "#e6197e" : "transparent",
+                color: step === 2 ? "#fff" : "#bea5b7",
+                border: step === 2 ? "none" : "1px solid #41283e",
               }}
             >
               2. Elige hueco
@@ -327,15 +332,15 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
           {step === 1 && (
             <div className="space-y-4">
               <div data-field="fullName">
-                <label className="text-xs block mb-1.5" style={{ color: "#A3A3A3" }}>
+                <label className="text-xs block mb-1.5" style={{ color: "#d2b8c9" }}>
                   Nombre y apellidos *
                 </label>
                 <input
                   type="text"
                   className="w-full px-3 py-2.5 rounded-lg text-sm"
                   style={{
-                    background: "#1F1F1F",
-                    border: `1px solid ${fieldErrors.fullName ? "#DC2626" : "#404040"}`,
+                    background: "#2d1b30",
+                    border: `1px solid ${fieldErrors.fullName ? "#DC2626" : "#5a3854"}`,
                     color: "#FAFAFA",
                   }}
                   placeholder="Ej. Carlos Martínez"
@@ -349,15 +354,15 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div data-field="email">
-                  <label className="text-xs block mb-1.5" style={{ color: "#A3A3A3" }}>
+                  <label className="text-xs block mb-1.5" style={{ color: "#d2b8c9" }}>
                     Email *
                   </label>
                   <input
                     type="email"
                     className="w-full px-3 py-2.5 rounded-lg text-sm"
                     style={{
-                      background: "#1F1F1F",
-                      border: `1px solid ${fieldErrors.email ? "#DC2626" : "#404040"}`,
+                      background: "#2d1b30",
+                      border: `1px solid ${fieldErrors.email ? "#DC2626" : "#5a3854"}`,
                       color: "#FAFAFA",
                     }}
                     placeholder="tu@email.com"
@@ -369,15 +374,15 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
                   )}
                 </div>
                 <div data-field="phone">
-                  <label className="text-xs block mb-1.5" style={{ color: "#A3A3A3" }}>
+                  <label className="text-xs block mb-1.5" style={{ color: "#d2b8c9" }}>
                     Teléfono *
                   </label>
                   <input
                     type="tel"
                     className="w-full px-3 py-2.5 rounded-lg text-sm"
                     style={{
-                      background: "#1F1F1F",
-                      border: `1px solid ${fieldErrors.phone ? "#DC2626" : "#404040"}`,
+                      background: "#2d1b30",
+                      border: `1px solid ${fieldErrors.phone ? "#DC2626" : "#5a3854"}`,
                       color: "#FAFAFA",
                     }}
                     placeholder="+34 600 000 000"
@@ -391,15 +396,15 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
               </div>
 
               <div data-field="instagram">
-                <label className="text-xs block mb-1.5" style={{ color: "#A3A3A3" }}>
+                <label className="text-xs block mb-1.5" style={{ color: "#d2b8c9" }}>
                   Usuario de Instagram *
                 </label>
                 <input
                   type="text"
                   className="w-full px-3 py-2.5 rounded-lg text-sm"
                   style={{
-                    background: "#1F1F1F",
-                    border: `1px solid ${fieldErrors.instagram ? "#DC2626" : "#404040"}`,
+                    background: "#2d1b30",
+                    border: `1px solid ${fieldErrors.instagram ? "#DC2626" : "#5a3854"}`,
                     color: "#FAFAFA",
                   }}
                   placeholder="@tuusuario"
@@ -412,18 +417,18 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
               </div>
 
               <div data-field="motivo">
-                <label className="text-xs block mb-1.5" style={{ color: "#A3A3A3" }}>
+                <label className="text-xs block mb-1.5" style={{ color: "#d2b8c9" }}>
                   ¿Qué te trae aquí? *
                 </label>
                 <textarea
                   rows={3}
                   className="w-full px-3 py-2.5 rounded-lg text-sm"
                   style={{
-                    background: "#1F1F1F",
-                    border: `1px solid ${fieldErrors.motivo ? "#DC2626" : "#404040"}`,
+                    background: "#2d1b30",
+                    border: `1px solid ${fieldErrors.motivo ? "#DC2626" : "#5a3854"}`,
                     color: "#FAFAFA",
                   }}
-                  placeholder="Ej. Quiero perder grasa sin perder fuerza para CrossFit / Hyrox…"
+                  placeholder="Ej. Quiero perder grasa sin perder fuerza para crosstraining / HYROX…"
                   value={motivo}
                   onChange={(e) => setMotivo(e.target.value)}
                 />
@@ -433,15 +438,15 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
               </div>
 
               <div data-field="intentosPrevios">
-                <label className="text-xs block mb-1.5" style={{ color: "#A3A3A3" }}>
+                <label className="text-xs block mb-1.5" style={{ color: "#d2b8c9" }}>
                   ¿Qué has probado antes? *
                 </label>
                 <textarea
                   rows={2}
                   className="w-full px-3 py-2.5 rounded-lg text-sm"
                   style={{
-                    background: "#1F1F1F",
-                    border: `1px solid ${fieldErrors.intentosPrevios ? "#DC2626" : "#404040"}`,
+                    background: "#2d1b30",
+                    border: `1px solid ${fieldErrors.intentosPrevios ? "#DC2626" : "#5a3854"}`,
                     color: "#FAFAFA",
                   }}
                   placeholder="Ej. Dietas hipocalóricas, contar macros, suplementos, otra nutricionista…"
@@ -454,15 +459,15 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
               </div>
 
               <div data-field="objetivoNutricional">
-                <label className="text-xs block mb-1.5" style={{ color: "#A3A3A3" }}>
+                <label className="text-xs block mb-1.5" style={{ color: "#d2b8c9" }}>
                   ¿Cuál es tu objetivo nutricional? *
                 </label>
                 <textarea
                   rows={2}
                   className="w-full px-3 py-2.5 rounded-lg text-sm"
                   style={{
-                    background: "#1F1F1F",
-                    border: `1px solid ${fieldErrors.objetivoNutricional ? "#DC2626" : "#404040"}`,
+                    background: "#2d1b30",
+                    border: `1px solid ${fieldErrors.objetivoNutricional ? "#DC2626" : "#5a3854"}`,
                     color: "#FAFAFA",
                   }}
                   placeholder="Ej. Bajar a 75 kg, ganar masa sin acumular grasa, rendir mejor en los WODs largos…"
@@ -488,18 +493,18 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
                 onClick={goStep2}
                 className="w-full text-sm font-semibold rounded-lg"
                 style={{
-                  background: "#FAFAFA",
-                  color: "#0A0A0A",
+                  background: "#e6197e",
+                  color: "#ffffff",
                   padding: 14,
                   border: "none",
                   cursor: "pointer",
                 }}
               >
-                Siguiente · Elegir hueco →
+                Continuar · Elegir mi horario →
               </button>
 
-              <p className="text-xs text-center" style={{ color: "#737373" }}>
-                100% confidencial. Sin compromiso. Solo te llamamos para conocerte.
+              <p className="text-xs text-center" style={{ color: "#bea5b7" }}>
+                Usaremos tus datos para gestionar tu valoración. Sin compromiso.
               </p>
             </div>
           )}
@@ -509,20 +514,20 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
               <button
                 onClick={() => setStep(1)}
                 className="text-xs mb-4 hover:underline"
-                style={{ color: "#A3A3A3" }}
+                style={{ color: "#d2b8c9" }}
               >
                 ← Volver
               </button>
 
               <h2 className="text-lg font-semibold mb-1">Elige cuándo te llamamos</h2>
-              <p className="text-xs mb-3" style={{ color: "#A3A3A3" }}>
-                Videoconsulta de 45-60 minutos. Necesitamos al menos 24 horas de antelación.
+              <p className="text-xs mb-3" style={{ color: "#d2b8c9" }}>
+                Elige el día y la hora que mejor te vengan. Reserva con al menos 24 horas de antelación.
               </p>
 
               {/* Aviso de huso horario — las horas salen ya en la TZ del usuario */}
               <div
                 className="rounded-lg px-3 py-2 mb-4 text-xs flex items-start gap-2"
-                style={{ background: "rgba(252, 211, 77, 0.08)", border: "1px solid rgba(252, 211, 77, 0.25)", color: "#FCD34D" }}
+                style={{ background: "rgba(230, 25, 126, 0.12)", border: "1px solid rgba(230, 25, 126, 0.38)", color: "#ff83bb" }}
               >
                 <span className="flex-shrink-0">🕒</span>
                 <div>
@@ -537,7 +542,7 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
               </div>
 
               {loadingSlots && (
-                <p className="text-sm text-center py-8" style={{ color: "#A3A3A3" }}>
+                <p className="text-sm text-center py-8" style={{ color: "#d2b8c9" }}>
                   Cargando huecos disponibles…
                 </p>
               )}
@@ -545,7 +550,7 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
               {!loadingSlots && slots.length === 0 && (
                 <div
                   className="rounded-lg p-4 text-sm text-center"
-                  style={{ background: "rgba(31, 31, 31, 0.7)", border: "1px dashed #404040", color: "#A3A3A3", backdropFilter: "blur(8px)" }}
+                  style={{ background: "rgba(47, 27, 50, 0.78)", border: "1px dashed #5a3854", color: "#d2b8c9", backdropFilter: "blur(8px)" }}
                 >
                   No hay huecos libres en las próximas semanas. Vuelve a intentarlo más tarde o contáctanos por Instagram.
                 </div>
@@ -556,7 +561,7 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
                   {/* Esta semana — siempre desplegado */}
                   {thisWeekDays.length > 0 && (
                     <>
-                      <div className="text-[10px] uppercase tracking-wider font-semibold pl-1" style={{ color: "#737373" }}>
+                      <div className="text-[10px] uppercase tracking-wider font-semibold pl-1" style={{ color: "#bea5b7" }}>
                         Esta semana
                       </div>
                       {thisWeekDays.map(([dayKey, daySlots]) => (
@@ -575,7 +580,7 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
                   {thisWeekDays.length === 0 && (
                     <div
                       className="rounded-lg p-3 text-sm text-center"
-                      style={{ background: "rgba(31, 31, 31, 0.6)", border: "1px dashed #404040", color: "#A3A3A3" }}
+                      style={{ background: "rgba(47, 27, 50, 0.72)", border: "1px dashed #5a3854", color: "#d2b8c9" }}
                     >
                       No quedan huecos disponibles esta semana. Mira las próximas fechas ↓
                     </div>
@@ -588,17 +593,17 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
                         onClick={() => setShowLaterDays((v) => !v)}
                         className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center justify-between"
                         style={{
-                          background: "rgba(26, 26, 26, 0.85)",
-                          border: "1px solid #262626",
-                          color: "#D4D4D4",
+                          background: "rgba(39, 22, 43, 0.9)",
+                          border: "1px solid #41283e",
+                          color: "#f0dbe7",
                           backdropFilter: "blur(8px)",
                         }}
                       >
                         <span>
                           <strong style={{ color: "#FAFAFA" }}>Ver más fechas</strong>{" "}
-                          <span style={{ color: "#737373" }}>· próximas semanas</span>
+                          <span style={{ color: "#bea5b7" }}>· próximas semanas</span>
                         </span>
-                        <span style={{ color: "#A3A3A3", fontSize: 14 }}>{showLaterDays ? "▲" : "▼"}</span>
+                        <span style={{ color: "#d2b8c9", fontSize: 14 }}>{showLaterDays ? "▲" : "▼"}</span>
                       </button>
 
                       {showLaterDays && (
@@ -650,8 +655,8 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
                 disabled={!selectedSlot || submitting}
                 className="w-full text-sm font-semibold rounded-lg mt-4"
                 style={{
-                  background: selectedSlot && !submitting ? "#FAFAFA" : "#404040",
-                  color: selectedSlot && !submitting ? "#0A0A0A" : "#737373",
+                  background: selectedSlot && !submitting ? "#FAFAFA" : "#5a3854",
+                  color: selectedSlot && !submitting ? "#ffffff" : "#bea5b7",
                   padding: 14,
                   border: "none",
                   cursor: selectedSlot && !submitting ? "pointer" : "not-allowed",
@@ -673,10 +678,10 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
           <section
             key={b.id}
             className="rounded-2xl p-5 sm:p-6 mb-4"
-            style={{ background: "rgba(20, 20, 20, 0.85)", border: "1px solid #262626", backdropFilter: "blur(8px)" }}
+            style={{ background: "rgba(39, 22, 43, 0.88)", border: "1px solid #41283e", backdropFilter: "blur(8px)" }}
           >
             {b.imageUrl && (
-              <div className="rounded-xl overflow-hidden mb-4" style={{ border: "1px solid #404040" }}>
+              <div className="rounded-xl overflow-hidden mb-4" style={{ border: "1px solid #5a3854" }}>
                 <img src={b.imageUrl} alt={b.title} className="w-full h-auto block" />
               </div>
             )}
@@ -686,7 +691,7 @@ export function AgendaLanding({ copy }: { copy: AgendaLandingCopy }) {
               </h2>
             )}
             {b.text && (
-              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#A3A3A3" }}>
+              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#d2b8c9" }}>
                 {b.text}
               </p>
             )}
@@ -720,9 +725,9 @@ function DayBlock({
   return (
     <div
       className="rounded-lg p-3"
-      style={{ background: "rgba(26, 26, 26, 0.85)", border: "1px solid #262626", backdropFilter: "blur(8px)" }}
+      style={{ background: "rgba(39, 22, 43, 0.9)", border: "1px solid #41283e", backdropFilter: "blur(8px)" }}
     >
-      <h3 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#D4D4D4" }}>
+      <h3 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#f0dbe7" }}>
         {formatDateLabel(daySlots[0].startISO, userTz)}
       </h3>
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
@@ -736,9 +741,9 @@ function DayBlock({
               onClick={() => setSelectedSlot(s)}
               className="px-2 py-2 rounded-md text-sm font-medium tabular-nums leading-tight"
               style={{
-                background: isSelected ? "#FAFAFA" : "#262626",
-                color: isSelected ? "#0A0A0A" : "#FAFAFA",
-                border: "1px solid " + (isSelected ? "#FAFAFA" : "#404040"),
+                background: isSelected ? "#FAFAFA" : "#41283e",
+                color: isSelected ? "#ffffff" : "#FAFAFA",
+                border: "1px solid " + (isSelected ? "#e6197e" : "#5a3854"),
               }}
             >
               <div>{localTime}</div>
@@ -764,31 +769,22 @@ function TeamAuthorityBlock({ copy }: { copy: AgendaLandingCopy }) {
     <section
       className="rounded-2xl p-5 sm:p-6 mb-6"
       style={{
-        background: "rgba(20, 20, 20, 0.85)",
-        border: "1px solid #262626",
+        background: "rgba(39, 22, 43, 0.88)",
+        border: "1px solid #41283e",
         backdropFilter: "blur(8px)",
       }}
     >
       {/* Foto de grupo del equipo (prueba social) */}
       {copy.groupImageUrl ? (
-        <div className="rounded-xl overflow-hidden mb-5" style={{ border: "1px solid #404040" }}>
+        <div className="rounded-xl overflow-hidden mb-5" style={{ border: "1px solid #5a3854" }}>
           <img src={copy.groupImageUrl} alt="Equipo Al Fallo" className="w-full h-auto block" />
         </div>
       ) : (
-        <div
-          className="rounded-xl mb-5 text-center"
-          style={{
-            aspectRatio: "16/9",
-            background: "rgba(31, 31, 31, 0.6)",
-            border: "1px dashed #404040",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#525252",
-            fontSize: 13,
-          }}
-        >
-          [Equipo Al Fallo]
+        <div className="relative overflow-hidden rounded-xl mb-5 px-6 py-10 text-center border border-[#e6197e]/25 bg-gradient-to-br from-[#451934] via-[#2b172e] to-[#160c1d]">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_85%_5%,rgba(230,25,126,0.30),transparent_45%)]" />
+          <div className="relative mx-auto mb-3 w-fit text-[#ff83bb]"><BrandLogo /></div>
+          <p className="relative text-sm font-semibold text-white">Tu entrenamiento exige. Tu nutrición responde.</p>
+          <p className="relative mt-2 text-xs text-[#d2b8c9]">Crosstraining · HYROX · Fuerza</p>
         </div>
       )}
 
@@ -796,7 +792,7 @@ function TeamAuthorityBlock({ copy }: { copy: AgendaLandingCopy }) {
       <h2 className="text-base sm:text-lg font-semibold mb-2" style={{ letterSpacing: "-0.015em" }}>
         {copy.authorityTitle}
       </h2>
-      <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#A3A3A3" }}>
+      <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#d2b8c9" }}>
         {copy.authorityText}
       </p>
 
@@ -806,12 +802,12 @@ function TeamAuthorityBlock({ copy }: { copy: AgendaLandingCopy }) {
           <div
             key={i}
             className="rounded-lg p-3 text-center flex flex-col items-center justify-center"
-            style={{ background: "rgba(31, 31, 31, 0.7)", border: "1px solid #262626" }}
+            style={{ background: "rgba(47, 27, 50, 0.78)", border: "1px solid #41283e" }}
           >
-            <div className="text-xl sm:text-2xl font-bold mb-0.5" style={{ color: "#FCD34D", letterSpacing: "-0.02em" }}>
+            <div className="text-xl sm:text-2xl font-bold mb-0.5" style={{ color: "#ff83bb", letterSpacing: "-0.02em" }}>
               {s.value}
             </div>
-            <div className="text-[10px] uppercase tracking-wider" style={{ color: "#A3A3A3" }}>
+            <div className="text-[10px] uppercase tracking-wider" style={{ color: "#d2b8c9" }}>
               {s.label}
             </div>
           </div>

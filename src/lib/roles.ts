@@ -74,6 +74,13 @@ export const NAV_ITEMS: NavItem[] = [
     description: "Leads, llamadas y conversiones del setter al closer.",
   },
   {
+    href: "/ajustes/agenda",
+    label: "Agenda comercial",
+    icon: CalendarDays,
+    roles: ["ceo", "head_coach"],
+    description: "Configura las reservas de llamadas y el calendario.",
+  },
+  {
     href: "/clientes",
     label: "Clientes",
     icon: Users,

@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { createEventWithMeet, getMeetLink, listEvents } from "@/lib/googleCalendar";
 import { whoseSlot } from "@/lib/scheduleResolver";
 import { notifySetters } from "@/lib/notifications";
+import { getAvailableSlots } from "@/lib/agendaSlots";
 
 type BookBody = {
   fullName: string;
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     "endISO",
   ];
   for (const k of required) {
-    if (!body[k] || (typeof body[k] === "string" && !body[k].trim())) {
+    if (typeof body[k] !== "string" || !body[k].trim()) {
       return NextResponse.json({ ok: false, error: `Falta el campo: ${k}` }, { status: 400 });
     }
   }
@@ -60,6 +61,24 @@ export async function POST(req: NextRequest) {
   }
   if (startDate <= new Date()) {
     return NextResponse.json({ ok: false, error: "El slot ya ha pasado" }, { status: 400 });
+  }
+
+  // Validación autoritativa en servidor: no aceptamos horas construidas a
+  // mano que no pertenezcan a la plantilla real de reservas. Incluye bloqueos.
+  try {
+    const available = await getAvailableSlots();
+    if (!available.some((slot) => slot.startISO === startDate.toISOString() && slot.endISO === endDate.toISOString())) {
+      return NextResponse.json(
+        { ok: false, error: "Ese horario ya no está disponible. Elige otro hueco." },
+        { status: 409 },
+      );
+    }
+  } catch (error) {
+    console.error("Agenda availability verification failed", error);
+    return NextResponse.json(
+      { ok: false, error: "No pudimos comprobar el calendario. Inténtalo de nuevo." },
+      { status: 503 },
+    );
   }
 
   const email = body.email.trim().toLowerCase();

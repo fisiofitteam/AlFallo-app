@@ -137,18 +137,18 @@ export type AgendaLandingCopy = {
 };
 
 export const AGENDA_LANDING_DEFAULTS: AgendaLandingCopy = {
-  heroTitle1: "Come para rendir,",
-  heroTitle2: "no solo para llenarte.",
+  heroTitle1: "TU NUTRICIÓN,",
+  heroTitle2: "AL NIVEL DE TU ENTRENO.",
   heroSubtitle:
-    "Reserva una videoconsulta gratuita de valoración con el equipo de Al Fallo Nutrition. Vemos qué te está limitando en el box y diseñamos el plan nutricional que te lleve al siguiente nivel — perder grasa, ganar masa o rendir como nunca.",
-  authorityTitle: "Nutricionistas que entienden el CrossFit",
+    "Entrenas duro. Tu alimentación también debería acompañarte. Reserva una valoración gratuita con el equipo de Al Fallo para descubrir cómo ajustar tu nutrición a tu objetivo, tus horarios y tu carga de entrenamiento.",
+  authorityTitle: "Nutrición pensada para quien entrena",
   authorityText:
-    "Trabajamos solo con atletas de CrossFit y Hyrox. Sabemos lo que pide tu cuerpo en una semana de WODs intensos, qué falla cuando se estanca el peso, y cómo encajar comidas reales en una vida real. No somos dietistas genéricos — somos parte de tu equipo.",
+    "Tanto si haces crosstraining como HYROX o fuerza, te ayudamos a alinear tus comidas con tu carga de entrenamiento, tu recuperación y tus objetivos. Sin dietas genéricas ni menús desconectados de tu día a día.",
   groupImageUrl: "",
   stats: [
-    { value: "+300", label: "atletas asesorados" },
-    { value: "+8", label: "años en boxes" },
-    { value: "✓", label: "Nutricionistas colegiados" },
+    { value: "01", label: "Valoración individual" },
+    { value: "02", label: "Estrategia a tu medida" },
+    { value: "03", label: "Seguimiento nutricional" },
   ],
   blocks: [],
 };
@@ -204,9 +204,9 @@ export const AGENDA_GRACIAS_DEFAULTS: AgendaGraciasCopy = {
     "Busca un sitio tranquilo, sin distracciones. Evita conectarte por la calle o conduciendo: necesitamos toda tu atención. Si entrenas un día concreto pre/post-WOD, reserva fuera de ese rato para estar despejada/o.",
   stepsTitle: "Qué pasará antes de la llamada",
   steps: [
-    "En breve recibirás un mensaje por WhatsApp para presentarte a la nutricionista que te atenderá y resolver cualquier duda inicial.",
-    "24 horas antes de la llamada te enviaremos un recordatorio con el link de Google Meet para conectarte.",
-    "Hablamos a la hora que has reservado. Solo tienes que entrar en el link que te enviaremos por WhatsApp.",
+    "El equipo revisará la información que nos has facilitado para preparar tu valoración.",
+    "Recibirás la invitación de Google Calendar con el enlace de Google Meet en el correo de la reserva.",
+    "A la hora acordada, entra desde la invitación y prepárate para comentar tus objetivos de nutrición y entrenamiento.",
   ],
   policyTitle: "Política de cancelación",
   policyText:

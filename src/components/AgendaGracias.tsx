@@ -1,6 +1,7 @@
 "use client";
 
 import { applyVars, type AgendaGraciasCopy } from "@/lib/landing-content";
+import { BrandLogo } from "@/components/brand-mark";
 
 function formatDateLong(iso: string): string {
   const d = new Date(iso);
@@ -28,25 +29,23 @@ export function AgendaGracias({
 
   return (
     <main
-      className="min-h-screen relative"
+      className="al-fallo-booking min-h-screen relative"
       style={{
-        backgroundColor: "#0A0A0A",
-        backgroundImage: "url('/box.jpg')",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundAttachment: "fixed",
+        backgroundColor: "#130b17",
+        backgroundImage: "radial-gradient(ellipse at 84% 0%, rgba(230,25,126,.26), transparent 42%), linear-gradient(160deg,#1d0e20,#110a17)",
         color: "#FAFAFA",
       }}
     >
       {/* Overlay sutil para que la imagen del box se vea con buena legibilidad */}
       <div
         className="absolute inset-0"
-        style={{ background: "rgba(10, 10, 10, 0.72)" }}
+        style={{ background: "linear-gradient(180deg, rgba(10,5,15,.05),rgba(10,5,15,.2))", pointerEvents: "none" }}
       />
 
       <div className="relative max-w-2xl mx-auto px-5 py-10 pb-20">
         {/* ━━━ Confirmación inicial ━━━ */}
         <section className="text-center mb-8">
+          <div className="mb-6 flex justify-center"><span className="rounded-2xl border border-[#e6197e]/30 bg-[#e6197e]/10 px-5 py-3 text-white"><BrandLogo/></span></div>
           <div
             className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4"
             style={{ background: "rgba(34, 197, 94, 0.15)", border: "1px solid rgba(34, 197, 94, 0.4)" }}
@@ -62,7 +61,7 @@ export function AgendaGracias({
           >
             {firstName ? applyVars(copy.heroTitleWithName, { nombre: firstName }) : copy.heroTitleNoName}
           </h1>
-          <p className="text-sm sm:text-base" style={{ color: "#D4D4D4" }}>
+          <p className="text-sm sm:text-base" style={{ color: "#f0dbe7" }}>
             {dateLabel ? applyVars(copy.reservedWithDate, { fecha: dateLabel }) : copy.reservedNoDate}
           </p>
         </section>
@@ -70,32 +69,32 @@ export function AgendaGracias({
         {/* ━━━ Cómo será tu videoconsulta ━━━ */}
         <section
           className="rounded-2xl p-5 sm:p-6 mb-4"
-          style={{ background: "rgba(20, 20, 20, 0.85)", border: "1px solid #262626", backdropFilter: "blur(8px)" }}
+          style={{ background: "rgba(39, 22, 43, 0.88)", border: "1px solid #41283e", backdropFilter: "blur(8px)" }}
         >
           <div className="flex items-center gap-2 mb-3">
             <span style={{ fontSize: 20 }}>📋</span>
             <h2 className="text-base sm:text-lg font-semibold">{copy.callTitle}</h2>
           </div>
-          <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#D4D4D4" }}>
+          <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#f0dbe7" }}>
             {copy.callText}
           </p>
         </section>
 
-        {/* ━━━ Vídeo pre-llamada (MOVIDO ARRIBA) ━━━ */}
-        <section
+        {/* Vídeo opcional: solo aparece cuando dirección haya configurado uno. */}
+        {PRE_CALL_VIDEO_ID && <section
           className="rounded-2xl p-5 sm:p-6 mb-4"
-          style={{ background: "rgba(20, 20, 20, 0.85)", border: "1px solid #262626", backdropFilter: "blur(8px)" }}
+          style={{ background: "rgba(39, 22, 43, 0.88)", border: "1px solid #41283e", backdropFilter: "blur(8px)" }}
         >
           <div className="flex items-center gap-2 mb-3">
             <span
               className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded"
-              style={{ background: "#FCD34D", color: "#78350F" }}
+              style={{ background: "#ff83bb", color: "#5a123a" }}
             >
               {copy.videoBadge}
             </span>
             <h2 className="text-base sm:text-lg font-semibold">{copy.videoTitle}</h2>
           </div>
-          <p className="text-sm mb-4" style={{ color: "#A3A3A3" }}>
+          <p className="text-sm mb-4" style={{ color: "#d2b8c9" }}>
             {copy.videoIntro}
           </p>
           <div
@@ -109,7 +108,7 @@ export function AgendaGracias({
               allowFullScreen
             />
           </div>
-          <ul className="space-y-1.5 text-sm" style={{ color: "#A3A3A3" }}>
+          <ul className="space-y-1.5 text-sm" style={{ color: "#d2b8c9" }}>
             {copy.videoBullets.map((b, i) => (
               <li key={i} className="flex items-start gap-2">
                 <span style={{ color: "#86EFAC" }}>✓</span>
@@ -117,18 +116,18 @@ export function AgendaGracias({
               </li>
             ))}
           </ul>
-        </section>
+        </section>}
 
         {/* ━━━ Cómo prepararte ━━━ */}
         <section
           className="rounded-2xl p-5 sm:p-6 mb-4"
-          style={{ background: "rgba(20, 20, 20, 0.85)", border: "1px solid #262626", backdropFilter: "blur(8px)" }}
+          style={{ background: "rgba(39, 22, 43, 0.88)", border: "1px solid #41283e", backdropFilter: "blur(8px)" }}
         >
           <div className="flex items-center gap-2 mb-3">
             <span style={{ fontSize: 20 }}>📍</span>
             <h2 className="text-base sm:text-lg font-semibold">{copy.prepTitle}</h2>
           </div>
-          <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#A3A3A3" }}>
+          <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#d2b8c9" }}>
             {copy.prepText}
           </p>
         </section>
@@ -136,7 +135,7 @@ export function AgendaGracias({
         {/* ━━━ Qué pasará antes de la llamada ━━━ */}
         <section
           className="rounded-2xl p-5 sm:p-6 mb-4"
-          style={{ background: "rgba(20, 20, 20, 0.85)", border: "1px solid #262626", backdropFilter: "blur(8px)" }}
+          style={{ background: "rgba(39, 22, 43, 0.88)", border: "1px solid #41283e", backdropFilter: "blur(8px)" }}
         >
           <div className="flex items-center gap-2 mb-4">
             <span style={{ fontSize: 20 }}>⏱</span>
@@ -148,11 +147,11 @@ export function AgendaGracias({
               <li key={i} className="flex items-start gap-3">
                 <span
                   className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold"
-                  style={{ background: "#262626", color: "#FAFAFA" }}
+                  style={{ background: "#41283e", color: "#FAFAFA" }}
                 >
                   {i + 1}
                 </span>
-                <div className="whitespace-pre-line" style={{ color: "#A3A3A3" }}>{s}</div>
+                <div className="whitespace-pre-line" style={{ color: "#d2b8c9" }}>{s}</div>
               </li>
             ))}
           </ol>
@@ -171,7 +170,7 @@ export function AgendaGracias({
             <span style={{ fontSize: 20 }}>🚫</span>
             <h2 className="text-base sm:text-lg font-semibold">{copy.policyTitle}</h2>
           </div>
-          <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#D4D4D4" }}>
+          <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#f0dbe7" }}>
             {copy.policyText}
           </p>
           <div
@@ -192,15 +191,16 @@ export function AgendaGracias({
           className="rounded-2xl p-5 text-sm"
           style={{
             background: "rgba(20, 20, 20, 0.7)",
-            border: "1px solid #262626",
+            border: "1px solid #41283e",
             backdropFilter: "blur(8px)",
           }}
         >
-          <p className="text-center mb-4" style={{ color: "#A3A3A3" }}>
+          <p className="text-center mb-4" style={{ color: "#d2b8c9" }}>
             {copy.contactText}
           </p>
           <div className="flex flex-col sm:flex-row gap-2 justify-center">
-            <a
+            {!copy.whatsappNumber && !INSTAGRAM_HANDLE && <p className="text-xs text-[#d2b8c9]">El equipo te contactará con los datos que has facilitado en la reserva.</p>}
+            {copy.whatsappNumber && <a
               href={WHATSAPP_LINK}
               target="_blank"
               rel="noopener noreferrer"
@@ -208,24 +208,24 @@ export function AgendaGracias({
               style={{ background: "#25D366", color: "#0A0A0A" }}
             >
               <span style={{ fontSize: 16 }}>💬</span> Escríbenos por WhatsApp
-            </a>
-            <a
+            </a>}
+            {INSTAGRAM_HANDLE && <a
               href={INSTAGRAM_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="text-center text-sm rounded-lg px-4 py-2.5 flex items-center justify-center gap-2"
               style={{
-                background: "rgba(31, 31, 31, 0.7)",
-                border: "1px solid #404040",
-                color: "#D4D4D4",
+                background: "rgba(47, 27, 50, 0.78)",
+                border: "1px solid #5a3854",
+                color: "#f0dbe7",
               }}
             >
               <span style={{ fontSize: 16 }}>📷</span> @{INSTAGRAM_HANDLE}
-            </a>
+            </a>}
           </div>
         </section>
 
-        <footer className="mt-10 text-center text-xs" style={{ color: "#737373" }}>
+        <footer className="mt-10 text-center text-xs" style={{ color: "#bea5b7" }}>
           Al Fallo Nutrition · Nutrición deportiva online · {new Date().getFullYear()}
         </footer>
       </div>
