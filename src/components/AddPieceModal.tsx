@@ -3,38 +3,21 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FORMATS, GOALS, GOAL_COLOR_CLASSES, goalColor, type GoalKey } from "@/lib/content-formats";
-import { DAY_LABELS } from "@/lib/content-templates";
 
-/**
- * Modal "Añadir pieza" reutilizable desde:
- *  - La vista de semana (ThisWeekView): el botón "+ Añadir pieza" abre
- *    el modal con la semana ya fijada; el usuario solo elige día y formato.
- *  - El calendario (CalendarView): click en un día vacío abre el modal
- *    con día y semana ya fijados; el usuario solo elige el formato.
- *
- * Cuando confirmas, llama a POST /api/content/pieces y redirige al
- * editor de la pieza recién creada para que la rellenes.
- *
- * Si vienen `lockedDayOfWeek` o `lockedFormat`, los campos van fijados
- * (sin selector). Útil cuando ya sabemos el día por el contexto (click
- * en un día concreto del calendario).
- */
+/** Crea una pieza directamente en una fecha, sin pedir que exista una semana. */
 export function AddPieceModal({
-  weekId,
-  weekLabel,
-  lockedDayOfWeek,
+  initialDate,
+  lockedDate,
   lockedFormat,
   onClose,
 }: {
-  weekId: string;
-  /** Texto contextual mostrado en la cabecera ("Esta semana", "Semana 24", etc.). */
-  weekLabel?: string;
-  lockedDayOfWeek?: number;
+  initialDate?: string;
+  lockedDate?: string;
   lockedFormat?: string;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [dayOfWeek, setDayOfWeek] = useState<number>(lockedDayOfWeek ?? 1);
+  const [date, setDate] = useState(() => lockedDate ?? initialDate ?? new Date().toLocaleDateString("sv-SE"));
   const [format, setFormat] = useState<string>(lockedFormat ?? "reel");
   const [title, setTitle] = useState("");
   const [goals, setGoals] = useState<GoalKey[]>([]);
@@ -47,14 +30,14 @@ export function AddPieceModal({
 
   async function create() {
     setError(null);
+    if (!date) { setError("Elige una fecha para la pieza"); return; }
     setBusy(true);
     try {
       const res = await fetch("/api/content/pieces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          weekId,
-          dayOfWeek,
+          date,
           format: format || "",
           title: title.trim() || null,
           goals,
@@ -99,29 +82,20 @@ export function AddPieceModal({
             ×
           </button>
         </div>
-        {weekLabel && (
-          <p className="text-xs text-neutral-500 mb-4">{weekLabel}</p>
-        )}
-
         <div className="space-y-3">
-          {lockedDayOfWeek === undefined && (
-            <div>
-              <label className="text-xs text-neutral-600 block mb-1">Día de la semana</label>
-              <select
-                value={dayOfWeek}
-                onChange={(e) => setDayOfWeek(Number(e.target.value))}
-                className="input text-sm w-full"
-                disabled={busy}
-              >
-                {[1, 2, 3, 4, 5, 6, 7].map((dow) => (
-                  <option key={dow} value={dow}>
-                    {DAY_LABELS[dow] ?? `Día ${dow}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
+          <div>
+            <label className="text-xs text-neutral-600 block mb-1">Fecha de publicación</label>
+            <input
+              type="date"
+              value={date}
+              min="2000-01-01"
+              max="2100-12-31"
+              onChange={(e) => setDate(e.target.value)}
+              className="input text-sm w-full"
+              disabled={busy || !!lockedDate}
+              required
+            />
+          </div>
           {lockedFormat === undefined && (
             <div>
               <label className="text-xs text-neutral-600 block mb-1">Formato</label>

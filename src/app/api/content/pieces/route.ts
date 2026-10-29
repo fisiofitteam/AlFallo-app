@@ -2,21 +2,17 @@ import { canManageContent } from "@/lib/roles";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
+import { getOrCreateContentWeek, parsePieceDate } from "@/lib/content-piece-date";
 
 function canAccess(role: string): boolean {
   return canManageContent(role);
 }
 
 /**
- * POST /api/content/pieces — crear una pieza nueva dentro de una semana.
- * Hasta ahora solo se podían crear las 7 al crear la semana; este endpoint
- * permite añadir piezas adicionales (más de una por día, días extra, etc).
- *
- * Body:
- *  - weekId      (string, obligatorio)
- *  - dayOfWeek   (1-7, obligatorio)
- *  - format      (string, opcional → vacío)
- *  - title       (string, opcional)
+ * POST /api/content/pieces — crea una pieza directamente en una fecha.
+ * `date: YYYY-MM-DD` es el flujo habitual del calendario y no exige crear
+ * una semana; `weekId` + `dayOfWeek` sigue disponible por retrocompatibilidad.
+ * Los contenedores semanales internos NO crean siete piezas de relleno.
  */
 export async function POST(req: NextRequest) {
   const user = await getActiveProfessional();
@@ -25,20 +21,21 @@ export async function POST(req: NextRequest) {
   }
 
   const data = await req.json().catch(() => ({}));
+  const date = data?.date === undefined ? null : parsePieceDate(data.date);
+  if (data?.date !== undefined && !date) {
+    return NextResponse.json({ error: "Fecha inválida (YYYY-MM-DD)" }, { status: 400 });
+  }
   const weekId = typeof data?.weekId === "string" ? data.weekId.trim() : "";
-  const dayOfWeek = Number(data?.dayOfWeek);
-  if (!weekId) return NextResponse.json({ error: "weekId requerido" }, { status: 400 });
+  if (!date && !weekId) {
+    return NextResponse.json({ error: "Debes indicar una fecha" }, { status: 400 });
+  }
+  if (date && weekId) {
+    return NextResponse.json({ error: "Indica fecha o semana, no ambas" }, { status: 400 });
+  }
+  const dayOfWeek = date?.dayOfWeek ?? Number(data?.dayOfWeek);
   if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7) {
     return NextResponse.json({ error: "dayOfWeek debe ser 1..7" }, { status: 400 });
   }
-
-  // Validamos que la semana exista. Aprovechamos para coger leadMagnetKeyword
-  // y prefijar dmKeyword igual que se hace al crear las 7 iniciales.
-  const week = await prisma.contentWeek.findUnique({
-    where: { id: weekId },
-    select: { id: true, leadMagnetKeyword: true },
-  });
-  if (!week) return NextResponse.json({ error: "Semana no encontrada" }, { status: 404 });
 
   // Objetivos opcionales al crear (array de strings). Los filtramos
   // contra el catálogo válido para no aceptar basura.
@@ -48,20 +45,37 @@ export async function POST(req: NextRequest) {
     .map((g: unknown) => String(g))
     .filter((g: string) => ALLOWED_GOALS.includes(g));
 
-  const piece = await prisma.contentPiece.create({
-    data: {
-      weekId: week.id,
-      dayOfWeek,
-      format: typeof data?.format === "string" ? data.format : "",
-      goal: "",
-      goals: JSON.stringify(goalsClean),
-      ctaType: "",
-      dmKeyword: week.leadMagnetKeyword ?? null,
-      title: typeof data?.title === "string" && data.title.trim() ? data.title.trim() : null,
-      blocks: "[]",
-      status: "idea",
-    },
+  // Mantener el endpoint legacy basado en semana para integraciones antiguas.
+  // El nuevo calendario envía `date`; la semana se crea solo como contenedor
+  // técnico, sin generar piezas adicionales.
+  const createData = (resolvedWeek: { id: string; leadMagnetKeyword: string | null }) => ({
+    weekId: resolvedWeek.id,
+    dayOfWeek,
+    format: typeof data?.format === "string" ? data.format : "",
+    goal: "",
+    goals: JSON.stringify(goalsClean),
+    ctaType: "",
+    dmKeyword: resolvedWeek.leadMagnetKeyword ?? null,
+    title: typeof data?.title === "string" && data.title.trim() ? data.title.trim() : null,
+    blocks: "[]",
+    status: "idea",
   });
+  const piece = date
+    ? await prisma.$transaction(async (tx) => {
+        // Serializar la creación del contenedor semanal para evitar duplicados
+        // al crear dos piezas a la vez en una semana nueva.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(71026, ${date.year * 100 + date.weekNumber}::integer)`;
+        const week = await getOrCreateContentWeek(tx, date);
+        return tx.contentPiece.create({ data: createData(week) });
+      }, { timeout: 15_000 })
+    : await (async () => {
+        const week = await prisma.contentWeek.findUnique({
+          where: { id: weekId }, select: { id: true, leadMagnetKeyword: true },
+        });
+        if (!week) return null;
+        return prisma.contentPiece.create({ data: createData(week) });
+      })();
+  if (!piece) return NextResponse.json({ error: "Semana no encontrada" }, { status: 404 });
 
   return NextResponse.json({ ok: true, id: piece.id, piece });
 }
@@ -103,20 +117,29 @@ export async function PATCH(req: NextRequest) {
     update.goals = JSON.stringify(goalsArr);
   }
 
-  // Mover de día/semana (drag & drop en calendario)
+  // Mover directamente a cualquier fecha; se reutiliza o crea el contenedor
+  // interno cuando la semana de destino todavía no existe.
+  if (rest.date !== undefined) {
+    const target = parsePieceDate(rest.date);
+    if (!target || rest.weekId !== undefined || rest.dayOfWeek !== undefined) {
+      return NextResponse.json({ error: "Fecha de destino inválida" }, { status: 400 });
+    }
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(71026, ${target.year * 100 + target.weekNumber}::integer)`;
+      const week = await getOrCreateContentWeek(tx, target);
+      return tx.contentPiece.update({ where: { id }, data: { ...update, weekId: week.id, dayOfWeek: target.dayOfWeek } });
+    }, { timeout: 15_000 }).then((piece) => NextResponse.json(piece));
+  }
   if (rest.dayOfWeek !== undefined) {
     const dow = Number(rest.dayOfWeek);
-    if (dow < 1 || dow > 7) {
+    if (!Number.isInteger(dow) || dow < 1 || dow > 7) {
       return NextResponse.json({ error: "dayOfWeek debe ser 1-7" }, { status: 400 });
     }
     update.dayOfWeek = dow;
   }
   if (rest.weekId !== undefined) {
-    // Verificar que la semana destino existe
     const targetWeek = await prisma.contentWeek.findUnique({ where: { id: rest.weekId } });
-    if (!targetWeek) {
-      return NextResponse.json({ error: "Semana destino no existe" }, { status: 400 });
-    }
+    if (!targetWeek) return NextResponse.json({ error: "Semana destino no existe" }, { status: 400 });
     update.weekId = rest.weekId;
   }
 

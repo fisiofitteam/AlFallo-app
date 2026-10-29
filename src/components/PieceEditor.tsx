@@ -72,6 +72,7 @@ const AUTOSAVE_DEBOUNCE_MS = 1500;
 export function PieceEditor({
   piece: initialPiece,
   week,
+  publicationDate,
   prevId,
   nextId,
   instagram,
@@ -79,6 +80,7 @@ export function PieceEditor({
 }: {
   piece: Piece;
   week: { id: string; centralTheme: string; leadMagnetKeyword: string | null };
+  publicationDate: string;
   prevId: string | null;
   nextId: string | null;
   instagram?: InstagramProps;
@@ -87,6 +89,7 @@ export function PieceEditor({
 }) {
   const router = useRouter();
   const [piece, setPiece] = useState(initialPiece);
+  const [pieceDate, setPieceDate] = useState(publicationDate);
   const [recordingMode, setRecordingMode] = useState(false);
   const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -122,6 +125,26 @@ export function PieceEditor({
       }
     }, AUTOSAVE_DEBOUNCE_MS);
   }, [piece.id]);
+
+  async function moveToDate(newDate: string) {
+    if (!newDate || newDate === pieceDate) return;
+    const previous = pieceDate;
+    setPieceDate(newDate);
+    setSaving("saving");
+    try {
+      const res = await fetch("/api/content/pieces", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: piece.id, date: newDate }),
+      });
+      if (!res.ok) throw new Error("No se pudo cambiar la fecha");
+      setSaving("saved");
+      router.refresh();
+    } catch {
+      setPieceDate(previous);
+      setSaving("error");
+    }
+  }
 
   // Helper: actualiza state local + cola guardado
   function update<K extends keyof Piece>(key: K, value: Piece[K]) {
@@ -200,8 +223,7 @@ export function PieceEditor({
           <Link href="/contenido/calendario" className="text-xs text-neutral-500 hover:text-neutral-900">
             ← Calendario
           </Link>
-          <span className="text-xs text-neutral-300">·</span>
-          <span className="text-xs text-neutral-500">{week.centralTheme || "Sin tema"}</span>
+          {week.centralTheme && <span className="text-xs text-neutral-500">· {week.centralTheme}</span>}
         </div>
 
         <div className="flex justify-between items-start gap-3 flex-wrap">
@@ -231,7 +253,16 @@ export function PieceEditor({
                   <option key={f.value} value={f.value}>{f.icon} {f.label}</option>
                 ))}
               </select>
-              <span className="text-sm text-neutral-500">{dayLabel}</span>
+              <label className="flex items-center gap-1.5 text-xs text-neutral-500">
+                Publicación
+                <input
+                  type="date"
+                  value={pieceDate}
+                  onChange={(e) => void moveToDate(e.target.value)}
+                  className="rounded border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-800"
+                  title="Cambiar la fecha de esta pieza"
+                />
+              </label>
               {statusMeta && (
                 <span className={`text-[10px] uppercase font-medium px-2 py-0.5 rounded-full border ${STATUS_BADGE[statusMeta.color]}`}>
                   {statusMeta.label}

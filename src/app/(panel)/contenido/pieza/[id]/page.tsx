@@ -98,6 +98,11 @@ export default async function PiecePage({ params }: { params: { id: string } }) 
         suggestion: igSuggestion,
         recent: igRecent,
       }}
+      publicationDate={(() => {
+        const date = new Date(piece.week.startDate);
+        date.setUTCDate(date.getUTCDate() + piece.dayOfWeek - 1);
+        return date.toISOString().slice(0, 10);
+      })()}
       week={{
         id: piece.week.id,
         centralTheme: piece.week.centralTheme,

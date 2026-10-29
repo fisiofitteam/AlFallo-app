@@ -4,12 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  BODY_ZONES,
-  WEEK_TYPES,
-  WEEK_STATUS,
-  isoWeekFromDate,
-} from "@/lib/content-templates";
-import {
   FORMATS,
   formatIcon,
   formatLabelOnly,
@@ -73,13 +67,6 @@ type CalEvent = {
 const MONTH_NAMES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const DAY_HEADERS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
-const STATUS_COLORS: Record<string, string> = {
-  neutral: "bg-neutral-100 text-neutral-700",
-  amber: "bg-amber-100 text-amber-800",
-  blue: "bg-blue-100 text-blue-800",
-  emerald: "bg-emerald-100 text-emerald-800",
-};
-
 // Color para eventos custom
 const EVENT_COLORS: Record<string, string> = {
   neutral: "bg-neutral-200 text-neutral-800 border-neutral-300",
@@ -103,20 +90,17 @@ export function CalendarView({
   view,
   month,
   year,
-  zoneFilter,
-  typeFilter,
   weeks,
   events,
 }: {
   view: "month" | "table";
   month: number;
   year: number;
-  zoneFilter: string;
-  typeFilter: string;
   weeks: Week[];
   events: CalEvent[];
 }) {
   const router = useRouter();
+  const [newPieceOpen, setNewPieceOpen] = useState(false);
 
   function navigate(params: Record<string, string>) {
     const url = new URL(window.location.href);
@@ -145,6 +129,12 @@ export function CalendarView({
         </div>
 
         <div className="flex gap-1 flex-wrap items-center">
+          <button
+            onClick={() => setNewPieceOpen(true)}
+            className="px-3 py-1.5 text-xs rounded font-semibold text-white bg-neutral-900 hover:bg-neutral-700"
+          >
+            + Nueva pieza
+          </button>
           <a
             href={`/contenido/export-reels?month=${String(year)}-${String(month).padStart(2, "0")}`}
             className="px-3 py-1.5 text-xs rounded font-medium whitespace-nowrap"
@@ -168,37 +158,24 @@ export function CalendarView({
         </div>
       </header>
 
-      <section className="card mb-4">
-        <div className="flex gap-3 flex-wrap items-end">
-          <div>
-            <label className="text-[10px] uppercase text-neutral-500 block mb-1">Zona corporal</label>
-            <select className="input text-xs w-auto" value={zoneFilter} onChange={(e) => navigate({ zone: e.target.value })}>
-              <option value="all">Todas</option>
-              {BODY_ZONES.map((z) => <option key={z.value} value={z.value}>{z.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] uppercase text-neutral-500 block mb-1">Tipo de semana</label>
-            <select className="input text-xs w-auto" value={typeFilter} onChange={(e) => navigate({ type: e.target.value })}>
-              <option value="all">Todas</option>
-              {WEEK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-          </div>
-          {(zoneFilter !== "all" || typeFilter !== "all") && (
-            <button onClick={() => navigate({ zone: "all", type: "all" })} className="text-xs text-neutral-500 underline">
-              Limpiar filtros
-            </button>
-          )}
-          <div className="ml-auto text-xs text-neutral-500">
-            {weeks.length} {weeks.length === 1 ? "semana" : "semanas"}
-          </div>
-        </div>
-      </section>
+      <div className="mb-3 text-xs text-neutral-500">{weeks.reduce((count, w) => count + w.pieces.length, 0)} piezas en el calendario · Crea piezas directamente en cualquier fecha</div>
 
       {view === "month" ? (
         <MonthGrid month={month} year={year} weeks={weeks} events={events} onSwitchMonth={switchMonth} />
       ) : (
         <TableView weeks={weeks} />
+      )}
+
+      {newPieceOpen && (
+        <AddPieceModal
+          initialDate={(() => {
+            const now = new Date();
+            return now.getFullYear() === year && now.getMonth() + 1 === month
+              ? now.toLocaleDateString("sv-SE")
+              : `${year}-${String(month).padStart(2, "0")}-01`;
+          })()}
+          onClose={() => setNewPieceOpen(false)}
+        />
       )}
 
       <section className="mt-4 text-xs text-neutral-500">
@@ -217,29 +194,11 @@ export function CalendarView({
 // Vista mensual
 // ============================================================================
 
-// Encuentra la semana que cubre un día concreto (entre startDate y endDate inclusivos)
-// y devuelve { weekId, dayOfWeek } o null si ese día no está cubierto por ninguna semana.
-function findWeekForDate(weeks: Week[], dateKey: string): { weekId: string; dayOfWeek: number } | null {
-  const target = new Date(dateKey + "T00:00:00.000Z").getTime();
-  for (const w of weeks) {
-    const ws = new Date(w.startDate).getTime();
-    const we = new Date(w.endDate).getTime();
-    // endDate suele ser el sábado/domingo a las 00:00, ampliamos para que incluya todo el día.
-    const weEnd = we + 24 * 60 * 60 * 1000 - 1;
-    if (target >= ws && target <= weEnd) {
-      const diffDays = Math.round((target - ws) / (1000 * 60 * 60 * 24));
-      const dayOfWeek = diffDays + 1; // 1=Lunes
-      return { weekId: w.id, dayOfWeek };
-    }
-  }
-  return null;
-}
-
-async function movePiece(pieceId: string, weekId: string, dayOfWeek: number) {
+async function movePiece(pieceId: string, date: string) {
   const res = await fetch("/api/content/pieces", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: pieceId, weekId, dayOfWeek }),
+    body: JSON.stringify({ id: pieceId, date }),
   });
   return res.ok;
 }
@@ -259,9 +218,8 @@ function MonthGrid({
 }) {
   const router = useRouter();
   const [eventModal, setEventModal] = useState<{ date: string; event: CalEvent | null } | null>(null);
-  const [creatingWeek, setCreatingWeek] = useState(false);
   const [movePieceModal, setMovePieceModal] = useState<{ pieceId: string; pieceTitle: string; currentDate: string } | null>(null);
-  const [addPieceModal, setAddPieceModal] = useState<{ weekId: string; dayOfWeek: number; weekLabel: string } | null>(null);
+  const [addPieceModal, setAddPieceModal] = useState<string | null>(null);
 
   // Estado local del mes mostrado. Inicial = props (URL). Cambiar localmente
   // permite el auto-avance durante el arrastre sin perder el drag nativo
@@ -304,37 +262,6 @@ function MonthGrid({
     setAdvancePending(null);
   }
 
-  // Crea (o abre, si ya existe) la semana de contenido para un lunes dado y
-  // lleva a su vista para editarla.
-  async function createWeekForMonday(monday: Date) {
-    if (creatingWeek) return;
-    setCreatingWeek(true);
-    const local = new Date(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate());
-    const { year, weekNumber } = isoWeekFromDate(local);
-    try {
-      const res = await fetch("/api/content/weeks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ year, weekNumber }),
-      });
-      if (res.ok) {
-        const w = await res.json();
-        router.push(`/contenido?week=${w.id}`);
-        return;
-      }
-      // Si ya existe (409), la abrimos igualmente.
-      if (res.status === 409) {
-        const existing = await res.json().catch(() => null);
-        if (existing?.weekId) { router.push(`/contenido?week=${existing.weekId}`); return; }
-      }
-      alert("No se pudo crear la semana.");
-    } catch {
-      alert("No se pudo crear la semana.");
-    } finally {
-      setCreatingWeek(false);
-    }
-  }
-
   // Construir cuadrícula del mes
   const firstOfMonth = new Date(Date.UTC(year, month - 1, 1));
   const lastOfMonth = new Date(Date.UTC(year, month, 0));
@@ -367,13 +294,6 @@ function MonthGrid({
     const arr = eventsByDate.get(key) ?? [];
     arr.push(e);
     eventsByDate.set(key, arr);
-  }
-
-  // Index semanas por su lunes (YYYY-MM-DD) → permite buscar la franja de tema cuando renderizamos la fila
-  const weekByMonday = new Map<string, Week>();
-  for (const w of weeks) {
-    const key = w.startDate.split("T")[0];
-    weekByMonday.set(key, w);
   }
 
   const today = new Date();
@@ -428,25 +348,9 @@ function MonthGrid({
           // Lunes de esta fila
           const rowMonday = new Date(startGrid);
           rowMonday.setUTCDate(startGrid.getUTCDate() + rowIdx * 7);
-          const rowMondayKey = rowMonday.toISOString().split("T")[0];
-          const rowWeek = weekByMonday.get(rowMondayKey);
 
           return (
             <div key={rowIdx} className="grid grid-cols-7 border-b border-neutral-100 last:border-b-0">
-              {/* Antes había una franja con "W12 · Tema · zona · tipo" encima
-                  de cada fila. Se retiró a petición del CEO porque no la
-                  usaba. Mantenemos el "+ Crear semana" cuando aún no existe
-                  la semana porque sin ella no se pueden añadir piezas. */}
-              {!rowWeek && (
-                <button
-                  onClick={() => createWeekForMonday(rowMonday)}
-                  disabled={creatingWeek}
-                  className="col-span-7 px-2 py-1 text-[10px] text-neutral-400 italic border-b border-neutral-100 text-left hover:bg-amber-50 hover:text-amber-800 transition-colors disabled:opacity-50"
-                  title="Crear la semana de contenido para estos días"
-                >
-                  + Crear semana
-                </button>
-              )}
               {/* Días */}
               {Array.from({ length: 7 }).map((_, colIdx) => {
                 const day = new Date(rowMonday);
@@ -460,7 +364,7 @@ function MonthGrid({
                 return (
                   <div
                     key={colIdx}
-                    onClick={() => setEventModal({ date: dateKey, event: null })}
+                    onClick={() => setAddPieceModal(dateKey)}
                     onDragOver={(e) => {
                       e.preventDefault();
                       e.dataTransfer.dropEffect = "move";
@@ -468,58 +372,35 @@ function MonthGrid({
                     onDrop={async (e) => {
                       e.preventDefault();
                       const pieceId = e.dataTransfer.getData("text/piece-id");
-                      const sourceWeekId = e.dataTransfer.getData("text/source-week-id");
-                      const sourceDayOfWeek = Number(e.dataTransfer.getData("text/source-dayofweek"));
-                      if (!pieceId) return;
-                      const target = findWeekForDate(weeks, dateKey);
-                      if (!target) {
-                        alert("Ese día no está dentro de ninguna semana planificada. Crea la semana antes de mover la pieza.");
-                        return;
-                      }
-                      // No hacer nada si se suelta en el mismo sitio
-                      if (target.weekId === sourceWeekId && target.dayOfWeek === sourceDayOfWeek) return;
-                      const ok = await movePiece(pieceId, target.weekId, target.dayOfWeek);
-                      if (ok) {
-                        router.refresh();
-                      } else {
-                        alert("Error al mover la pieza");
-                      }
+                      const sourceDate = e.dataTransfer.getData("text/source-date");
+                      if (!pieceId || sourceDate === dateKey) return;
+                      const ok = await movePiece(pieceId, dateKey);
+                      if (ok) router.refresh();
+                      else alert("Error al mover la pieza");
                     }}
                     className={`group min-w-0 min-h-[96px] p-1.5 border-r border-neutral-100 last:border-r-0 cursor-pointer hover:bg-amber-50/30 transition-colors ${
                       isOtherMonth ? "bg-neutral-50/50" : "bg-white"
                     } ${isToday ? "bg-amber-50" : ""}`}
-                    title="Click para añadir evento · Arrastra piezas aquí"
+                    title="Click para crear pieza · Arrastra piezas aquí"
                   >
                     <div className="flex justify-between items-start mb-1">
                       <span className={`text-[11px] ${isOtherMonth ? "text-neutral-300" : isToday ? "text-amber-800 font-bold" : "text-neutral-500"}`}>
                         {day.getUTCDate()}
                       </span>
-                      {/* Botón "+ Pieza" visible al hover, solo si el día cae en una semana */}
-                      {(() => {
-                        const target = findWeekForDate(weeks, dateKey);
-                        if (!target) return null;
-                        const wk = weeks.find((w) => w.id === target.weekId);
-                        const weekLabel = wk
-                          ? `Semana ${wk.weekNumber} · ${wk.centralTheme || "Sin tema"}`
-                          : "";
-                        return (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setAddPieceModal({
-                                weekId: target.weekId,
-                                dayOfWeek: target.dayOfWeek,
-                                weekLabel,
-                              });
-                            }}
-                            className="text-[10px] leading-none font-medium text-neutral-400 hover:text-neutral-900 hover:bg-white rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Añadir pieza este día"
-                          >
-                            + pieza
-                          </button>
-                        );
-                      })()}
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setEventModal({ date: dateKey, event: null }); }}
+                          className="text-[10px] font-medium text-neutral-400 hover:text-neutral-800 rounded px-1 py-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                          title="Añadir evento especial"
+                        >+ evento</button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setAddPieceModal(dateKey); }}
+                          className="text-[10px] font-semibold text-neutral-500 hover:text-neutral-900 rounded px-1 py-0.5 opacity-100"
+                          title="Crear pieza en esta fecha"
+                        >+ pieza</button>
+                      </div>
                     </div>
 
                     {/* Eventos custom */}
@@ -564,8 +445,7 @@ function MonthGrid({
                             draggable
                             onDragStart={(e: any) => {
                               e.dataTransfer.setData("text/piece-id", dp.piece.id);
-                              e.dataTransfer.setData("text/source-week-id", dp.weekId);
-                              e.dataTransfer.setData("text/source-dayofweek", String(dp.piece.dayOfWeek));
+                              e.dataTransfer.setData("text/source-date", dateKey);
                               e.dataTransfer.effectAllowed = "move";
                               setDragging(true);
                             }}
@@ -655,7 +535,7 @@ function MonthGrid({
       </section>
 
       <p className="text-[11px] text-neutral-500 italic mt-2">
-        💡 Click en cualquier día para añadir un evento · Arrastra piezas entre días para mover · Mantén el arrastre sobre ← o → para cambiar de mes · Usa ↗ en cada pieza para saltar a cualquier fecha.
+        💡 Click en un día para crear una pieza · Arrastra entre fechas para mover · Usa ↗ para mover a otro mes · Los eventos especiales se añaden con «+ evento».
       </p>
 
       {eventModal && (
@@ -669,9 +549,7 @@ function MonthGrid({
 
       {addPieceModal && (
         <AddPieceModal
-          weekId={addPieceModal.weekId}
-          weekLabel={addPieceModal.weekLabel}
-          lockedDayOfWeek={addPieceModal.dayOfWeek}
+          lockedDate={addPieceModal}
           onClose={() => setAddPieceModal(null)}
         />
       )}
@@ -680,15 +558,9 @@ function MonthGrid({
         <MovePieceModal
           pieceTitle={movePieceModal.pieceTitle}
           currentDate={movePieceModal.currentDate}
-          weeks={weeks}
           onClose={() => setMovePieceModal(null)}
           onMove={async (newDate) => {
-            const target = findWeekForDate(weeks, newDate);
-            if (!target) {
-              alert("Ese día no está dentro de ninguna semana planificada. Crea la semana antes de mover la pieza.");
-              return;
-            }
-            const ok = await movePiece(movePieceModal.pieceId, target.weekId, target.dayOfWeek);
+            const ok = await movePiece(movePieceModal.pieceId, newDate);
             if (ok) {
               setMovePieceModal(null);
               router.refresh();
@@ -705,19 +577,16 @@ function MonthGrid({
 function MovePieceModal({
   pieceTitle,
   currentDate,
-  weeks,
   onClose,
   onMove,
 }: {
   pieceTitle: string;
   currentDate: string;
-  weeks: Week[];
   onClose: () => void;
   onMove: (newDate: string) => Promise<void>;
 }) {
   const [target, setTarget] = useState(currentDate);
   const [busy, setBusy] = useState(false);
-  const hasWeek = !!findWeekForDate(weeks, target);
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
@@ -734,17 +603,12 @@ function MovePieceModal({
             value={target}
             onChange={(e) => setTarget(e.target.value)}
           />
-          {target !== currentDate && !hasWeek && (
-            <p className="text-[11px] text-amber-700 mt-1">
-              ⚠ Esa fecha no está dentro de una semana de contenido. Crea la semana antes.
-            </p>
-          )}
         </div>
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="text-sm px-3 py-2" style={{ color: "#737373" }}>Cancelar</button>
           <button
             onClick={async () => { setBusy(true); await onMove(target); setBusy(false); }}
-            disabled={busy || target === currentDate || !hasWeek}
+            disabled={busy || !target || target === currentDate}
             className="text-sm font-semibold px-3 py-2 rounded-lg disabled:opacity-50"
             style={{ background: "#0A0A0A", color: "#FAFAFA" }}
           >
@@ -753,39 +617,6 @@ function MovePieceModal({
         </div>
       </div>
     </div>
-  );
-}
-
-function WeekThemeBanner({ week }: { week: Week }) {
-  const statusMeta = WEEK_STATUS.find((s) => s.value === week.status);
-  const zone = BODY_ZONES.find((z) => z.value === week.bodyZone)?.label ?? week.bodyZone;
-  const type = WEEK_TYPES.find((t) => t.value === week.weekType)?.label ?? week.weekType;
-
-  return (
-    <Link
-      href={`/contenido?week=${week.id}`}
-      title="Abrir y editar esta semana"
-      className="col-span-7 px-2 py-1.5 border-b bg-neutral-100 border-neutral-200 text-neutral-700 hover:bg-neutral-200 transition-colors"
-    >
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <span className="text-[10px] uppercase font-bold tracking-wide text-neutral-500 whitespace-nowrap">
-            W{week.weekNumber}
-          </span>
-          <span className="text-xs font-semibold truncate">
-            {week.centralTheme || "Sin tema"}
-          </span>
-          <span className="text-[10px] text-neutral-500 whitespace-nowrap">
-            · {zone} · {type}
-          </span>
-        </div>
-        {statusMeta && (
-          <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${STATUS_COLORS[statusMeta.color]} whitespace-nowrap`}>
-            {statusMeta.label}
-          </span>
-        )}
-      </div>
-    </Link>
   );
 }
 
@@ -908,78 +739,38 @@ function EventModal({
 // ============================================================================
 
 function TableView({ weeks }: { weeks: Week[] }) {
-  if (weeks.length === 0) {
-    return (
-      <section className="card text-center py-12">
-        <p className="text-sm text-neutral-400 italic">
-          No hay semanas que cumplan los filtros.
-        </p>
-      </section>
-    );
-  }
-
+  const pieces = weeks.flatMap((w) => w.pieces.map((piece) => {
+    const date = new Date(w.startDate);
+    date.setUTCDate(date.getUTCDate() + piece.dayOfWeek - 1);
+    return { ...piece, date: date.toISOString().slice(0, 10) };
+  })).sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
+  if (!pieces.length) return (
+    <section className="card text-center py-12">
+      <p className="text-sm text-neutral-500">Todavía no hay piezas de contenido.</p>
+      <p className="text-xs text-neutral-400 mt-2">Pulsa «Nueva pieza» para crear la primera.</p>
+    </section>
+  );
   return (
     <section className="card overflow-x-auto">
       <table className="w-full text-sm">
-        <thead>
-          <tr className="text-xs text-neutral-500 uppercase border-b border-neutral-200">
-            <th className="text-left py-2 px-2 font-medium">Semana</th>
-            <th className="text-left py-2 px-2 font-medium">Tema</th>
-            <th className="text-left py-2 px-2 font-medium">Zona</th>
-            <th className="text-left py-2 px-2 font-medium">Tipo</th>
-            <th className="text-left py-2 px-2 font-medium">Lead magnet</th>
-            <th className="text-center py-2 px-2 font-medium">Progreso</th>
-            <th className="text-left py-2 px-2 font-medium">Estado</th>
-            <th className="text-right py-2 px-2 font-medium"></th>
+        <thead><tr className="text-xs text-neutral-500 uppercase border-b border-neutral-200">
+          <th className="text-left py-2 px-2 font-medium">Fecha</th>
+          <th className="text-left py-2 px-2 font-medium">Pieza</th>
+          <th className="text-left py-2 px-2 font-medium">Formato</th>
+          <th className="text-left py-2 px-2 font-medium">Objetivo</th>
+          <th className="text-left py-2 px-2 font-medium">Estado</th>
+          <th className="text-right py-2 px-2 font-medium">Editar</th>
+        </tr></thead>
+        <tbody>{pieces.map((piece) => (
+          <tr key={piece.id} className="border-b border-neutral-100 hover:bg-neutral-50">
+            <td className="py-2 px-2 whitespace-nowrap">{new Date(piece.date + "T12:00:00Z").toLocaleDateString("es-ES", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" })}</td>
+            <td className="py-2 px-2 font-medium">{piece.title || piece.hook || "Sin título"}</td>
+            <td className="py-2 px-2 whitespace-nowrap">{formatIcon(piece.format)} {formatLabelOnly(piece.format)}</td>
+            <td className="py-2 px-2">{parseGoals(piece.goals).map(goalLabel).join(", ") || "—"}</td>
+            <td className="py-2 px-2">{PIECE_STATUS_BADGE[piece.status]?.label ?? piece.status}</td>
+            <td className="py-2 px-2 text-right">{piece.format === "story" ? <span className="text-xs text-neutral-400">Historia</span> : <Link href={`/contenido/pieza/${piece.id}`} className="text-xs underline hover:text-neutral-900">Abrir →</Link>}</td>
           </tr>
-        </thead>
-        <tbody>
-          {weeks.map((w) => {
-            const statusMeta = WEEK_STATUS.find((s) => s.value === w.status);
-            const zone = BODY_ZONES.find((z) => z.value === w.bodyZone)?.label ?? w.bodyZone;
-            const type = WEEK_TYPES.find((t) => t.value === w.weekType)?.label ?? w.weekType;
-            const published = w.pieces.filter((p) => p.status === "published").length;
-            return (
-              <tr key={w.id} className="border-b border-neutral-100 hover:bg-neutral-50">
-                <td className="py-2 px-2 whitespace-nowrap">
-                  <Link href={`/contenido?week=${w.id}`} className="font-medium hover:underline">
-                    W{w.weekNumber}/{w.year}
-                  </Link>
-                  <div className="text-[10px] text-neutral-500">
-                    {new Date(w.startDate).toLocaleDateString("es-ES", { day: "numeric", month: "short" })} →{" "}
-                    {new Date(w.endDate).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
-                  </div>
-                </td>
-                <td className="py-2 px-2">{w.centralTheme || <span className="text-neutral-300">—</span>}</td>
-                <td className="py-2 px-2">{zone}</td>
-                <td className="py-2 px-2">{type}</td>
-                <td className="py-2 px-2">
-                  {w.leadMagnetName ? (
-                    <>
-                      <div>{w.leadMagnetName}</div>
-                      {w.leadMagnetKeyword && <div className="text-[10px] text-neutral-500 font-mono">{w.leadMagnetKeyword}</div>}
-                    </>
-                  ) : (
-                    <span className="text-neutral-300">—</span>
-                  )}
-                </td>
-                <td className="text-center py-2 px-2 text-xs tabular-nums">{published}/{w.pieces.length}</td>
-                <td className="py-2 px-2">
-                  {statusMeta && (
-                    <span className={`text-[10px] uppercase font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[statusMeta.color]}`}>
-                      {statusMeta.label}
-                    </span>
-                  )}
-                </td>
-                <td className="text-right py-2 px-2">
-                  <Link href={`/contenido?week=${w.id}`} className="text-xs text-neutral-500 hover:text-neutral-900">
-                    Ver →
-                  </Link>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
+        ))}</tbody>
       </table>
     </section>
   );
