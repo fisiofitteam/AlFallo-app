@@ -28,7 +28,7 @@ export function AddPieceModal({
     setGoals((prev) => prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]);
   }
 
-  async function create() {
+  async function create(openEditor: boolean) {
     setError(null);
     if (!date) { setError("Elige una fecha para la pieza"); return; }
     setBusy(true);
@@ -47,10 +47,9 @@ export function AddPieceModal({
       if (!res.ok || !data?.piece?.id) {
         throw new Error(data?.error || "No se pudo crear la pieza");
       }
-      // Las historias son contenido ligero: no abren editor, se quedan
-      // en el calendario con la idea principal como título. Para el resto
-      // de formatos sí redirigimos al editor para que lo rellenen.
-      if (format === "story") {
+      // «Crear» guarda en el calendario; «Crear y abrir» mantiene el acceso
+      // al editor. Las historias siguen sin abrir editor propio.
+      if (!openEditor || format === "story") {
         onClose();
         router.refresh();
       } else {
@@ -180,12 +179,19 @@ export function AddPieceModal({
               Cancelar
             </button>
             <button
-              onClick={create}
+              onClick={() => void create(false)}
+              disabled={busy}
+              className="text-sm font-semibold px-3 py-2 rounded-lg border border-neutral-300 bg-white text-neutral-900 disabled:opacity-50"
+            >
+              {busy ? "Creando…" : "Crear"}
+            </button>
+            <button
+              onClick={() => void create(true)}
               disabled={busy}
               className="text-sm font-semibold px-4 py-2 rounded-lg"
               style={{ background: "#0A0A0A", color: "#FAFAFA" }}
             >
-              {busy ? "Creando…" : "➕ Crear y abrir"}
+              {busy ? "Creando…" : "Crear y abrir"}
             </button>
           </div>
         </div>
