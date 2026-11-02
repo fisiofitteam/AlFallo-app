@@ -1,6 +1,6 @@
 import { GasolinaExperience } from "@/components/gasolina/GasolinaExperience";
 export const metadata = {
-  title: "GASOLINA · Guía para comer según tu WOD | Al Fallo",
-  description: "Responde tres preguntas y consigue una guía gratuita para organizar tus comidas antes y después del WOD, ajustar hidratos y recuperar mejor.",
+  title: "GASOLINA · Come según tu WOD | Al Fallo Performance",
+  description: "Responde seis preguntas y descubre cómo mejorar la organización de tu alimentación alrededor del WOD, con un resultado práctico en la propia web.",
 };
 export default function GasolinaPage() { return <GasolinaExperience />; }

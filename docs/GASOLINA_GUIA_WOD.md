@@ -1,55 +1,39 @@
-# GASOLINA — Lead magnet Al Fallo Nutrition
+# GASOLINA v2 — Experiencia interactiva de Al Fallo Performance
 
-## Contexto
+## URLs y campaña
 
-Campaña asociada al Reel 15 del dossier de diciembre de 2026 (27 de diciembre), «Lead Magnet: Guía para comer según tu WOD». Palabra clave a utilizar en el CTA: `GASOLINA`.
-
-### Rutas
-- Landing pública: `https://al-fallo-app.vercel.app/gasolina`
+- Landing: `https://al-fallo-app.vercel.app/gasolina`
 - Alias: `/guia-comer-segun-tu-wod`
-- PDF listo para descargar: `/gasolina/guia-comer-segun-tu-wod.pdf`
-- Privacidad: `/gasolina/privacidad`
-- Panel interno: `Contenido → Lead magnets → GASOLINA`
+- Marca: logo de Al Fallo Nutrition adaptado sin fondo blanco, vectorizado a partir del recurso proporcionado.
+- Keyword para automatización externa de Instagram: `GASOLINA`. La automatización de ManyChat no está activada en este repositorio.
+- Panel interno: `Contenido → Lead magnets → GASOLINA`.
 
-## Flujo y copy
+## Flujo definitivo (v2)
 
-1. Landing: «DEJA DE IMPROVISAR TU COMIDA» + test gratuito.
-2. Pregunta 1: cuándo entrena (mañana, mediodía, tarde, noche o variable).
-3. Pregunta 2: sesión predominante (WOD duro, fuerza, cardio/HYROX, doble sesión, suave).
-4. Pregunta 3: principal dificultad (pre-WOD, poca energía, hidratos, recuperación, hambre post-WOD, estructura semanal).
-5. Nombre y correo obligatorios; teléfono e Instagram opcionales; consentimiento específico, no publicitario.
-6. Resultado educativo: foco prioritario (energía previa, hidratos, recuperación o estructura) + sugerencias por horario y carga.
-7. Guía PDF de 6 páginas descargable y opción para compartir por WhatsApp (no se envía un WhatsApp automático).
-8. CTA a valoración solo cuando `/api/agenda/slots` confirma disponibilidad real.
+1. Intro: «Deja de improvisar tu comida». Promesa: energía para entrenar, estrategia sostenible y resultado inmediato en web.
+2. Pregunta 1: horario habitual de entrenamiento.
+3. Pregunta 2: tipo de sesión predominante.
+4. Pregunta 3: principal dificultad con la alimentación.
+5. Pregunta 4: objetivo (marcas, composición corporal, energía, flexibilidad).
+6. Pregunta 5: patrón real de la semana (poco combustible, mismas comidas, improvisación, hambre tardía).
+7. Pregunta 6: obstáculo principal (organización, conocimiento, tiempo, constancia).
+8. Nombre y apellidos **obligatorio**; Instagram **opcional**. Sin email, teléfono ni un checkbox publicitario.
+9. Resultado en web: prioridad orientativa, tres acciones prácticas, ejemplo, error frecuente, sugerencias por horario/carga y guía completa de cuatro capítulos en pantalla.
+10. CTA principal: WhatsApp directo de Al Fallo Nutrition con texto preescrito para solicitar información sobre **Al Fallo Performance**. Enlace oficial publicado en `alfallonutrition.com`: `wa.me/34865539963`, configurable por variable `NEXT_PUBLIC_AL_FALLO_WHATSAPP_NUMBER` si se utiliza otro número para Performance.
 
-## Registro y privacidad
+## Registro
 
-- `POST /api/gasolina` crea una respuesta anónima `started` al comenzar. No guarda datos personales antes del consentimiento.
-- `PATCH /api/gasolina` con `action: complete` exige consentimiento y guarda nombre, email y respuestas. El acceso a la operación se verifica mediante firma HMAC asociada a la sesión creada.
-- `PATCH /api/gasolina` con `action: whatsapp` registra un clic por respuesta completada; **no significa que un mensaje haya sido enviado**.
-- Se conservan `utm_source` y `utm_campaign` saneados para el análisis.
-- Los datos y respuestas permanecen en las tablas **exclusivas de Al Fallo**, separados de FisioFit.
-- No se crea un Lead de CRM porque el modelo de llamada requiere una reserva. Si más adelante se quiere convertir contactos del test en oportunidades comerciales, se debe definir expresamente su consentimiento y el modelo correspondiente.
+`LeadMagnetResponse` conserva la sesión anónima al comenzar. Al finalizar se registra el nombre completo, Instagram opcional y las seis respuestas en `resultJson` con `guide=gasolina-v2`. No se añade al CRM, ni se envían emails o WhatsApps automáticamente. El clic en el CTA registra un clic, nunca una conversación enviada o una contratación.
 
-## Administrador
+La API utiliza una firma HMAC por intento, control básico por IP e identificación del recurso GASOLINA. En el panel privado se mantienen las respuestas antiguas `gasolina-v1` compatibles y se muestran los seis campos para nuevas respuestas.
 
-- El panel del recurso muestra iniciados, completados, tasa de finalización, clics en WhatsApp y distribución por foco.
-- Cada respuesta muestra el horario, tipo de sesión y principal dificultad. Hay filtros por fecha, campaña y contacto, y exportación CSV privada.
+## PDF anterior
 
-## Configuraciones finales para la campaña
+El PDF de seis páginas se conserva en el repositorio por compatibilidad con enlaces existentes, pero **ya no se ofrece ni entrega como paso del funnel**. El contenido educativo ampliado se presenta íntegramente en la web tras completar las preguntas.
 
-- Confirmar el copy del reel, y configurar la automatización de comentarios/DM `GASOLINA` en ManyChat u otro sistema. **No se ha creado una automatización de DM**.
-- Antes de invertir en anuncios o difundir masivamente, completar/revisar el aviso de privacidad con la razón social e información real de contacto del responsable, validar la política de conservación y confirmar los consentimientos aplicables.
-- Si se desea enviar la guía automáticamente por email o WhatsApp, conectar explícitamente un proveedor y definir plantilla, canal y permisos. El flujo actual ofrece **descarga inmediata y enlace para compartir**, no envío automático.
-- La agenda de Al Fallo no tiene por ahora Google Calendar conectado ni franjas configuradas. El CTA de reservar se muestra solo con disponibilidad confirmada.
+## Antes de promoción masiva
 
-## Guía
-
-Fuente editable en `scripts/gasolina/guia-source.html`; regeneración local con `scripts/gasolina/build-guide.sh` (Google Chrome en macOS). El PDF resultante vive en `public/gasolina/guia-comer-segun-tu-wod.pdf`.
-
-## Pruebas ya realizadas
-
-- Seis páginas de PDF verificadas con PDFKit y revisadas visualmente en varias páginas.
-- Inicio, consentimiento obligatorio, respuesta completada, clasificación, registro de clic y limpieza de datos QA sintéticos.
-- Verificación de que el PDF y la landing responden públicamente en el entorno local.
-- TypeScript y compilación de producción.
+- Verificar que el número oficial publicado también sea el número preferido para consultas comerciales de Al Fallo Performance.
+- Revisar jurídicamente el aviso de privacidad, incluidos el responsable, base de tratamiento, conservación y contacto.
+- Configurar la automatización de comentarios/DM `GASOLINA` en ManyChat si se desea entrega automática por Instagram.
+- Verificar la experiencia en móviles, distintas respuestas y la redirección a WhatsApp.

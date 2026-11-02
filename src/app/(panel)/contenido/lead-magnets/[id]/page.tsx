@@ -7,7 +7,7 @@ import { isManager } from "@/lib/roles";
 import { ContentNav } from "@/components/ContentNav";
 import { canUseMarketerIA } from "@/lib/marketer-access";
 import { leadMagnetResponseWhere, normalizeLeadMagnetFilters, reportParams } from "@/lib/lead-magnet-report";
-import { MAIN_PROBLEMS, SESSION_TYPES, TRAINING_TIMES } from "@/lib/gasolina/quiz";
+import { MAIN_PROBLEMS, SESSION_TYPES, TRAINING_TIMES, OBJECTIVES, WEEK_PATTERNS, BLOCKERS } from "@/lib/gasolina/quiz";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Respuestas de lead magnet · Al Fallo" };
@@ -20,16 +20,19 @@ const FOCUS_LABELS = {
   preworkout: "Energía previa", carbs: "Hidratos", recovery: "Recuperación", structure: "Semana real",
 } as const;
 type FocusKey = keyof typeof FOCUS_LABELS;
-function gasolinaData(raw: string | null): { focus?: FocusKey; trainingTime?: string; sessionType?: string; mainProblem?: string } | null {
+function gasolinaData(raw: string | null): { focus?: FocusKey; trainingTime?: string; sessionType?: string; mainProblem?: string; objective?: string; weekPattern?: string; blocker?: string } | null {
   if (!raw) return null;
   try {
     const data = JSON.parse(raw);
-    if (!data || data.guide !== "gasolina-v1") return null;
+    if (!data || !["gasolina-v1", "gasolina-v2"].includes(data.guide)) return null;
     return {
       focus: data.focus in FOCUS_LABELS ? data.focus as FocusKey : undefined,
       trainingTime: TRAINING_TIMES.find((v) => v.id === data.trainingTime)?.label,
       sessionType: SESSION_TYPES.find((v) => v.id === data.sessionType)?.label,
       mainProblem: MAIN_PROBLEMS.find((v) => v.id === data.mainProblem)?.label,
+      objective: OBJECTIVES.find((v) => v.id === data.objective)?.label,
+      weekPattern: WEEK_PATTERNS.find((v) => v.id === data.weekPattern)?.label,
+      blocker: BLOCKERS.find((v) => v.id === data.blocker)?.label,
     };
   } catch { return null; }
 }
@@ -182,6 +185,9 @@ export default async function LeadMagnetDetailPage({
                         <p><strong>Horario:</strong> {gasolinaData(row.resultJson)?.trainingTime}</p>
                         <p><strong>Sesión:</strong> {gasolinaData(row.resultJson)?.sessionType}</p>
                         <p><strong>Principal dificultad:</strong> {gasolinaData(row.resultJson)?.mainProblem}</p>
+                        {gasolinaData(row.resultJson)?.objective && <p><strong>Ambición:</strong> {gasolinaData(row.resultJson)?.objective}</p>}
+                        {gasolinaData(row.resultJson)?.weekPattern && <p><strong>Semana habitual:</strong> {gasolinaData(row.resultJson)?.weekPattern}</p>}
+                        {gasolinaData(row.resultJson)?.blocker && <p><strong>Obstáculo:</strong> {gasolinaData(row.resultJson)?.blocker}</p>}
                       </div> : <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-all rounded bg-neutral-50 p-2 text-[11px]">{row.resultJson}</pre>}
                     </details> : <span className="text-neutral-400">—</span>}
                   </td>

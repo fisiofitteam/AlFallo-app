@@ -8,7 +8,6 @@ export const revalidate = 0;
 
 const errors = (message: string, status: number) => NextResponse.json({ ok: false, error: message }, { status, headers: { "Cache-Control": "no-store" } });
 const clean = (v: unknown, max: number) => typeof v === "string" ? v.trim().slice(0, max) : "";
-const isEmail = (email: string) => email.length <= 160 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 async function magnet() {
   return prisma.leadMagnet.findFirst({ where: { keyword: "GASOLINA", active: true }, select: { id: true } });
@@ -66,23 +65,22 @@ export async function PATCH(req: NextRequest) {
   if (json.action !== "complete") return errors("Acción desconocida.", 400);
 
   const fullName = clean(json.fullName, 100);
-  const email = clean(json.email, 160).toLowerCase();
-  const phone = clean(json.phone, 35);
   const instagram = clean(json.instagram, 65);
   const answers = json.answers;
-  if (fullName.length < 2 || !isEmail(email) || !isGasolinaAnswers(answers) || json.consent !== true) {
-    return errors("Revisa tus respuestas y acepta el aviso de privacidad.", 400);
+  if (fullName.length < 3 || fullName.split(/\s+/).length < 2 || !isGasolinaAnswers(answers)) {
+    return errors("Introduce tu nombre y completa las seis preguntas.", 400);
   }
   const result = gasolineResult(answers);
   const completedAt = new Date();
   const resultJson = JSON.stringify({
-    ...answers, focus: result.focus, guide: "gasolina-v1", consentVersion: "gasolina-2026-11-02", consentAt: completedAt.toISOString(),
+    ...answers, focus: result.focus, guide: "gasolina-v2",
+    privacyNoticeVersion: "gasolina-2026-11-02-v2", privacyNoticeShownAt: completedAt.toISOString(),
   });
   try {
     const updated = await prisma.leadMagnetResponse.updateMany({
       where: { id, leadMagnetId: resource.id, status: "started" },
       data: {
-        fullName, email, phone: phone || null, instagram: instagram || null,
+        fullName, email: null, phone: null, instagram: instagram || null,
         resultJson, status: "completed", completedAt,
       },
     });

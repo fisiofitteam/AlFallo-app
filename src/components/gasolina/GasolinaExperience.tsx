@@ -1,23 +1,31 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, CheckCircle2, Download, Flame, MessageCircle, ShieldCheck } from "lucide-react";
-import { BrandLogo } from "@/components/brand-mark";
-import { MAIN_PROBLEMS, SESSION_TYPES, TRAINING_TIMES, type GasolinaAnswers, type Focus } from "@/lib/gasolina/quiz";
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Flame, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  MAIN_PROBLEMS, SESSION_TYPES, TRAINING_TIMES, OBJECTIVES, WEEK_PATTERNS, BLOCKERS,
+  FOCUS_NAMES, WEB_GUIDE, type GasolinaAnswers, type Focus
+} from "@/lib/gasolina/quiz";
 
-type Step = "intro" | "time" | "type" | "problem" | "contact" | "result";
+type Step = "intro" | "time" | "type" | "problem" | "objective" | "weekPattern" | "blocker" | "contact" | "result";
 type Attempt = { id: string; token: string };
-type Result = { focus: Focus; title: string; intro: string; actions: [string, string, string]; chapter: string; when: string; load: string; };
-const names: Record<Focus, string> = {
-  preworkout: "Energía previa", carbs: "Ajuste de hidratos",
-  recovery: "Recuperación", structure: "Estructura semanal",
+type Result = {
+  focus: Focus; focusName: string; title: string; intro: string;
+  actions: [string, string, string]; example: string; mistake: string;
+  opportunity: string; ambition: string; nextHabit: string; when: string; load: string;
 };
 const steps = {
-  time: { index: 1, title: "¿Cuándo entrenas normalmente?", intro: "Elige el horario más habitual. No pasa nada si cambia a veces." },
-  type: { index: 2, title: "¿Qué tipo de sesión predomina?", intro: "Piensa en la carga que más quieres aprender a organizar." },
-  problem: { index: 3, title: "¿Qué te cuesta más con la comida?", intro: "Solo buscamos una primera prioridad, no un diagnóstico." },
-  contact: { index: 4, title: "Tu resultado y la guía están preparados", intro: "Déjanos un correo para registrar tu resultado y acceder a la guía gratuita." },
+  time: { index: 1, title: "¿Cuándo entrenas normalmente?", intro: "Elige tu horario más frecuente. Si cambia, también hay una opción para ti." },
+  type: { index: 2, title: "¿Qué tipo de sesión predomina en tu semana?", intro: "Piensa en la carga que más quieres acompañar con tu alimentación." },
+  problem: { index: 3, title: "¿Qué te cuesta más con la comida?", intro: "No buscamos hacerlo perfecto: queremos detectar por dónde puedes empezar." },
+  objective: { index: 4, title: "¿Qué te gustaría conseguir con tu nutrición?", intro: "No es solo comer mejor: es para qué quieres hacerlo." },
+  weekPattern: { index: 5, title: "¿Qué suele pasar en una semana normal?", intro: "Piensa en los días de trabajo y entrenamiento, no en una semana ideal." },
+  blocker: { index: 6, title: "¿Qué te frena para dar el siguiente paso?", intro: "Queremos que la solución encaje con tu realidad." },
+  contact: { index: 7, title: "Ya tenemos tu punto de partida", intro: "Solo necesitamos tu nombre y apellidos para mostrarte el resultado. Instagram es opcional." },
 };
+const optionSets = { time: TRAINING_TIMES, type: SESSION_TYPES, problem: MAIN_PROBLEMS, objective: OBJECTIVES, weekPattern: WEEK_PATTERNS, blocker: BLOCKERS };
+const nextSteps = { time: "type", type: "problem", problem: "objective", objective: "weekPattern", weekPattern: "blocker", blocker: "contact" } as const;
+const answerKeys = { time: "trainingTime", type: "sessionType", problem: "mainProblem", objective: "objective", weekPattern: "weekPattern", blocker: "blocker" } as const;
 const inputClass = "w-full rounded-xl border border-[#70445f] bg-[#1b1020] px-4 py-3 text-sm text-white placeholder:text-[#a3889d] focus:border-[#eb4c9b]";
 
 export function GasolinaExperience() {
@@ -26,23 +34,9 @@ export function GasolinaExperience() {
   const [answers, setAnswers] = useState<Partial<GasolinaAnswers>>({});
   const [result, setResult] = useState<Result | null>(null);
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [instagram, setInstagram] = useState("");
-  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [bookingReady, setBookingReady] = useState(false);
   const [error, setError] = useState("");
-
-  // La agenda solo aparece como CTA si hay huecos reales. No queremos
-  // llevar a una reserva vacía cuando Google Calendar no está conectado.
-  useEffect(() => {
-    if (step !== "result") return;
-    fetch("/api/agenda/slots", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((json) => setBookingReady(json.ok && Array.isArray(json.slots) && json.slots.length > 0))
-      .catch(() => setBookingReady(false));
-  }, [step]);
 
   async function begin() {
     if (busy) return;
@@ -62,27 +56,25 @@ export function GasolinaExperience() {
   }
 
   function selectOption(value: string) {
-    if (step === "time") {
-      setAnswers((a) => ({ ...a, trainingTime: value as GasolinaAnswers["trainingTime"] })); setStep("type");
-    } else if (step === "type") {
-      setAnswers((a) => ({ ...a, sessionType: value as GasolinaAnswers["sessionType"] })); setStep("problem");
-    } else if (step === "problem") {
-      setAnswers((a) => ({ ...a, mainProblem: value as GasolinaAnswers["mainProblem"] })); setStep("contact");
-    }
+    if (step === "intro" || step === "contact" || step === "result") return;
+    const field = answerKeys[step];
+    setAnswers((current) => ({ ...current, [field]: value }));
+    setStep(nextSteps[step]);
     setError("");
   }
 
   async function finish(event: React.FormEvent) {
     event.preventDefault();
     if (busy || !attempt) return;
-    if (!answers.trainingTime || !answers.sessionType || !answers.mainProblem || !consent) {
-      setError("Completa las preguntas y acepta el aviso de privacidad."); return;
+    if (!answers.trainingTime || !answers.sessionType || !answers.mainProblem ||
+        !answers.objective || !answers.weekPattern || !answers.blocker) {
+      setError("Completa primero las seis preguntas."); return;
     }
     setBusy(true); setError("");
     try {
       const response = await fetch("/api/gasolina", {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "complete", ...attempt, answers, fullName, email, phone, instagram, consent }),
+        body: JSON.stringify({ action: "complete", ...attempt, answers, fullName, instagram }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo guardar tu resultado.");
@@ -92,29 +84,39 @@ export function GasolinaExperience() {
     finally { setBusy(false); }
   }
 
-  function share() {
-    if (attempt) void fetch("/api/gasolina", {
+  function recordWhatsappClick() {
+    if (!attempt) return;
+    void fetch("/api/gasolina", {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "whatsapp", ...attempt }),
     }).catch(() => {});
-    const url = window.location.origin + "/gasolina/guia-comer-segun-tu-wod.pdf";
-    window.open("https://wa.me/?text=" + encodeURIComponent("Te comparto GASOLINA, una guía gratuita para comer según tu WOD: " + url), "_blank", "noopener,noreferrer");
   }
 
   function back() {
-    const previous: Partial<Record<Step, Step>> = { time: "intro", type: "time", problem: "type", contact: "problem" };
+    const previous: Partial<Record<Step, Step>> = {
+      time: "intro", type: "time", problem: "type", objective: "problem",
+      weekPattern: "objective", blocker: "weekPattern", contact: "blocker",
+    };
     setStep(previous[step] || "intro"); setError("");
   }
   const stepData = step !== "intro" && step !== "result" ? steps[step] : null;
-  const choices = step === "time" ? TRAINING_TIMES : step === "type" ? SESSION_TYPES : MAIN_PROBLEMS;
+  const choices = step !== "intro" && step !== "result" && step !== "contact" ? optionSets[step] : [];
+  const selectedValue = step !== "intro" && step !== "result" && step !== "contact" ? answers[answerKeys[step]] : undefined;
+  const officialWhatsapp = (process.env.NEXT_PUBLIC_AL_FALLO_WHATSAPP_NUMBER || "34865539963").replace(/[^0-9]/g, "");
+  const whatsappText = result ? [
+    "Hola, soy " + fullName.trim() + ".",
+    "He completado GASOLINA y mi primer foco es " + FOCUS_NAMES[result.focus].toLowerCase() + ".",
+    "Me gustaría saber cómo funciona Al Fallo Performance para tener más energía durante el WOD y el día, trabajar en mis marcas y organizar mi alimentación sin renunciar a mi vida. ¿Podéis contarme cómo trabajáis?",
+  ].join(" ") : "";
+  const whatsappUrl = "https://wa.me/" + officialWhatsapp + "?text=" + encodeURIComponent(whatsappText);
 
   return (
     <main className="al-fallo-booking min-h-screen overflow-hidden text-white"
       style={{ background: "radial-gradient(ellipse at 82% 4%,rgba(230,25,126,.28),transparent 42%), radial-gradient(ellipse at 0% 80%,rgba(118,28,85,.21),transparent 48%), #150b1b" }}>
       <div className="mx-auto max-w-6xl px-5 pb-20 pt-7 sm:px-8 sm:pt-10">
         <header className="flex min-w-0 items-center justify-between gap-3">
-          <span className="shrink-0 rounded-2xl border border-[#e6197e]/35 bg-[#e6197e]/10 px-3 py-2.5 text-white sm:px-4"><BrandLogo /></span>
-          <span className="max-w-[175px] truncate rounded-full border border-[#77435e] px-2.5 py-1.5 text-right text-[9px] font-bold uppercase tracking-wide text-[#f5bddb] sm:max-w-none sm:px-3 sm:text-[10px] sm:tracking-widest">Recurso gratuito · GASOLINA</span>
+          <img src="/gasolina/al-fallo-logo.svg" alt="Al Fallo Nutrition" width={90} height={94} className="h-[78px] w-auto object-contain sm:h-[94px]" />
+          <span className="max-w-[175px] shrink-0 truncate rounded-full border border-[#77435e] px-2.5 py-1.5 text-right text-[9px] font-bold uppercase tracking-wide text-[#f5bddb] sm:max-w-none sm:px-3 sm:text-[10px] sm:tracking-widest">Recurso gratuito · GASOLINA</span>
         </header>
 
         {step === "intro" && (
@@ -125,28 +127,28 @@ export function GasolinaExperience() {
                 DEJA DE<br />IMPROVISAR<br /><span className="al-fallo-gradient-text">TU COMIDA.</span>
               </h1>
               <p className="mt-7 max-w-full text-base leading-relaxed text-[#e7d0df] sm:max-w-xl sm:text-lg">
-                Tu entrenamiento cambia cada día. Tu alimentación debería acompañarte.
-                Responde 3 preguntas y descubre por dónde empezar a comer según tu WOD.
+                Tu entrenamiento tiene objetivos. Tu comida debería acompañarte.
+                Responde seis preguntas y descubre cómo empezar a organizar tu alimentación para entrenar con más energía, aspirar a mejorar tus marcas y seguir disfrutando de tu vida.
               </p>
               <div className="mt-7 flex flex-wrap gap-x-5 gap-y-3 text-sm text-[#d7bacc]">
                 <span className="inline-flex items-center gap-2"><CheckCircle2 size={16} className="text-[#ff8cbd]" /> Resultado inmediato</span>
-                <span className="inline-flex items-center gap-2"><CheckCircle2 size={16} className="text-[#ff8cbd]" /> Guía PDF (6 páginas)</span>
-                <span className="inline-flex items-center gap-2"><CheckCircle2 size={16} className="text-[#ff8cbd]" /> Sin dietas cerradas</span>
+                <span className="inline-flex items-center gap-2"><CheckCircle2 size={16} className="text-[#ff8cbd]" /> Resultado completo en pantalla</span>
+                <span className="inline-flex items-center gap-2"><CheckCircle2 size={16} className="text-[#ff8cbd]" /> Sin dietas rígidas</span>
               </div>
               <button type="button" disabled={busy} onClick={() => void begin()}
                 className="mt-9 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-xl bg-[#e6197e] px-7 py-4 text-base font-extrabold shadow-xl shadow-[#e6197e]/20 transition hover:bg-[#f32991] disabled:opacity-50 sm:w-auto">
-                {busy ? "Preparando tu test..." : "Quiero mi guía gratis"} <ArrowRight size={20} />
+                {busy ? "Preparando tu test..." : "Quiero descubrir mi punto de partida"} <ArrowRight size={20} />
               </button>
-              <p className="mt-3 text-xs text-[#b99cae]">Menos de 2 minutos · 100 % gratuito</p>
+              <p className="mt-3 text-xs text-[#b99cae]">Unos 2 minutos · 100 % gratuito</p>
               {error && <p role="alert" className="mt-5 rounded-xl border border-red-400/35 bg-red-950/30 p-4 text-sm text-red-200">{error}</p>}
             </div>
             <div className="mx-auto min-w-0 w-full max-w-[450px]">
               <div className="relative mx-auto aspect-[.81] w-[84%] -rotate-[5deg] rounded-[26px] border border-[#ff9bca]/40 bg-gradient-to-br from-[#572144] via-[#2c162e] to-[#150b1c] p-7 shadow-[0_35px_90px_rgba(0,0,0,.48)] sm:p-10">
-                <div className="flex items-center gap-2 text-[#ff95c5]"><span className="grid h-10 w-10 place-items-center rounded-lg border-2 border-current text-2xl font-black">A</span><span className="text-xl font-black text-white">Al Fallo</span></div>
-                <p className="mt-14 text-[11px] font-extrabold uppercase tracking-[.23em] text-[#ff9bcb]">GASOLINA · LA GUÍA</p>
-                <p className="mt-5 text-[clamp(2.4rem,4vw,4rem)] font-black leading-[1.05] tracking-[-.065em]">COME<br />SEGÚN<br /><span className="al-fallo-gradient-text">TU WOD.</span></p>
+                <img src="/gasolina/al-fallo-logo.svg" alt="Al Fallo Nutrition" className="h-16 w-auto object-contain" />
+                <p className="mt-8 text-[11px] font-extrabold uppercase tracking-[.23em] text-[#ff9bcb]">GASOLINA · TU PLAN INICIAL</p>
+                <p className="mt-5 text-[clamp(2.4rem,4vw,4rem)] font-black leading-[1.05] tracking-[-.065em]">COME<br />PARA<br /><span className="al-fallo-gradient-text">RENDIR.</span></p>
                 <p className="absolute bottom-8 left-7 right-7 border-t border-[#9f6283] pt-4 text-[11px] font-semibold text-[#e0b5cd] sm:left-10 sm:right-10">ENERGÍA · HIDRATOS · RECUPERACIÓN</p>
-                <span className="absolute -bottom-4 -right-5 rotate-[8deg] rounded-xl border border-[#ffb3d3]/40 bg-[#fbe7f2] px-5 py-3 text-center shadow-xl"><strong className="block text-sm text-[#b21e66]">4 CLAVES</strong><span className="text-[10px] text-[#65435b]">para tu semana real</span></span>
+                <span className="absolute -bottom-4 -right-5 rotate-[8deg] rounded-xl border border-[#ffb3d3]/40 bg-[#fbe7f2] px-5 py-3 text-center shadow-xl"><strong className="block text-sm text-[#b21e66]">6 PREGUNTAS</strong><span className="text-[10px] text-[#65435b]">un punto de partida</span></span>
               </div>
             </div>
           </section>
@@ -154,18 +156,19 @@ export function GasolinaExperience() {
 
         {stepData && (
           <section className="mx-auto max-w-2xl pt-12 sm:pt-16">
-            <div className="mb-6 flex justify-between text-xs font-bold uppercase tracking-wider text-[#d4b2ca]"><span>Tu plan GASOLINA</span><span>Paso {stepData.index} de 4</span></div>
-            <div className="mb-9 h-1.5 overflow-hidden rounded-full bg-[#4f2d45]"><div className="h-full rounded-full bg-gradient-to-r from-[#e6197e] to-[#ff97c8]" style={{ width: String(stepData.index * 25) + "%" }} /></div>
+            <div className="mb-6 flex justify-between text-xs font-bold uppercase tracking-wider text-[#d4b2ca]"><span>Tu plan GASOLINA</span><span>Paso {stepData.index} de 7</span></div>
+            <div className="mb-9 h-1.5 overflow-hidden rounded-full bg-[#4f2d45]"><div className="h-full rounded-full bg-gradient-to-r from-[#e6197e] to-[#ff97c8]" style={{ width: String(stepData.index / 7 * 100) + "%" }} /></div>
             <div className="rounded-[26px] border border-[#633c57] bg-[#2a192f]/95 p-6 shadow-2xl sm:p-9">
               <h2 className="text-3xl font-black leading-tight tracking-[-.045em] sm:text-4xl">{stepData.title}</h2>
               <p className="mt-3 text-sm leading-relaxed text-[#d6b7ca]">{stepData.intro}</p>
               {step !== "contact" && (
-                <div className="mt-8 grid gap-3">
+                <div key={step} className="mt-8 grid gap-3">
                   {choices.map((option) => (
-                    <button type="button" key={option.id} onClick={() => selectOption(option.id)}
-                      className="group flex min-h-[70px] items-center justify-between gap-4 rounded-xl border border-[#5c3852] bg-[#37213b] px-5 py-3.5 text-left transition hover:border-[#e6197e] hover:bg-[#4c2945]">
+                    <button type="button" key={step + ":" + option.id} onClick={() => selectOption(option.id)}
+                      aria-pressed={selectedValue === option.id}
+                      className={"group flex min-h-[70px] items-center justify-between gap-4 rounded-xl border px-5 py-3.5 text-left transition hover:border-[#e6197e] hover:bg-[#4c2945] " + (selectedValue === option.id ? "border-[#ff7db8] bg-[#502640]" : "border-[#5c3852] bg-[#37213b]")}>
                       <span><strong className="block text-sm font-bold sm:text-base">{option.label}</strong><span className="mt-1 block text-xs text-[#cbaec2]">{option.detail}</span></span>
-                      <ArrowRight size={17} className="shrink-0 text-[#c590b0] transition group-hover:translate-x-1 group-hover:text-[#ff9dcb]" />
+                      {selectedValue === option.id ? <Check size={17} className="shrink-0 text-[#ffafd1]" /> : <ArrowRight size={17} className="shrink-0 text-[#c590b0] transition group-hover:translate-x-1 group-hover:text-[#ff9dcb]" />}
                     </button>
                   ))}
                 </div>
@@ -173,30 +176,37 @@ export function GasolinaExperience() {
               {step === "contact" && (
                 <form className="mt-8 space-y-4" onSubmit={(e) => void finish(e)}>
                   <div>
-                    <label htmlFor="gas-nombre" className="mb-1.5 block text-sm font-semibold text-[#f8e5f0]">Nombre y apellidos *</label>
-                    <input id="gas-nombre" className={inputClass} autoComplete="name" required minLength={2} maxLength={100} value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Tu nombre" />
+                    <label htmlFor="gas-nombre" className="mb-2 block text-sm font-semibold text-[#f8e5f0]">Nombre y apellidos *</label>
+                    <input
+                      id="gas-nombre" className={inputClass} autoComplete="name"
+                      required minLength={3} maxLength={100}
+                      value={fullName} onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Ej. Ana García"
+                    />
                   </div>
                   <div>
-                    <label htmlFor="gas-email" className="mb-1.5 block text-sm font-semibold text-[#f8e5f0]">Correo electrónico *</label>
-                    <input id="gas-email" className={inputClass} type="email" autoComplete="email" required maxLength={160} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tu@email.com" />
+                    <label htmlFor="gas-ig" className="mb-2 block text-sm font-semibold text-[#f8e5f0]">
+                      Usuario de Instagram <span className="font-normal text-[#c2a5b9]">— opcional</span>
+                    </label>
+                    <input
+                      id="gas-ig" className={inputClass}
+                      autoComplete="off" maxLength={65}
+                      value={instagram} onChange={(e) => setInstagram(e.target.value)}
+                      placeholder="@tuusuario"
+                    />
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label htmlFor="gas-phone" className="mb-1.5 block text-sm font-semibold text-[#f8e5f0]">WhatsApp / teléfono <span className="text-xs font-normal text-[#bba1b3]">Opcional</span></label>
-                      <input id="gas-phone" className={inputClass} type="tel" autoComplete="tel" maxLength={35} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+34..." />
-                    </div>
-                    <div>
-                      <label htmlFor="gas-ig" className="mb-1.5 block text-sm font-semibold text-[#f8e5f0]">Instagram <span className="text-xs font-normal text-[#bba1b3]">Opcional</span></label>
-                      <input id="gas-ig" className={inputClass} maxLength={65} value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@usuario" />
-                    </div>
-                  </div>
-                  <label className="flex items-start gap-3 rounded-xl border border-[#72485f] bg-[#211327] p-4 text-xs leading-relaxed text-[#dfcddd]">
-                    <input type="checkbox" required checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#e6197e]" />
-                    <span>He leído el <Link href="/gasolina/privacidad" target="_blank" rel="noopener noreferrer" className="font-bold text-[#ffabd3] underline">aviso de privacidad</Link> y acepto que se guarden mis datos y respuestas para obtener este recurso y mi orientación. No implica aceptar publicidad.</span>
-                  </label>
-                  <button type="submit" disabled={busy || !consent} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#e6197e] px-5 py-3 text-sm font-extrabold text-white transition hover:bg-[#f32b91] disabled:cursor-not-allowed disabled:opacity-50">
-                    {busy ? "Preparando tu resultado..." : "Ver mi resultado y descargar la guía"} <ArrowRight size={18} />
+                  <p className="rounded-xl border border-[#674358] bg-[#221527] px-4 py-3 text-xs leading-relaxed text-[#d9c0d1]">
+                    Usaremos tu nombre, Instagram si lo añades y tus respuestas para mostrarte el resultado y medir
+                    el uso de GASOLINA. No te suscribimos a publicidad ni te pedimos teléfono ni email.
+                    Consulta nuestro <Link href="/gasolina/privacidad" target="_blank" rel="noopener noreferrer" className="font-semibold text-[#ffb6d9] underline">aviso de privacidad</Link>.
+                  </p>
+                  <button
+                    type="submit" disabled={busy || fullName.trim().split(/\s+/).length < 2}
+                    className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#e6197e] px-5 py-3 text-sm font-extrabold text-white transition hover:bg-[#f32b91] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {busy ? "Preparando tu resultado..." : "Descubrir cómo empezar a rendir mejor"} <ArrowRight size={18} />
                   </button>
+                  <p className="text-center text-[11px] text-[#bca5b7]">Resultado inmediato en esta misma página · Sin descargas</p>
                 </form>
               )}
               {error && <p role="alert" className="mt-5 rounded-xl border border-red-400/35 bg-red-950/30 px-4 py-3 text-sm text-red-200">{error}</p>}
@@ -209,44 +219,172 @@ export function GasolinaExperience() {
 
         {step === "result" && result && (
           <section className="mx-auto max-w-4xl pt-12 sm:pt-16">
-            <div className="mb-5 flex justify-center"><span className="inline-flex items-center gap-2 rounded-full border border-[#f48dba]/35 bg-[#e6197e]/10 px-4 py-2 text-xs font-extrabold uppercase tracking-widest text-[#ffaad4]"><CheckCircle2 size={16} /> Test completado</span></div>
-            <h1 className="text-center text-4xl font-black leading-tight tracking-[-.05em] sm:text-6xl">{fullName.split(/\s+/)[0]}, aquí tienes<br /><span className="al-fallo-gradient-text">tu GASOLINA.</span></h1>
-            <p className="mx-auto mt-5 max-w-xl text-center text-sm leading-relaxed text-[#dac2d1]">Estas sugerencias son un punto de partida educativo basado en tus respuestas, no un diagnóstico ni una pauta de nutrición personalizada.</p>
-            <div className="mt-10 overflow-hidden rounded-[26px] border border-[#72435e] bg-[#2b192e]">
+            <div className="mb-6 flex justify-center">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[#f48dba]/35 bg-[#e6197e]/10 px-4 py-2 text-xs font-extrabold uppercase tracking-widest text-[#ffadd4]">
+                <CheckCircle2 size={16} /> Resultado completado
+              </span>
+            </div>
+            <h1 className="text-center text-[clamp(2.2rem,6vw,3.9rem)] font-black leading-[1.08] tracking-[-.05em]">
+              {fullName.trim().split(/\s+/)[0]}, tu siguiente paso<br />
+              <span className="al-fallo-gradient-text">empieza aquí.</span>
+            </h1>
+            <p className="mx-auto mt-5 max-w-2xl text-center text-sm leading-relaxed text-[#e5cfe0] sm:text-base">
+              Has entrenado para mejorar. Ahora toca ver cómo puede acompañarte tu alimentación:
+              con más recursos para el WOD, margen para trabajar en tus marcas y una organización
+              que no te obligue a renunciar a tu vida.
+            </p>
+            <p className="mx-auto mt-3 max-w-xl text-center text-xs text-[#c7acc1]">
+              Esta orientación parte de tus respuestas. No diagnostica déficits ni sustituye una valoración individual.
+            </p>
+
+            <section className="mt-10 overflow-hidden rounded-[26px] border border-[#72435e] bg-[#2b192e]">
               <div className="border-b border-[#5c3850] bg-gradient-to-r from-[#592542] to-[#2b192f] p-6 sm:p-9">
-                <span className="text-[11px] font-black uppercase tracking-[.19em] text-[#ff9cca]">Tu foco · {names[result.focus]}</span>
+                <span className="text-[11px] font-black uppercase tracking-[.19em] text-[#ff9cca]">
+                  Tu primer foco · {FOCUS_NAMES[result.focus]}
+                </span>
                 <h2 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">{result.title}</h2>
                 <p className="mt-3 text-sm leading-relaxed text-[#e9cfdf]">{result.intro}</p>
+                <div className="mt-5 rounded-xl border border-[#834967] bg-[#4a2340]/60 p-4">
+                  <h3 className="mb-2 text-xs font-extrabold uppercase tracking-wider text-[#ffb4d7]">Lo que te gustaría conseguir</h3>
+                  <p className="text-sm leading-relaxed text-[#f0d9e8]">{result.ambition}</p>
+                </div>
               </div>
               <div className="p-6 sm:p-9">
-                <h3 className="mb-4 text-sm font-black uppercase tracking-wider text-[#ffb4d9]">Tres acciones para empezar</h3>
+                <h3 className="mb-4 text-sm font-black uppercase tracking-wider text-[#ffb4d9]">
+                  3 acciones para probar esta semana
+                </h3>
                 <div className="grid gap-3">
                   {result.actions.map((item, i) => (
                     <div key={item} className="flex items-start gap-3 rounded-xl border border-[#5a3750] bg-[#372139] px-4 py-3">
-                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#e6197e]/25 text-xs font-black text-[#ffabd3]">{i + 1}</span>
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#e6197e]/25 text-xs font-black text-[#ffabd3]">
+                        {i + 1}
+                      </span>
                       <p className="text-sm leading-relaxed text-[#f2dce9]">{item}</p>
                     </div>
                   ))}
                 </div>
                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border border-[#59374f] bg-[#1e1325] p-4"><p className="mb-2 text-xs font-black uppercase text-[#ff9bca]">Según tu horario</p><p className="text-sm leading-relaxed text-[#ebd3e2]">{result.when}</p></div>
-                  <div className="rounded-xl border border-[#59374f] bg-[#1e1325] p-4"><p className="mb-2 text-xs font-black uppercase text-[#ff9bca]">Según tu entrenamiento</p><p className="text-sm leading-relaxed text-[#ebd3e2]">{result.load}</p></div>
+                  <div className="rounded-xl border border-[#59374f] bg-[#1e1325] p-4">
+                    <h4 className="mb-2 text-xs font-black uppercase text-[#ff9bca]">Según tu horario</h4>
+                    <p className="text-sm leading-relaxed text-[#ebd3e2]">{result.when}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#59374f] bg-[#1e1325] p-4">
+                    <h4 className="mb-2 text-xs font-black uppercase text-[#ff9bca]">Según tu entrenamiento</h4>
+                    <p className="text-sm leading-relaxed text-[#ebd3e2]">{result.load}</p>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-xl border border-[#623d54] bg-[#3b2440] p-4">
+                  <h4 className="mb-2 text-xs font-black uppercase text-[#ffb4d6]">Un ejemplo que puedes adaptar</h4>
+                  <p className="text-sm leading-relaxed text-[#f0d9e7]">{result.example}</p>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-[#623d54] p-4">
+                    <h4 className="mb-2 text-xs font-black uppercase text-[#ffc2d5]">Evita este error habitual</h4>
+                    <p className="text-sm leading-relaxed text-[#e8d2df]">{result.mistake}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#623d54] p-4">
+                    <h4 className="mb-2 text-xs font-black uppercase text-[#ffc2d5]">Tu próximo hábito</h4>
+                    <p className="text-sm leading-relaxed text-[#e8d2df]">{result.nextHabit}</p>
+                  </div>
+                </div>
+                <p className="mt-5 border-l-2 border-[#ff87bc] pl-4 text-sm leading-relaxed text-[#eecfe0]">{result.opportunity}</p>
+              </div>
+            </section>
+
+            <section className="mt-8 rounded-[26px] border border-[#a64f7c] bg-gradient-to-br from-[#5a2548] via-[#3d1d3b] to-[#2a1933] p-6 shadow-xl shadow-[#e6197e]/5 sm:p-9">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#e6197e]/15 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-[#ffc4df]">
+                <Sparkles size={15} /> ¿Y si pudieses llevarlo más lejos?
+              </div>
+              <h2 className="text-2xl font-black leading-tight tracking-tight sm:text-3xl">
+                Mejor energía. Más recursos para tus marcas.
+                <span className="al-fallo-gradient-text"> Una alimentación que encaja contigo.</span>
+              </h2>
+              <p className="mt-4 text-sm leading-relaxed text-[#efd9e5] sm:text-base">
+                Si te gustaría llegar con energía al WOD y conservarla para el resto del día,
+                trabajar en tus marcas y organizar tu comida sin dejar de disfrutar de tus planes,
+                en Al Fallo Performance podemos ayudarte a encontrar una estrategia adaptada a ti.
+              </p>
+              <a
+                href={whatsappUrl} target="_blank" rel="noopener noreferrer"
+                onClick={recordWhatsappClick}
+                className="mt-6 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-xl bg-[#e6197e] px-6 py-4 text-center text-sm font-black text-white shadow-lg shadow-[#e6197e]/20 transition hover:bg-[#f32b90] sm:w-auto sm:text-base"
+              >
+                <MessageCircle size={20} /> Quiero información sobre Al Fallo Performance <ArrowRight size={18} />
+              </a>
+              <p className="mt-3 text-xs text-[#dfb9cd]">
+                Se abrirá WhatsApp con un mensaje preparado. Tú decides si enviarlo, sin compromiso.
+              </p>
+            </section>
+
+            <section className="mt-12" aria-label="Tu guía GASOLINA">
+              <div className="mb-7 text-center">
+                <span className="text-[11px] font-black uppercase tracking-widest text-[#ff9ecb]">
+                  GASOLINA · Guía práctica completa
+                </span>
+                <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">
+                  Qué comer <span className="al-fallo-gradient-text">según tu WOD</span>
+                </h2>
+                <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-[#d5bacb]">
+                  Estas cuatro claves complementan tu resultado. Guárdalas como referencia
+                  y adapta las opciones a tus sensaciones, horarios y necesidades reales.
+                </p>
+              </div>
+              <div className="grid gap-4">
+                {WEB_GUIDE.map((chapter) => (
+                  <article key={chapter.id} className="rounded-2xl border border-[#633b56] bg-[#2a192e] p-5 sm:p-7">
+                    <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#ff9bc9]">{chapter.badge}</span>
+                    <h3 className="mt-2 text-xl font-extrabold tracking-tight sm:text-2xl">{chapter.title}</h3>
+                    <p className="mt-3 text-sm leading-relaxed text-[#e5cddd]">{chapter.text}</p>
+                    <div className="mt-5 space-y-2.5">
+                      {chapter.examples.map((example) => (
+                        <p key={example} className="flex items-start gap-2.5 text-sm leading-relaxed text-[#f1deea]">
+                          <Check size={16} className="mt-0.5 shrink-0 text-[#ffa2cd]" /> {example}
+                        </p>
+                      ))}
+                    </div>
+                    <p className="mt-5 rounded-xl border border-[#784760] bg-[#41243f] px-4 py-3 text-xs leading-relaxed text-[#edcddd]">
+                      <strong>Para tener en cuenta:</strong> {chapter.tip}
+                    </p>
+                  </article>
+                ))}
+              </div>
+              <div className="mt-5 rounded-2xl border border-[#734861] bg-[#2e1c33] px-5 py-6">
+                <h3 className="text-lg font-black">Tu checklist para la próxima semana</h3>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {[
+                    "He identificado los entrenamientos que más energía me exigen.",
+                    "Tengo una opción sencilla antes y después de entrenar.",
+                    "He pensado cómo organizarme si cambia mi horario.",
+                    "Voy a valorar mis sensaciones sin exigirme perfección.",
+                  ].map((item) => (
+                    <p key={item} className="flex items-start gap-2.5 text-sm text-[#e9d3e0]">
+                      <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-[#ff95c5]" /> {item}
+                    </p>
+                  ))}
                 </div>
               </div>
-            </div>
-            <div className="mt-6 rounded-[23px] border border-[#794960] bg-[#3e2240] p-6 sm:p-8">
-              <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-                <div><p className="text-xs font-black uppercase tracking-[.15em] text-[#ffafda]">Tu guía de 6 páginas</p><h3 className="mt-2 text-xl font-black">GASOLINA · Come según tu WOD</h3><p className="mt-2 max-w-xl text-sm leading-relaxed text-[#e0c2d6]">Empieza por {result.chapter}. Contiene ejemplos reales y una checklist para organizar tu próxima semana.</p></div>
-                <a href="/gasolina/guia-comer-segun-tu-wod.pdf" download="GASOLINA_Guia_Comer_Segun_Tu_WOD.pdf" className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#e6197e] px-5 py-3.5 text-sm font-black text-white hover:bg-[#f32b91]"><Download size={19} /> Descargar mi guía</a>
-              </div>
-              <div className="mt-5 flex flex-wrap gap-5 border-t border-[#71495e] pt-5">
-                <button type="button" onClick={share} className="inline-flex items-center gap-2 text-sm font-semibold text-[#f3d3e4] hover:text-white"><MessageCircle size={18} /> Compartir por WhatsApp</button>
-                {bookingReady && <Link href="/agenda" className="inline-flex items-center gap-2 text-sm font-bold text-[#ff9dcb] hover:text-[#ffcee6]">Quiero una valoración individual <ArrowRight size={17} /></Link>}
-              </div>
-            </div>
+            </section>
+
+            <section className="mt-8 rounded-2xl border border-[#8c4c6d] bg-[#492440] px-6 py-7 text-center sm:px-9">
+              <h2 className="text-2xl font-black tracking-tight">Entrena para mejorar. Come para acompañarlo.</h2>
+              <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-[#f0d7e6]">
+                Si quieres dejar de improvisar y descubrir cómo adaptamos la nutrición al
+                entrenamiento y a la vida de cada atleta, escríbenos.
+              </p>
+              <a
+                href={whatsappUrl} target="_blank" rel="noopener noreferrer"
+                onClick={recordWhatsappClick}
+                className="mt-5 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#e6197e] px-6 py-3 text-center text-sm font-extrabold text-white hover:bg-[#f32b90]"
+              >
+                <MessageCircle size={18} /> Hablar con Al Fallo Performance <ArrowRight size={16} />
+              </a>
+            </section>
+            <p className="mx-auto mt-6 max-w-2xl text-center text-xs leading-relaxed text-[#aa8e9f]">
+              Información general para adultos activos. No sustituye una valoración nutricional
+              individual, especialmente ante necesidades clínicas o alimentarias específicas.
+            </p>
           </section>
         )}
-
         <footer className="mt-16 flex flex-wrap items-center justify-between gap-3 border-t border-[#633c58] pt-5 text-xs text-[#b59aab]">
           <span>© {new Date().getFullYear()} Al Fallo Nutrition · GASOLINA</span>
           <span className="inline-flex items-center gap-2"><ShieldCheck size={14} /> <Link href="/gasolina/privacidad" className="underline hover:text-white">Privacidad</Link> · Orientación educativa</span>
