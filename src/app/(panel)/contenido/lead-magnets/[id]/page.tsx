@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getActiveProfessional } from "@/lib/session";
 import { isManager } from "@/lib/roles";
 import { ContentNav } from "@/components/ContentNav";
+import { LeadMagnetResponsesTable } from "@/components/LeadMagnetResponsesTable";
 import { canUseMarketerIA } from "@/lib/marketer-access";
 import { leadMagnetResponseWhere, normalizeLeadMagnetFilters, reportParams } from "@/lib/lead-magnet-report";
 import { MAIN_PROBLEMS, SESSION_TYPES, TRAINING_TIMES, OBJECTIVES, WEEK_PATTERNS, BLOCKERS } from "@/lib/gasolina/quiz";
@@ -160,41 +161,23 @@ export default async function LeadMagnetDetailPage({
             <p className="mt-1 text-xs text-neutral-500">Cuando un futuro lead magnet registre respuestas, aparecerán aquí.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[780px] text-left text-xs">
-              <thead><tr className="bg-neutral-50 text-[10px] uppercase tracking-wide text-neutral-500">
-                <th className="px-4 py-3 font-semibold">Fecha</th><th className="px-4 py-3 font-semibold">Contacto</th>
-                <th className="px-4 py-3 font-semibold">Estado</th><th className="px-4 py-3 font-semibold">Campaña</th>
-                <th className="px-4 py-3 font-semibold">WhatsApp</th><th className="px-4 py-3 font-semibold">Resultado</th>
-              </tr></thead>
-              <tbody>{responses.map((row) => (
-                <tr key={row.id} className="border-t border-neutral-100 align-top hover:bg-neutral-50">
-                  <td className="whitespace-nowrap px-4 py-3 text-neutral-500">{formatDate(row.createdAt)}</td>
-                  <td className="px-4 py-3"><p className="font-semibold text-neutral-900">{row.fullName || "Sin nombre"}</p>
-                    {row.email && <p className="mt-1 text-neutral-500">{row.email}</p>}
-                    {row.phone && <p className="mt-1 text-neutral-500">{row.phone}</p>}
-                    {row.instagram && <p className="mt-1 text-neutral-500">{row.instagram}</p>}
-                  </td>
-                  <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${row.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"}`}>{row.status === "completed" ? "Completado" : "En curso"}</span></td>
-                  <td className="px-4 py-3 text-neutral-600">{row.campaign || row.source || "—"}</td>
-                  <td className="px-4 py-3 text-neutral-600">{row.whatsappClickedAt ? "Sí" : "No"}</td>
-                  <td className="px-4 py-3 text-neutral-700">
-                    {row.resultJson ? <details className="max-w-xs">
-                      <summary className="cursor-pointer text-[#c01769]">{gasolinaData(row.resultJson)?.focus ? FOCUS_LABELS[gasolinaData(row.resultJson)!.focus!] : "Ver respuesta"}</summary>
-                      {gasolinaData(row.resultJson) ? <div className="mt-2 space-y-1 rounded bg-neutral-50 p-2 text-[11px]">
-                        <p><strong>Horario:</strong> {gasolinaData(row.resultJson)?.trainingTime}</p>
-                        <p><strong>Sesión:</strong> {gasolinaData(row.resultJson)?.sessionType}</p>
-                        <p><strong>Principal dificultad:</strong> {gasolinaData(row.resultJson)?.mainProblem}</p>
-                        {gasolinaData(row.resultJson)?.objective && <p><strong>Ambición:</strong> {gasolinaData(row.resultJson)?.objective}</p>}
-                        {gasolinaData(row.resultJson)?.weekPattern && <p><strong>Semana habitual:</strong> {gasolinaData(row.resultJson)?.weekPattern}</p>}
-                        {gasolinaData(row.resultJson)?.blocker && <p><strong>Obstáculo:</strong> {gasolinaData(row.resultJson)?.blocker}</p>}
-                      </div> : <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-all rounded bg-neutral-50 p-2 text-[11px]">{row.resultJson}</pre>}
-                    </details> : <span className="text-neutral-400">—</span>}
-                  </td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
+          <LeadMagnetResponsesTable
+            leadMagnetId={magnet.id}
+            canDelete={user.role === "ceo"}
+            rows={responses.map((row) => ({
+              id: row.id,
+              dateLabel: formatDate(row.createdAt),
+              fullName: row.fullName,
+              email: row.email,
+              phone: row.phone,
+              instagram: row.instagram,
+              status: row.status,
+              campaign: row.campaign,
+              source: row.source,
+              whatsappClicked: row.whatsappClickedAt !== null,
+              resultJson: row.resultJson,
+            }))}
+          />
         )}
         {total > PAGE_SIZE && <div className="flex items-center justify-between gap-2 border-t border-neutral-100 px-4 py-3 text-xs">
           <span className="text-neutral-500">Página {page} de {Math.ceil(total / PAGE_SIZE)}</span>

@@ -25,3 +25,12 @@ Aplicar únicamente el SQL aditivo de `scripts/schema-updates/2026-11-02-lead-ma
 ## Permisos
 
 Los paneles con respuestas y CSV son accesibles solo para CEO y Head Coach (roles de dirección), por contener datos de contacto. No existen endpoints públicos de captura ni generación de recursos en este módulo. La gestión anterior del catálogo mantiene los permisos existentes.
+
+## Eliminación individual y múltiple de respuestas (CEO)
+
+- Entrada desde `CRM → Llamadas → Respuestas lead magnets` o `Contenido → Lead magnets`.
+- Abre un recurso, por ejemplo GASOLINA, y usa la papelera de cada fila para eliminar una respuesta o marca casillas para eliminar varias.
+- «Seleccionar todas» afecta **solo a las respuestas visibles de la página actual** (hasta 50), nunca a todos los registros del recurso.
+- Antes de borrar se solicita confirmación; la eliminación es definitiva y afecta tanto al contacto almacenado como a la clasificación de respuestas. No modifica el recurso, las piezas ni los leads del CRM comercial.
+- La API `DELETE /api/content/lead-magnets/[id]/responses` exige rol `ceo`, valida el alcance por `leadMagnetId`, comprueba todos los IDs y acepta como máximo 50 por petición.
+- Las métricas se recalculan al actualizar la página. Las demás respuestas y los otros lead magnets no se modifican.

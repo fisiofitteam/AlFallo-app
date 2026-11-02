@@ -140,13 +140,23 @@ export function CallsListView({
             {currentUser.role === "closer" ? "Tus llamadas asignadas" : "Llamadas del equipo"}
           </p>
         </div>
-        <button
-          onClick={() => setCreating(true)}
-          className="text-xs font-medium px-3 py-2 rounded-lg shrink-0"
-          style={{ background: "#0A0A0A", color: "#FAFAFA" }}
-        >
-          + Añadir llamada
-        </button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {currentUser.role === "ceo" && (
+            <Link href="/contenido/lead-magnets"
+              className="rounded-lg border border-[#f0b8d2] bg-[#fff5fa] px-3 py-2 text-xs font-semibold text-[#b32066] hover:bg-[#fce3ef]"
+              title="Gestionar respuestas de lead magnets (incluye eliminación individual y múltiple)"
+            >
+              🧲 Respuestas lead magnets
+            </Link>
+          )}
+          <button
+            onClick={() => setCreating(true)}
+            className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium"
+            style={{ background: "#0A0A0A", color: "#FAFAFA" }}
+          >
+            + Añadir llamada
+          </button>
+        </div>
       </header>
 
       {/* Toggle Llamadas / Follow-up (CEO y setter — visión global) */}
