@@ -10,7 +10,7 @@ export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // ── Landing pública de agenda (/agenda/*): sin auth ─────────
-  if (pathname.startsWith("/agenda")) {
+  if (pathname.startsWith("/agenda") || pathname === "/gasolina" || pathname.startsWith("/gasolina/") || pathname === "/guia-comer-segun-tu-wod") {
     return NextResponse.next();
   }
 

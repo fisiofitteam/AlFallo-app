@@ -7,12 +7,31 @@ import { isManager } from "@/lib/roles";
 import { ContentNav } from "@/components/ContentNav";
 import { canUseMarketerIA } from "@/lib/marketer-access";
 import { leadMagnetResponseWhere, normalizeLeadMagnetFilters, reportParams } from "@/lib/lead-magnet-report";
+import { MAIN_PROBLEMS, SESSION_TYPES, TRAINING_TIMES } from "@/lib/gasolina/quiz";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Respuestas de lead magnet · Al Fallo" };
 
 function formatDate(date: Date | null): string {
   return date ? date.toLocaleString("es-ES", { timeZone: "Europe/Madrid", dateStyle: "short", timeStyle: "short" }) : "—";
+}
+
+const FOCUS_LABELS = {
+  preworkout: "Energía previa", carbs: "Hidratos", recovery: "Recuperación", structure: "Semana real",
+} as const;
+type FocusKey = keyof typeof FOCUS_LABELS;
+function gasolinaData(raw: string | null): { focus?: FocusKey; trainingTime?: string; sessionType?: string; mainProblem?: string } | null {
+  if (!raw) return null;
+  try {
+    const data = JSON.parse(raw);
+    if (!data || data.guide !== "gasolina-v1") return null;
+    return {
+      focus: data.focus in FOCUS_LABELS ? data.focus as FocusKey : undefined,
+      trainingTime: TRAINING_TIMES.find((v) => v.id === data.trainingTime)?.label,
+      sessionType: SESSION_TYPES.find((v) => v.id === data.sessionType)?.label,
+      mainProblem: MAIN_PROBLEMS.find((v) => v.id === data.mainProblem)?.label,
+    };
+  } catch { return null; }
 }
 
 const PAGE_SIZE = 50;
@@ -56,6 +75,16 @@ export default async function LeadMagnetDetailPage({
   const url = `/contenido/lead-magnets/${magnet.id}`;
   const paginationHref = (p: number) => `${url}?${[query, `page=${p}`].filter(Boolean).join("&")}`;
   const pct = total ? Math.round((completed / total) * 100) : 0;
+  const gasolina = magnet.keyword === "GASOLINA";
+  const focusRows = gasolina && completed > 0 ? await prisma.leadMagnetResponse.findMany({
+    where: { AND: [where, { status: "completed" }] },
+    select: { resultJson: true }, take: 10000,
+  }) : [];
+  const focusCounts: Record<FocusKey, number> = { preworkout: 0, carbs: 0, recovery: 0, structure: 0 };
+  for (const row of focusRows) {
+    const focus = gasolinaData(row.resultJson)?.focus;
+    if (focus) focusCounts[focus] += 1;
+  }
 
   return (
     <main className="mx-auto max-w-[1400px] px-4 py-6">
@@ -100,6 +129,23 @@ export default async function LeadMagnetDetailPage({
         <Metric label="Clics WhatsApp" value={String(waClicks)} />
       </div>
 
+      {gasolina && (
+        <section className="mb-5 rounded-xl border border-neutral-200 bg-white p-5">
+          <h2 className="text-sm font-semibold">Qué necesitan los atletas · GASOLINA</h2>
+          <p className="mt-1 text-xs text-neutral-500">Distribución de focos entre las respuestas completadas con los filtros actuales.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {(Object.keys(FOCUS_LABELS) as FocusKey[]).map((key) => {
+              const value = focusCounts[key];
+              const percentage = focusRows.length ? Math.round(value / focusRows.length * 100) : 0;
+              return <div key={key}>
+                <div className="mb-1 flex items-center justify-between text-xs"><span className="font-semibold">{FOCUS_LABELS[key]}</span><span className="text-neutral-500">{value} · {percentage}%</span></div>
+                <div className="h-2 overflow-hidden rounded-full bg-[#f6e7ef]"><div className="h-full rounded-full bg-[#e6197e]" style={{ width: percentage + "%" }} /></div>
+              </div>;
+            })}
+          </div>
+        </section>
+      )}
+
       <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-4 py-3">
           <h2 className="text-sm font-semibold">Respuestas registradas</h2>
@@ -130,7 +176,14 @@ export default async function LeadMagnetDetailPage({
                   <td className="px-4 py-3 text-neutral-600">{row.campaign || row.source || "—"}</td>
                   <td className="px-4 py-3 text-neutral-600">{row.whatsappClickedAt ? "Sí" : "No"}</td>
                   <td className="px-4 py-3 text-neutral-700">
-                    {row.resultJson ? <details className="max-w-xs"><summary className="cursor-pointer text-[#c01769]">Ver respuesta</summary><pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-all rounded bg-neutral-50 p-2 text-[11px]">{row.resultJson}</pre></details> : <span className="text-neutral-400">—</span>}
+                    {row.resultJson ? <details className="max-w-xs">
+                      <summary className="cursor-pointer text-[#c01769]">{gasolinaData(row.resultJson)?.focus ? FOCUS_LABELS[gasolinaData(row.resultJson)!.focus!] : "Ver respuesta"}</summary>
+                      {gasolinaData(row.resultJson) ? <div className="mt-2 space-y-1 rounded bg-neutral-50 p-2 text-[11px]">
+                        <p><strong>Horario:</strong> {gasolinaData(row.resultJson)?.trainingTime}</p>
+                        <p><strong>Sesión:</strong> {gasolinaData(row.resultJson)?.sessionType}</p>
+                        <p><strong>Principal dificultad:</strong> {gasolinaData(row.resultJson)?.mainProblem}</p>
+                      </div> : <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-all rounded bg-neutral-50 p-2 text-[11px]">{row.resultJson}</pre>}
+                    </details> : <span className="text-neutral-400">—</span>}
                   </td>
                 </tr>
               ))}</tbody>
