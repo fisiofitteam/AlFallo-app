@@ -38,6 +38,15 @@ export async function DELETE(req: NextRequest) {
   if (!user || !canManageContent(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "missing id" }, { status: 400 });
-  await prisma.leadMagnet.delete({ where: { id } });
+  // Nunca borrar respuestas de leads al retirar un recurso. Si hay capturas
+  // asociadas, el recurso debe desactivarse en lugar de eliminarse.
+  const responses = await prisma.leadMagnetResponse.count({ where: { leadMagnetId: id } });
+  if (responses > 0) {
+    return NextResponse.json(
+      { error: "Este recurso tiene respuestas. Desactívalo para conservar el historial." },
+      { status: 409 },
+    );
+  }
+  await prisma.leadMagnet.deleteMany({ where: { id } });
   return NextResponse.json({ ok: true });
 }

@@ -1135,7 +1135,7 @@ function CaseModal({ item, patientsForLink, onClose, onSave }: { item: ClinicalC
 }
 
 // ============================================================================
-// LEAD MAGNETS (con DMs auto-calculados)
+// LEAD MAGNETS (catálogo de recursos)
 // ============================================================================
 
 function LeadMagnetsTab({ items }: { items: LeadMagnet[] }) {
@@ -1167,7 +1167,7 @@ function LeadMagnetsTab({ items }: { items: LeadMagnet[] }) {
 
       {items.length === 0 ? (
         <section className="card text-center py-12">
-          <p className="text-sm text-neutral-400 italic">Aún no hay lead magnets. Añade el primero.</p>
+          <p className="text-sm text-neutral-400 italic">Aún no hay recursos registrados. Se incorporarán cuando se defina el primero.</p>
         </section>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1236,11 +1236,11 @@ function LeadMagnetModal({ item, onClose, onSave }: { item: LeadMagnet | null; o
         <div className="space-y-3">
           <div>
             <label className="text-xs text-neutral-500 block mb-1">Nombre</label>
-            <input className="input text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Guía hombro CrossFit" autoFocus />
+            <input className="input text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Guía de nutrición deportiva" autoFocus />
           </div>
           <div>
             <label className="text-xs text-neutral-500 block mb-1">Palabra clave DM</label>
-            <input className="input text-sm font-mono uppercase" value={keyword} onChange={(e) => setKeyword(e.target.value.toUpperCase())} placeholder="HOMBRO" />
+            <input className="input text-sm font-mono uppercase" value={keyword} onChange={(e) => setKeyword(e.target.value.toUpperCase())} placeholder="NUTRICION" />
           </div>
           <div>
             <label className="text-xs text-neutral-500 block mb-1">Descripción</label>

@@ -21,7 +21,11 @@ const TABS: Tab[] = [
 ];
 
 export function ContentNav({ active, role, showMarketer = false }: { active: string; role?: string; showMarketer?: boolean }) {
-  const visibleTabs = TABS.filter((t) => t.key === "marketer" ? showMarketer : !t.ceoOnly || role === "ceo");
+  const visibleTabs = TABS.filter((t) =>
+    t.key === "marketer" ? showMarketer
+      : t.key === "lead-magnets" ? role === "ceo" || role === "head_coach"
+        : !t.ceoOnly || role === "ceo"
+  );
   return (
     <div className="mb-3 flex min-w-0 max-w-full gap-1 border-b border-neutral-200 overflow-x-auto">
       {visibleTabs.map((tab) => {

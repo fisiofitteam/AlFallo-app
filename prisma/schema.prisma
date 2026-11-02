@@ -498,7 +498,35 @@ model LeadMagnet {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  // Respuestas de sus futuras landings/tests, separadas de FisioFit.
+  responses LeadMagnetResponse[]
+
   @@index([active])
+}
+
+// Registro genérico para estadísticas y respuestas de futuros lead magnets.
+// No genera recursos ni capturas por sí solo: cada landing se implementará
+// cuando se defina su mecánica y consentimiento concreto.
+model LeadMagnetResponse {
+  id                String    @id @default(cuid())
+  leadMagnetId      String
+  leadMagnet        LeadMagnet @relation(fields: [leadMagnetId], references: [id], onDelete: Restrict)
+  fullName          String?
+  email             String?
+  phone             String?
+  instagram         String?
+  status            String    @default("started") // started | completed
+  source            String?
+  campaign          String?
+  resultJson        String?
+  whatsappClickedAt DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([leadMagnetId, createdAt])
+  @@index([leadMagnetId, status, createdAt])
+  @@index([leadMagnetId, campaign])
 }
 
 // Caso / testimonio de transformación de un atleta (para contenido).
