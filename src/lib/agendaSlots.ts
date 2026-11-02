@@ -7,7 +7,7 @@
  * La duración del slot se toma de cada franja (slotDurationMinutes).
  * Todas las franjas están en HORA DE MADRID.
  */
-import { listEvents } from "@/lib/googleCalendar";
+import { listEvents, busyEventRange } from "@/lib/googleCalendar";
 import {
   getShiftsForDateRange,
   madridYMD,
@@ -38,15 +38,20 @@ export async function getAvailableSlots(): Promise<SlotInfo[]> {
   // 1) Cargar franjas (plantilla u overrides) para todo el rango
   const [shiftsByWeek, blocks] = await Promise.all([
     getShiftsForDateRange(now, maxStart),
-    getBlocksInRange(now, maxStart),
+    // Bloqueos guardados a medianoche deben cubrir fechas completas,
+    // no filtrarse desde la hora exacta actual.
+    getBlocksInRange(weekStartOf(now), new Date(weekStartOf(maxStart).getTime() + 7 * 86400 * 1000)),
   ]);
 
   // 2) Generar candidatos
   const candidates: SlotInfo[] = [];
 
+  const todayMadrid = madridYMD(now);
   for (let dayOffset = 0; dayOffset <= MAX_DAYS_AHEAD; dayOffset++) {
-    const dProbe = new Date(now.getTime() + dayOffset * 86400 * 1000);
-    const ymd = madridYMD(dProbe);
+    // Avanzar por fechas de calendario, no bloques UTC de 24h:
+    // el cambio de horario de verano/invierno no debe repetir días.
+    const dProbe = new Date(Date.UTC(todayMadrid.year, todayMadrid.month - 1, todayMadrid.day + dayOffset, 12, 0));
+    const ymd = { year: dProbe.getUTCFullYear(), month: dProbe.getUTCMonth() + 1, day: dProbe.getUTCDate() };
     const dow = madridDayOfWeek(madridDateAt(ymd.year, ymd.month, ymd.day, 12, 0));
 
     const weekStart = weekStartOf(dProbe);
@@ -81,17 +86,15 @@ export async function getAvailableSlots(): Promise<SlotInfo[]> {
   if (candidates.length === 0) return [];
 
   // 3) Cruzar con eventos Calendar
+  candidates.sort((a, b) => a.startISO.localeCompare(b.startISO));
   const fromISO = candidates[0].startISO;
   const toISO = candidates[candidates.length - 1].endISO;
   const events = await listEvents(fromISO, toISO);
 
   type Range = { startMs: number; endMs: number };
   const occupied: Range[] = events
-    .filter((e) => e.status !== "cancelled" && e.start?.dateTime && e.end?.dateTime)
-    .map((e) => ({
-      startMs: new Date(e.start.dateTime).getTime(),
-      endMs: new Date(e.end.dateTime).getTime(),
-    }));
+    .map((event) => busyEventRange(event))
+    .filter((range): range is Range => range !== null);
 
   const available = candidates.filter((s) => {
     const startMs = new Date(s.startISO).getTime();

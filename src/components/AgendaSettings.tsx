@@ -7,12 +7,18 @@ import { CalendarDays, CheckCircle2, CircleAlert, ExternalLink, Loader2, Plus, T
 const WEEKDAYS = ["", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 type Shift = { id: string; dayOfWeek: number; startTime: string; endTime: string; slotDurationMinutes: number; closerId: string; closer: { fullName: string } };
 type Professional = { id: string; fullName: string; role: string };
-type Config = { shifts: Shift[]; closers: Professional[]; connectedEmail: string | null; oauthConfigured: boolean };
+type Config = {
+  shifts: Shift[]; closers: Professional[]; connectedEmail: string | null; oauthConfigured: boolean;
+  oauthChecks: { clientId: boolean; clientSecret: boolean; redirectUri: boolean; encryption: boolean };
+};
 
 export function AgendaSettings() {
   const [data, setData] = useState<Config | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [oauthNotice, setOauthNotice] = useState("");
   const [dayOfWeek, setDayOfWeek] = useState(1);
   const [startTime, setStartTime] = useState("10:00");
   const [endTime, setEndTime] = useState("14:00");
@@ -29,7 +35,31 @@ export function AgendaSettings() {
       setError("");
     } catch (e) { setError(e instanceof Error ? e.message : "Error de red"); }
   }
-  useEffect(() => { void reload(); }, []);
+  useEffect(() => {
+    void reload();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connected") === "1") {
+      setOauthNotice("Google Calendar autorizado. Comprueba la conexión y configura tus horarios semanales.");
+    } else {
+      const error = params.get("error");
+      if (error === "oauth-config") setOauthNotice("Faltan variables de OAuth o la URL de redirección no coincide con el dominio de Al Fallo.");
+      if (error === "oauth-state") setOauthNotice("No se pudo verificar la autorización de Google. Vuelve a iniciar la conexión desde esta pantalla.");
+      if (error === "oauth-failed") setOauthNotice("Google no pudo completar la conexión. Revisa los permisos y la configuración en Google Cloud.");
+    }
+  }, []);
+
+  async function testCalendar() {
+    setTesting(true); setTestResult(null);
+    try {
+      const res = await fetch("/api/agenda/google/test", { cache: "no-store" });
+      const json = await res.json();
+      setTestResult(res.ok && json.ok
+        ? { ok: true, message: `Conexión correcta con ${json.connectedEmail}. Se han podido consultar ${json.eventCount} eventos de los próximos 7 días sin modificar ninguno.` }
+        : { ok: false, message: json.error || "No se ha podido comprobar la conexión." });
+    } catch {
+      setTestResult({ ok: false, message: "No hemos podido conectar con el servidor para comprobar Google Calendar." });
+    } finally { setTesting(false); }
+  }
 
   async function add(event: React.FormEvent) {
     event.preventDefault(); setSaving(true); setError("");
@@ -62,17 +92,29 @@ export function AgendaSettings() {
         <Link href="/agenda" target="_blank" className="inline-flex gap-2 items-center rounded-xl bg-primary px-4 py-2.5 text-white text-sm font-semibold hover:opacity-90"><ExternalLink size={16}/> Ver landing pública</Link>
       </div>
 
+      {oauthNotice && <p role="status" className="rounded-xl border border-border bg-white px-4 py-3 text-sm text-text">{oauthNotice}</p>}
       {error && <div role="alert" className="rounded-xl bg-red-50 border border-red-200 text-red-700 p-3 text-sm">{error}</div>}
       {!data ? <p className="text-sm text-muted flex gap-2 items-center"><Loader2 size={16} className="animate-spin"/> Cargando configuración…</p> : <>
         <div className={`rounded-2xl border p-4 flex items-start gap-3 ${active ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
           {active ? <CheckCircle2 size={22} className="text-emerald-600 shrink-0"/> : <CircleAlert size={22} className="text-amber-600 shrink-0"/>}
-          <div><h2 className="font-bold text-sm text-text">{active ? "Agenda configurada" : "Configuración pendiente"}</h2><p className="text-sm text-muted mt-1">{active ? "Hay franjas horarias y una cuenta conectada. Las horas libres dependerán de las citas y bloqueos reales en Google Calendar." : "Para publicar huecos y aceptar reservas necesitas conectar Google Calendar y configurar al menos una franja semanal."}</p></div>
+          <div><h2 className="font-bold text-sm text-text">{active && testResult?.ok ? "Conexión comprobada y horarios configurados" : active ? "Configuración presente; comprueba la conexión" : "Configuración pendiente"}</h2><p className="text-sm text-muted mt-1">{active ? "Hay franjas y una cuenta conectada, pero la lectura de eventos debe verificarse antes de compartir la landing. Usa «Comprobar conexión»." : "Para publicar huecos y aceptar reservas necesitas conectar Google Calendar y configurar al menos una franja semanal."}</p></div>
         </div>
 
         <section className="rounded-2xl border border-border bg-surface p-5">
           <div className="flex gap-2 items-center mb-2"><CalendarDays size={19} className="text-primary"/><h2 className="font-bold text-lg">1. Google Calendar</h2></div>
           <p className="text-sm text-muted mb-4">La disponibilidad consulta los eventos existentes y cada reserva crea una videollamada con Google Meet y un lead en el CRM.</p>
-          {data.connectedEmail ? <div className="flex gap-2 items-center flex-wrap"><CheckCircle2 size={18} className="text-emerald-600"/><span className="text-sm font-semibold">{data.connectedEmail}</span><a className="text-sm text-primary underline ml-auto" href="/api/agenda/google/connect">Cambiar cuenta</a></div> : data.oauthConfigured ? <a className="inline-flex rounded-xl px-4 py-2.5 bg-primary text-white text-sm font-semibold" href="/api/agenda/google/connect">Conectar Google Calendar</a> : <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">Falta habilitar OAuth para esta app en Vercel: <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code> y <code>GOOGLE_REDIRECT_URI</code>. Autoriza la URI de redirección <code>https://al-fallo-app.vercel.app/api/agenda/google/callback</code> en Google Cloud. Al estar configurado aparecerá aquí el botón de conexión.</div>}
+          {data.connectedEmail ? <div className="flex gap-2 items-center flex-wrap"><CheckCircle2 size={18} className="text-emerald-600"/><span className="text-sm font-semibold">{data.connectedEmail}</span><button type="button" onClick={() => void testCalendar()} disabled={testing} className="rounded-xl border border-border bg-white px-3 py-2 text-xs font-semibold text-text hover:border-primary disabled:opacity-50">{testing ? "Comprobando…" : "Comprobar conexión"}</button><a className="text-sm text-primary underline ml-auto" href="/api/agenda/google/connect">Cambiar cuenta</a></div> : data.oauthConfigured ? <a className="inline-flex rounded-xl px-4 py-2.5 bg-primary text-white text-sm font-semibold" href="/api/agenda/google/connect">Conectar Google Calendar</a> : <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">Falta habilitar OAuth para esta app en Vercel: <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code> y <code>GOOGLE_REDIRECT_URI</code>.
+          <p className="mt-3 text-xs font-semibold">Comprobación de variables del despliegue actual:</p>
+          <ul className="mt-1 space-y-1 text-xs">
+            {([
+              ["GOOGLE_CLIENT_ID", data.oauthChecks.clientId],
+              ["GOOGLE_CLIENT_SECRET", data.oauthChecks.clientSecret],
+              ["GOOGLE_REDIRECT_URI (URL exacta)", data.oauthChecks.redirectUri],
+              ["ENCRYPTION_KEY", data.oauthChecks.encryption],
+            ] as [string, boolean][]).map(([name, valid]) => <li key={name}>{valid ? "✓" : "×"} <code>{name}</code> {valid ? "configurada" : "pendiente"}</li>)}
+          </ul>
+          <p className="mt-2">Autoriza la URI de redirección <code>https://al-fallo-app.vercel.app/api/agenda/google/callback</code> en Google Cloud. Al estar configurado aparecerá aquí el botón de conexión.</p></div>}
+          {testResult && <p role="status" className={`mt-3 rounded-lg border px-3 py-2 text-xs ${testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}>{testResult.message}</p>}
         </section>
 
         <section className="rounded-2xl border border-border bg-surface p-5">

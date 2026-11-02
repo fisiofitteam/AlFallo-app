@@ -11,7 +11,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createEventWithMeet, getMeetLink, listEvents } from "@/lib/googleCalendar";
+import { createEventWithMeet, getMeetLink, listEvents, eventOverlapsRange } from "@/lib/googleCalendar";
 import { whoseSlot } from "@/lib/scheduleResolver";
 import { notifySetters } from "@/lib/notifications";
 import { getAvailableSlots } from "@/lib/agendaSlots";
@@ -91,14 +91,7 @@ export async function POST(req: NextRequest) {
   // ─── Última comprobación de disponibilidad (evita race condition) ───
   try {
     const events = await listEvents(body.startISO, body.endISO);
-    const overlap = events.some(
-      (e) =>
-        e.status !== "cancelled" &&
-        e.start?.dateTime &&
-        e.end?.dateTime &&
-        new Date(e.start.dateTime).getTime() < endDate.getTime() &&
-        new Date(e.end.dateTime).getTime() > startDate.getTime(),
-    );
+    const overlap = events.some((event) => eventOverlapsRange(event, body.startISO, body.endISO));
     if (overlap) {
       return NextResponse.json(
         { ok: false, error: "Lo sentimos, ese hueco se acaba de ocupar. Elige otro." },
@@ -111,6 +104,21 @@ export async function POST(req: NextRequest) {
       { ok: false, error: "No pudimos verificar la disponibilidad. Inténtalo de nuevo." },
       { status: 500 },
     );
+  }
+
+  // Resolver el closer ANTES de crear el evento para que la invitación le
+  // llegue también a quien debe atender la llamada. Si dejó de estar activo,
+  // no se genera una cita huérfana en Google Calendar.
+  const closerId = await whoseSlot(startDate);
+  if (!closerId) {
+    return NextResponse.json({ ok: false, error: "Esta franja ya no tiene profesional asignado." }, { status: 409 });
+  }
+  const closer = await prisma.professional.findFirst({
+    where: { id: closerId, isActive: true },
+    select: { fullName: true, email: true },
+  });
+  if (!closer) {
+    return NextResponse.json({ ok: false, error: "El profesional de esta franja ya no está disponible." }, { status: 409 });
   }
 
   // ─── Crear evento en Calendar ───
@@ -142,6 +150,8 @@ export async function POST(req: NextRequest) {
       endISO: body.endISO,
       attendeeEmail: email,
       attendeeName: fullName,
+      closerEmail: closer.email,
+      closerName: closer.fullName,
     });
   } catch (e: any) {
     console.error("Calendar create error:", e);
@@ -152,9 +162,6 @@ export async function POST(req: NextRequest) {
   }
 
   const meetingUrl = getMeetLink(calendarEvent);
-
-  // ─── Auto-asignar closer según patrón semanal ───
-  const closerId = await whoseSlot(startDate);
 
   // ─── Crear Lead ───
   const lead = await prisma.lead.create({
@@ -174,7 +181,7 @@ export async function POST(req: NextRequest) {
       bookedAt: new Date(),
       meetingUrl,
       googleEventId: calendarEvent.id,
-      closerId: closerId || undefined,
+      closerId,
       aiSummary: `Reservado desde landing. Motivo: ${body.motivo.trim().slice(0, 200)}`,
     },
   });

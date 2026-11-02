@@ -26,15 +26,19 @@ export async function GET() {
     }),
     prisma.googleCalendarConnection.findFirst({ orderBy: { createdAt: "desc" }, select: { googleEmail: true } }),
   ]);
-  const oauthConfigured = Boolean(
-    process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET &&
-    process.env.GOOGLE_REDIRECT_URI && process.env.ENCRYPTION_KEY &&
-    process.env.GOOGLE_REDIRECT_URI.endsWith("/api/agenda/google/callback"),
-  );
+  const redirectExpected = "https://al-fallo-app.vercel.app/api/agenda/google/callback";
+  const oauthChecks = {
+    clientId: Boolean(process.env.GOOGLE_CLIENT_ID),
+    clientSecret: Boolean(process.env.GOOGLE_CLIENT_SECRET),
+    redirectUri: process.env.GOOGLE_REDIRECT_URI === redirectExpected,
+    encryption: Boolean(process.env.ENCRYPTION_KEY),
+  };
+  const oauthConfigured = Object.values(oauthChecks).every(Boolean);
   return NextResponse.json({
     shifts, closers,
     connectedEmail: connected?.googleEmail ?? null,
     oauthConfigured,
+    oauthChecks,
   }, { headers: noStore });
 }
 

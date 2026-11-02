@@ -9,6 +9,9 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { refreshAccessToken } from "@/lib/googleOAuth";
+import type { CalendarEvent } from "@/lib/calendarAvailability";
+export { busyEventRange, eventOverlapsRange } from "@/lib/calendarAvailability";
+export type { CalendarEvent } from "@/lib/calendarAvailability";
 
 const CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3";
 
@@ -70,50 +73,36 @@ async function getCalendarId(): Promise<string> {
   return conn.googleEmail;
 }
 
-type CalendarEventTime = {
-  dateTime: string;
-  timeZone?: string;
-};
-
-export type CalendarEvent = {
-  id: string;
-  status: string;
-  summary?: string;
-  description?: string;
-  start: CalendarEventTime;
-  end: CalendarEventTime;
-  attendees?: { email: string; displayName?: string; responseStatus?: string }[];
-  hangoutLink?: string;
-  conferenceData?: {
-    entryPoints?: { entryPointType: string; uri?: string }[];
-  };
-};
-
+/** Read-only. Walks all Calendar pages so busy events are not omitted. */
 export async function listEvents(timeMinISO: string, timeMaxISO: string): Promise<CalendarEvent[]> {
   const token = await getValidAccessToken();
   const calendarId = await getCalendarId();
+  const items: CalendarEvent[] = [];
+  let nextPageToken: string | undefined;
+  const MAX_PAGES = 25;
 
-  const params = new URLSearchParams({
-    timeMin: timeMinISO,
-    timeMax: timeMaxISO,
-    singleEvents: "true",
-    orderBy: "startTime",
-    maxResults: "250",
-    showDeleted: "false",
-  });
-
-  const url = `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Calendar list events failed: ${res.status} ${text}`);
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams({
+      timeMin: timeMinISO,
+      timeMax: timeMaxISO,
+      singleEvents: "true",
+      orderBy: "startTime",
+      maxResults: "250",
+      showDeleted: "false",
+      ...(nextPageToken ? { pageToken: nextPageToken } : {}),
+    });
+    const url = `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Calendar list events failed: ${res.status} ${text.slice(0, 500)}`);
+    }
+    const data = (await res.json()) as { items?: CalendarEvent[]; nextPageToken?: string };
+    items.push(...(data.items || []));
+    nextPageToken = data.nextPageToken;
+    if (!nextPageToken) return items;
   }
-
-  const data = await res.json();
-  return (data.items || []) as CalendarEvent[];
+  throw new Error("Google Calendar tiene demasiados eventos para calcular disponibilidad sin riesgos");
 }
 
 /**
@@ -132,23 +121,23 @@ export async function createEventWithMeet(params: {
   timeZone?: string;
   attendeeEmail: string;
   attendeeName?: string;
+  closerEmail?: string; // Invitación a la persona que atenderá la llamada.
+  closerName?: string;
 }): Promise<CalendarEvent> {
   const token = await getValidAccessToken();
   const calendarId = await getCalendarId();
   const tz = params.timeZone || "Europe/Madrid";
 
-  // Coanfitriones del equipo (vacío por ahora; rellenar cuando se necesite).
-  const TEAM_COHOSTS: { email: string; name: string }[] = [];
-
+  // Invitamos al lead y al closer asignado cuando su correo difiere del
+  // propietario de Calendar. En un calendario compartido, asignar un closer
+  // en el CRM no bastaría para avisarle de la llamada.
   const leadEmailLower = params.attendeeEmail.trim().toLowerCase();
-  const cohostsFiltered = TEAM_COHOSTS.filter(
-    (c) => c.email.toLowerCase() !== leadEmailLower,
-  );
-
-  const attendees = [
-    { email: params.attendeeEmail, displayName: params.attendeeName },
-    ...cohostsFiltered.map((c) => ({ email: c.email, displayName: c.name })),
-  ];
+  const ownerEmailLower = calendarId.trim().toLowerCase();
+  const attendees = [{ email: params.attendeeEmail, displayName: params.attendeeName }];
+  const closerEmailLower = params.closerEmail?.trim().toLowerCase();
+  if (closerEmailLower && closerEmailLower !== leadEmailLower && closerEmailLower !== ownerEmailLower) {
+    attendees.push({ email: closerEmailLower, displayName: params.closerName });
+  }
 
   const body = {
     summary: params.title,

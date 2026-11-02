@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   const user = await getRealProfessional();
   if (!user || !isManager(user.role)) return NextResponse.redirect(new URL("/login", req.url));
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET ||
-      !process.env.GOOGLE_REDIRECT_URI?.endsWith("/api/agenda/google/callback")) {
+      process.env.GOOGLE_REDIRECT_URI !== "https://al-fallo-app.vercel.app/api/agenda/google/callback") {
     return NextResponse.redirect(new URL("/ajustes/agenda?error=oauth-config", req.url));
   }
   const state = crypto.randomUUID();

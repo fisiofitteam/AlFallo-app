@@ -1,0 +1,18 @@
+const assert = require('node:assert/strict');
+const {busyEventRange,eventOverlapsRange}=require('../../src/lib/calendarAvailability.ts');
+const allDay={id:'all-day',status:'confirmed',start:{date:'2026-11-03'},end:{date:'2026-11-04'}};
+const block=busyEventRange(allDay);
+assert.deepEqual(block,{startMs:Date.parse('2026-11-02T23:00:00Z'),endMs:Date.parse('2026-11-03T23:00:00Z')});
+assert(eventOverlapsRange(allDay,'2026-11-03T12:00:00+01:00','2026-11-03T12:30:00+01:00'));
+assert(!eventOverlapsRange(allDay,'2026-11-04T00:00:00+01:00','2026-11-04T00:30:00+01:00'));
+const timed={id:'timed',status:'confirmed',start:{dateTime:'2026-11-03T10:00:00+01:00'},end:{dateTime:'2026-11-03T10:45:00+01:00'}};
+assert(eventOverlapsRange(timed,'2026-11-03T10:40:00+01:00','2026-11-03T11:10:00+01:00'));
+assert(!eventOverlapsRange(timed,'2026-11-03T10:45:00+01:00','2026-11-03T11:10:00+01:00'));
+assert.equal(busyEventRange({...timed,status:'cancelled'}),null);
+assert.equal(busyEventRange({...timed,transparency:'transparent'}),null);
+const spring=busyEventRange({id:'spring',status:'confirmed',start:{date:'2026-03-29'},end:{date:'2026-03-30'}});
+const autumn=busyEventRange({id:'autumn',status:'confirmed',start:{date:'2026-10-25'},end:{date:'2026-10-26'}});
+assert.equal((spring.endMs-spring.startMs)/3600000,23);
+assert.equal((autumn.endMs-autumn.startMs)/3600000,25);
+assert.throws(()=>busyEventRange({id:'invalid',status:'confirmed',start:{date:'2026-11-03'},end:{date:'2026-11-03'}}));
+console.log('Calendario: día completo, horario, libre, cancelado, fin exclusivo y DST 23/25h comprobados.');
