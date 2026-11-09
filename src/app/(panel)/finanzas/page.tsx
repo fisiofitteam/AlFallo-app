@@ -4,6 +4,7 @@ import { requireProfessional } from "@/lib/session";
 import { CuadroTab } from "./cuadro-tab";
 import { FinanzasTab } from "./finanzas-tab";
 import { EquipoTab } from "./equipo-tab";
+import { resolveFinanceRange } from "@/lib/compensation-range";
 
 export const metadata = { title: "Cuadro de mandos · Al Fallo Nutrition" };
 
@@ -16,12 +17,13 @@ const TABS = [
 export default async function FinanzasPage({
   searchParams,
 }: {
-  searchParams: { tab?: string };
+  searchParams: { tab?: string; from?: string; to?: string };
 }) {
   const prof = await requireProfessional();
   if (prof.role !== "ceo") redirect("/");
 
   const active = TABS.find((t) => t.key === searchParams.tab) ?? TABS[0];
+  const teamRange = resolveFinanceRange({ from: searchParams.from, to: searchParams.to });
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -49,7 +51,7 @@ export default async function FinanzasPage({
       {active.key === "panel" ? (
         <CuadroTab />
       ) : active.key === "equipo" ? (
-        <EquipoTab />
+        <EquipoTab range={teamRange} />
       ) : (
         <FinanzasTab />
       )}

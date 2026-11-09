@@ -297,12 +297,17 @@ export async function generatePayrollsForMonth(formData: FormData): Promise<void
   // period es "YYYY-MM"; si no viene usamos el mes actual.
   const now = new Date();
   const period = periodRaw ?? `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) return;
   const [year, month] = period.split("-").map(Number);
-  if (!year || !month) return;
-  const refDate = new Date(Date.UTC(year, month - 1, 1));
-
-  const { computeCompensationsForMonth } = await import("@/lib/compensation");
-  const rows = await computeCompensationsForMonth(refDate);
+  const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  const firstDay = `${period}-01`;
+  const { resolveFinanceRange } = await import("@/lib/compensation-range");
+  const { computeCompensationsForRange } = await import("@/lib/compensation");
+  // La cifra facturada debe coincidir exactamente con la que aparece en
+  // Equipo cuando se selecciona ese mes completo (incluyendo zona Madrid).
+  const rows = (await computeCompensationsForRange(
+    resolveFinanceRange({ from: firstDay, to: monthEnd }),
+  )).compensations;
 
   const existing = await prisma.payrollPayment.findMany({
     where: { period, professionalId: { in: rows.map((r) => r.professionalId) } },

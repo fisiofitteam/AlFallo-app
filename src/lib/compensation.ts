@@ -5,6 +5,7 @@ import {
   startOfMonthUTC,
   startOfNextMonthUTC,
 } from "@/lib/finance";
+import { monthSlices, dayCount, startOfMadridDay, nextYmd, type FinanceRange } from "@/lib/compensation-range";
 
 export const COMPENSATION_KINDS = [
   { value: "fixed", label: "Fijo mensual (€)", needsScope: false, unit: "€" },
@@ -251,4 +252,120 @@ export async function computeCompensationsForMonth(
  *  PayrollPayment.period). */
 export function periodKeyFromDate(d: Date): string {
   return monthKey(d);
+}
+
+/**
+ * Cálculo de Equipo para un intervalo de días (zona Europe/Madrid).
+ * Los porcentajes y comisiones de altas/renovaciones usan las operaciones
+ * registradas dentro de cada tramo. Los fijos y €/activo son mensuales y se
+ * prorratean por días cuando el tramo solo ocupa parte del mes.
+ *
+ * Nota histórica: el campo Client.status y el nutricionista asignado se
+ * consultan en su estado ACTUAL, pues el esquema no almacena un histórico
+ * de asignaciones/activaciones. Mostrarlo claramente en la UI.
+ */
+export async function computeCompensationsForRange(range: FinanceRange): Promise<{
+  compensations: ProfessionalCompensation[];
+  totals: MonthlyPeriodTotals;
+}> {
+  const [professionals, transactions, periods, activeClients] = await Promise.all([
+    prisma.professional.findMany({
+      where: { isActive: true },
+      select: { id: true, fullName: true, compensationRules: true },
+      orderBy: { fullName: "asc" },
+    }),
+    prisma.transaction.findMany({
+      where: { date: { gte: range.fromDate, lt: range.toExclusive } },
+      select: { date: true, type: true, amount: true },
+    }),
+    prisma.subscriptionPeriod.findMany({
+      where: { decidedAt: { gte: range.fromDate, lt: range.toExclusive } },
+      select: { decidedAt: true, isRenewal: true, client: { select: { nutritionistId: true } } },
+    }),
+    prisma.client.findMany({ where: { status: "activo" }, select: { nutritionistId: true } }),
+  ]);
+
+  const activeByProf = new Map<string, number>();
+  for (const c of activeClients) if (c.nutritionistId) {
+    activeByProf.set(c.nutritionistId, (activeByProf.get(c.nutritionistId) ?? 0) + 1);
+  }
+  function totalsBetween(from: Date, toExclusive: Date): MonthlyPeriodTotals {
+    let revenue = 0;
+    let expenses = 0;
+    for (const t of transactions) {
+      if (t.date < from || t.date >= toExclusive) continue;
+      if (t.type === "ingreso") revenue += t.amount;
+      else if (t.type === "gasto") expenses += t.amount;
+    }
+    const newByProf = new Map<string, number>();
+    const renewedByProf = new Map<string, number>();
+    let newCount = 0;
+    let renewals = 0;
+    for (const row of periods) {
+      if (row.decidedAt < from || row.decidedAt >= toExclusive) continue;
+      const map = row.isRenewal ? renewedByProf : newByProf;
+      if (row.isRenewal) renewals++;
+      else newCount++;
+      const nutri = row.client?.nutritionistId;
+      if (nutri) map.set(nutri, (map.get(nutri) ?? 0) + 1);
+    }
+    return {
+      revenue, expenses, profit: revenue - expenses,
+      newClients: { all: newCount, byProfessional: newByProf },
+      renewals: { all: renewals, byProfessional: renewedByProf },
+      activeClients: { all: activeClients.length, byProfessional: activeByProf },
+    };
+  }
+
+  const overall = totalsBetween(range.fromDate, range.toExclusive);
+  const slices = monthSlices(range.from, range.to);
+  const multipleMonths = slices.length > 1;
+  const compensations = professionals.map((p) => {
+    const rules: RuleEvaluation[] = [];
+    for (const slice of slices) {
+      for (const rule of p.compensationRules) {
+        if (!rule.active) continue;
+        // Dates on compensation rules are date-only in the application form.
+        const start = rule.startDate?.toISOString().slice(0, 10);
+        const end = rule.endDate?.toISOString().slice(0, 10);
+        const effectiveFrom = start && start > slice.from ? start : slice.from;
+        const effectiveTo = end && end < slice.to ? end : slice.to;
+        if (effectiveFrom > effectiveTo) continue;
+
+        const days = dayCount(effectiveFrom, effectiveTo);
+        const fraction = days / slice.monthDays;
+        const scoped = totalsBetween(startOfMadridDay(effectiveFrom), startOfMadridDay(nextYmd(effectiveTo)));
+        // Monthly fees and per-active-client prices accrue daily. Percentage
+        // and new/renewal commissions apply only to actual dated operations.
+        const monthlyKind = rule.kind === "fixed" || rule.kind === "per_active_client";
+        const evaluated = evalRule({
+          ...rule,
+          id: `${rule.id}:${slice.monthKey}`,
+          value: monthlyKind ? rule.value * fraction : rule.value,
+          floor: rule.floor == null ? null : rule.floor * fraction,
+          cap: rule.cap == null ? null : rule.cap * fraction,
+        }, scoped);
+        const explanation = monthlyKind && days !== slice.monthDays
+          ? ` · ${days}/${slice.monthDays} días` : "";
+        if (rule.kind === "fixed") {
+          evaluated.note = `Fijo mensual de ${rule.value} €${explanation}`;
+        } else if (rule.kind === "per_active_client") {
+          const n = (rule.scope ?? "all") === "assigned"
+            ? activeByProf.get(p.id) ?? 0 : activeClients.length;
+          evaluated.note = `${rule.value} € × ${n} activos${(rule.scope ?? "all") === "assigned" ? " asignados" : ""}${explanation}`;
+        } else if (days !== slice.monthDays) {
+          evaluated.note += explanation;
+        }
+        if (multipleMonths) evaluated.note = `${slice.monthKey} · ${evaluated.note}`;
+        rules.push(evaluated);
+      }
+    }
+    return {
+      professionalId: p.id,
+      fullName: p.fullName,
+      rules,
+      total: Math.round(rules.reduce((sum, rule) => sum + rule.amount, 0) * 100) / 100,
+    };
+  });
+  return { compensations, totals: overall };
 }

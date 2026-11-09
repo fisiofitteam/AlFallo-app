@@ -1,14 +1,14 @@
 import { Plus, Trash2, Users, Sparkles, Eye, EyeOff } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { fmtEur, monthLabel, monthKey } from "@/lib/finance";
+import { fmtEur } from "@/lib/finance";
+import { currentMadridYmd, type FinanceRange } from "@/lib/compensation-range";
 import {
   COMPENSATION_KINDS,
   COMPENSATION_SCOPES,
   compensationKindLabel,
-  computeCompensationsForMonth,
-  getMonthlyTotals,
+  computeCompensationsForRange,
 } from "@/lib/compensation";
-import { Field, Select, TextInput } from "@/components/form-ui";
+import { Select, TextInput } from "@/components/form-ui";
 import {
   createCompensationRule,
   deleteCompensationRule,
@@ -25,73 +25,107 @@ function dateInput(d: Date | null | undefined): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
-export async function EquipoTab() {
-  const now = new Date();
-  const periodKey = monthKey(now);
-  const [professionals, compensations, totals, existingPayrolls] = await Promise.all([
+export async function EquipoTab({ range }: { range: FinanceRange }) {
+  const periodKey = range.fullMonthKey;
+  const [professionals, computed, existingPayrolls] = await Promise.all([
     prisma.professional.findMany({
       where: { isActive: true },
       select: {
-        id: true,
-        fullName: true,
-        role: true,
-        compensationRules: {
-          orderBy: [{ active: "desc" }, { createdAt: "asc" }],
-        },
+        id: true, fullName: true, role: true,
+        compensationRules: { orderBy: [{ active: "desc" }, { createdAt: "asc" }] },
       },
       orderBy: { fullName: "asc" },
     }),
-    computeCompensationsForMonth(now),
-    getMonthlyTotals(now),
-    prisma.payrollPayment.findMany({
-      where: { period: periodKey },
-      select: { professionalId: true },
-    }),
+    computeCompensationsForRange(range),
+    periodKey
+      ? prisma.payrollPayment.findMany({ where: { period: periodKey }, select: { professionalId: true } })
+      : Promise.resolve([]),
   ]);
+  const { compensations, totals } = computed;
+  const nowMadrid = currentMadridYmd();
+  const previousMonthEnd = new Date(Date.parse(`${nowMadrid.slice(0,7)}-01T00:00:00.000Z`) - 86_400_000).toISOString().slice(0,10);
+  const monthBefore = `${previousMonthEnd.slice(0,7)}-01`;
+  const monthThis = `${nowMadrid.slice(0,7)}-01`;
+  const last30From = new Date(Date.parse(`${nowMadrid}T00:00:00.000Z`) - 29 * 86_400_000).toISOString().slice(0,10);
+  const thisMonthUrl = `/finanzas?tab=equipo&from=${monthThis}&to=${new Date(Date.UTC(Number(nowMadrid.slice(0,4)),Number(nowMadrid.slice(5,7)),0)).toISOString().slice(0,10)}`;
+  const previousMonthUrl = `/finanzas?tab=equipo&from=${monthBefore}&to=${previousMonthEnd}`;
+  const last30Url = `/finanzas?tab=equipo&from=${last30From}&to=${nowMadrid}`;
 
   const compMap = new Map(compensations.map((c) => [c.professionalId, c]));
   const payrollMap = new Set(existingPayrolls.map((p) => p.professionalId));
   const grandTotal = compensations.reduce((s, c) => s + c.total, 0);
-  const pendingToGenerate = compensations.filter(
+  const pendingToGenerate = periodKey ? compensations.filter(
     (c) => c.total > 0 && !payrollMap.has(c.professionalId),
-  );
+  ) : [];
 
   return (
     <div className="space-y-8">
-      {/* Resumen del mes */}
+      {/* El intervalo solo afecta al informe, no modifica pagos ni reglas. */}
+      <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold">Período de cálculo del equipo</h2>
+            <p className="mt-1 text-xs text-muted">Selecciona cualquier intervalo (hasta dos años). Todos los importes inferiores se recalculan con esas fechas.</p>
+          </div>
+          <div className="flex flex-wrap gap-1.5 text-[11px]">
+            <a href={thisMonthUrl} className="rounded-lg border border-border px-2.5 py-1.5 font-semibold hover:bg-surface-2">Este mes</a>
+            <a href={previousMonthUrl} className="rounded-lg border border-border px-2.5 py-1.5 font-semibold hover:bg-surface-2">Mes anterior</a>
+            <a href={last30Url} className="rounded-lg border border-border px-2.5 py-1.5 font-semibold hover:bg-surface-2">Últimos 30 días</a>
+          </div>
+        </div>
+        <form method="GET" action="/finanzas" className="flex flex-wrap items-end gap-3">
+          <input type="hidden" name="tab" value="equipo" />
+          <label className="flex min-w-[155px] flex-col gap-1 text-xs font-semibold">Desde
+            <input type="date" name="from" required defaultValue={range.from} min="2000-01-01" max="2100-12-31" className="rounded-lg border border-border bg-white px-3 py-2.5 text-sm text-text" />
+          </label>
+          <label className="flex min-w-[155px] flex-col gap-1 text-xs font-semibold">Hasta (inclusive)
+            <input type="date" name="to" required defaultValue={range.to} min="2000-01-01" max="2100-12-31" className="rounded-lg border border-border bg-white px-3 py-2.5 text-sm text-text" />
+          </label>
+          <button type="submit" className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg hover:opacity-90">Aplicar fechas</button>
+        </form>
+        {range.validationError && <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{range.validationError} Se muestra el mes actual.</p>}
+        <p className="mt-3 text-xs font-semibold text-primary">Mostrando: {range.label}</p>
+      </section>
+
+      {/* Resumen del intervalo seleccionado */}
       <section>
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <h2 className="flex items-center gap-2 text-lg font-bold">
             <Users size={18} className="text-primary" /> Compensación del equipo ·{" "}
-            {monthLabel(periodKey)}
+            {range.label}
           </h2>
-          <form action={generatePayrollsForMonth}>
-            <input type="hidden" name="period" value={periodKey} />
-            <button
-              type="submit"
-              disabled={pendingToGenerate.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:opacity-90 disabled:opacity-50"
-              title={
-                pendingToGenerate.length === 0
-                  ? "No hay facturas pendientes para este mes"
-                  : "Crea una factura por cada profesional con compensación > 0 €"
-              }
-            >
-              <Sparkles size={14} /> Generar facturas del mes ({pendingToGenerate.length})
-            </button>
-          </form>
+          {periodKey ? (
+            <form action={generatePayrollsForMonth}>
+              <input type="hidden" name="period" value={periodKey} />
+              <button
+                type="submit" disabled={pendingToGenerate.length === 0}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:opacity-90 disabled:opacity-50"
+                title={pendingToGenerate.length === 0 ? "No hay facturas pendientes de este mes" : "Generar facturas del mes completo seleccionado"}
+              >
+                <Sparkles size={14} /> Generar facturas del mes ({pendingToGenerate.length})
+              </button>
+            </form>
+          ) : (
+            <span className="rounded-lg border border-border bg-bg/40 px-3 py-2 text-xs text-muted">Facturas: selecciona un mes completo para generarlas</span>
+          )}
         </div>
         <div className="rounded-2xl border border-border bg-surface p-5">
           <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <Cell label="Ingresos del mes" value={fmtEur(totals.revenue, 2)} />
-            <Cell label="Gastos del mes" value={fmtEur(totals.expenses, 2)} />
+            <Cell label="Ingresos del período" value={fmtEur(totals.revenue, 2)} />
+            <Cell label="Gastos del período" value={fmtEur(totals.expenses, 2)} />
             <Cell label="Beneficio bruto" value={fmtEur(totals.profit, 2)} emphasis={totals.profit >= 0 ? "pos" : "neg"} />
             <Cell label="Total a pagar al equipo" value={fmtEur(grandTotal, 2)} emphasis="primary" />
           </div>
           <p className="text-[11px] text-muted">
-            Nuevas altas del mes: <strong>{totals.newClients.all}</strong> · Renovaciones:{" "}
-            <strong>{totals.renewals.all}</strong> · Clientes activos:{" "}
+            Nuevas altas del período: <strong>{totals.newClients.all}</strong> · Renovaciones:{" "}
+            <strong>{totals.renewals.all}</strong> · Clientes activos hoy:{" "}
             <strong>{totals.activeClients.all}</strong>.
+          </p>
+          <p className="mt-2 text-[11px] leading-relaxed text-muted">
+            Los fijos mensuales y los importes por cliente activo se prorratean por días de cada mes cuando corresponde.
+            Las comisiones sobre operaciones usan sus fechas reales. Los activos y las asignaciones de nutricionista
+            se calculan con el estado actual, porque todavía no disponemos de un histórico de esos cambios.
+            Los totales son estimaciones conforme a las reglas vigentes hoy; las facturas ya generadas no se recalculan.
           </p>
         </div>
       </section>
@@ -123,18 +157,18 @@ export async function EquipoTab() {
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] uppercase tracking-wider text-muted">
-                        Este mes
+                        Período seleccionado
                       </p>
                       <p className="text-xl font-bold text-primary">
                         {fmtEur(total, 2)}
                       </p>
-                      {alreadyGenerated ? (
+                      {periodKey && alreadyGenerated ? (
                         <p className="text-[10px] text-emerald-700">Factura ya generada</p>
                       ) : null}
                     </div>
                   </header>
 
-                  {/* Desglose de reglas aplicadas al mes */}
+                  {/* Desglose de reglas aplicadas al intervalo */}
                   {comp && comp.rules.length > 0 ? (
                     <ul className="mb-3 space-y-0.5 rounded-xl bg-bg/50 p-3 text-[11px]">
                       {comp.rules.map((e) => (
