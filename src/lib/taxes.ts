@@ -32,9 +32,9 @@ export type PeriodTotals = {
   base: number; // ingresos - gastos (base imponible estimada del periodo)
 };
 
-async function sumInRange(from: Date, to: Date): Promise<PeriodTotals> {
+export async function totalsInRange(from: Date, toExclusive: Date): Promise<PeriodTotals> {
   const rows = await prisma.transaction.findMany({
-    where: { date: { gte: from, lt: to } },
+    where: { date: { gte: from, lt: toExclusive } },
     select: { type: true, amount: true },
   });
   let ingresos = 0;
@@ -47,11 +47,11 @@ async function sumInRange(from: Date, to: Date): Promise<PeriodTotals> {
 }
 
 export async function monthTotals(now = new Date()): Promise<PeriodTotals> {
-  return sumInRange(startOfMonthUTC(now), startOfNextMonthUTC(now));
+  return totalsInRange(startOfMonthUTC(now), startOfNextMonthUTC(now));
 }
 
 export async function quarterTotals(now = new Date()): Promise<PeriodTotals> {
-  return sumInRange(startOfQuarterUTC(now), startOfNextQuarterUTC(now));
+  return totalsInRange(startOfQuarterUTC(now), startOfNextQuarterUTC(now));
 }
 
 export type TaxEstimate = {

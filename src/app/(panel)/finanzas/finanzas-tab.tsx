@@ -9,14 +9,14 @@ import {
   categoryLabel,
   fmtEur,
   marginPct,
-  monthKey,
   monthLabel,
   payrollStatusBadgeClass,
 } from "@/lib/finance";
 import { Field, Select, TextInput } from "@/components/form-ui";
 import { ensureRecurringExpensesForMonth } from "@/lib/recurringExpenses";
 import { withHeartbeatCache } from "@/lib/heartbeat-cache";
-import { getTaxSettings, monthTaxEstimate, quarterTaxEstimate } from "@/lib/taxes";
+import { getTaxSettings, estimateTaxes, totalsInRange } from "@/lib/taxes";
+import { currentMadridYmd, resolveFinanceRange, type FinanceRange } from "@/lib/compensation-range";
 import {
   createPayroll,
   createRecurringExpense,
@@ -39,29 +39,69 @@ function currentPeriod(): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-export async function FinanzasTab() {
-  // Antes de leer, nos aseguramos de materializar los gastos fijos del mes
-  // en curso. Idempotente — el unique (recurringExpenseId, periodKey) evita
-  // duplicados. Cacheado 5 min para no dispararlo en cada visita.
-  const nowDate = new Date();
+const MOVEMENT_PAGE_SIZE = 100;
+
+function minusDays(ymd: string, numberOfDays: number): string {
+  return new Date(Date.parse(`${ymd}T00:00:00.000Z`) - numberOfDays * 86400_000)
+    .toISOString().slice(0, 10);
+}
+
+function lastDayOfMonth(ymd: string): string {
+  const year = Number(ymd.slice(0, 4));
+  const month = Number(ymd.slice(5, 7));
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
+function financeUrl(from: string, to: string, movementPage?: number): string {
+  const params = new URLSearchParams({ tab: "finanzas", from, to });
+  if (movementPage && movementPage > 1) params.set("movementPage", String(movementPage));
+  return `/finanzas?${params.toString()}`;
+}
+
+export async function FinanzasTab({
+  range, movementPage,
+}: { range: FinanceRange; movementPage?: string }) {
+  // Conservamos la materialización mensual de gastos recurrentes existente
+  // (idempotente). El filtro nunca crea movimientos para períodos históricos.
+  const now = new Date();
   await withHeartbeatCache(
-    `recurring-expenses:${nowDate.getUTCFullYear()}-${nowDate.getUTCMonth()}-${nowDate.getUTCDate()}`,
+    `recurring-expenses:${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}`,
     5 * 60 * 1000,
-    () => ensureRecurringExpensesForMonth(nowDate),
+    () => ensureRecurringExpensesForMonth(now),
   );
 
-  const now = new Date();
+  const endYear = Number(range.to.slice(0, 4));
+  const endMonth = Number(range.to.slice(5, 7));
+  const quarterNumber = Math.floor((endMonth - 1) / 3) + 1;
+  const quarterStartMonth = String((quarterNumber - 1) * 3 + 1).padStart(2, "0");
+  const quarterFrom = `${endYear}-${quarterStartMonth}-01`;
+  const quarterTo = new Date(Date.UTC(endYear, quarterNumber * 3, 0)).toISOString().slice(0, 10);
+  const quarterRange = resolveFinanceRange({ from: quarterFrom, to: quarterTo });
+
+  const requestedPage = Number(movementPage ?? 1);
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0
+    ? Math.min(requestedPage, 10000) : 1;
+  const movementWhere = { date: { gte: range.fromDate, lt: range.toExclusive } };
+
   const [
     transactions,
+    movementCount,
     payrolls,
     professionals,
     recurring,
     taxCfg,
-    monthEstimate,
-    quarterEstimate,
+    selectedTotals,
+    quarterTotals,
   ] = await Promise.all([
-    prisma.transaction.findMany({ orderBy: { date: "desc" }, take: 100 }),
+    prisma.transaction.findMany({
+      where: movementWhere,
+      orderBy: [{ date: "desc" }, { id: "desc" }],
+      skip: (page - 1) * MOVEMENT_PAGE_SIZE,
+      take: MOVEMENT_PAGE_SIZE,
+    }),
+    prisma.transaction.count({ where: movementWhere }),
     prisma.payrollPayment.findMany({
+      where: { period: { gte: range.from.slice(0, 7), lte: range.to.slice(0, 7) } },
       orderBy: [{ status: "asc" }, { period: "desc" }, { createdAt: "desc" }],
       include: { professional: { select: { fullName: true } } },
     }),
@@ -74,33 +114,75 @@ export async function FinanzasTab() {
       orderBy: [{ active: "desc" }, { name: "asc" }],
     }),
     getTaxSettings(),
-    monthTaxEstimate(now),
-    quarterTaxEstimate(now),
+    totalsInRange(range.fromDate, range.toExclusive),
+    totalsInRange(quarterRange.fromDate, quarterRange.toExclusive),
   ]);
 
   const profOptions = professionals.map((p) => ({ value: p.id, label: p.fullName }));
   const expenseCatOptions = EXPENSE_CATEGORIES.map((c) => ({ value: c.value, label: c.label }));
-  const thisMonth = monthKey(now);
-  const quarterNumber = Math.floor(now.getUTCMonth() / 3) + 1;
-  const margin = marginPct(monthEstimate.period.ingresos, monthEstimate.period.gastos);
+  const selectedEstimate = estimateTaxes(selectedTotals, taxCfg);
+  const quarterEstimate = estimateTaxes(quarterTotals, taxCfg);
+  const margin = marginPct(selectedTotals.ingresos, selectedTotals.gastos);
+  const todayMadrid = currentMadridYmd(now);
+  const monthFrom = `${todayMadrid.slice(0, 7)}-01`;
+  const monthTo = lastDayOfMonth(todayMadrid);
+  const prevMonthTo = minusDays(monthFrom, 1);
+  const prevMonthFrom = `${prevMonthTo.slice(0, 7)}-01`;
+  const last30From = minusDays(todayMadrid, 29);
+  const currentQuarter = Math.floor((Number(todayMadrid.slice(5, 7)) - 1) / 3) + 1;
+  const quarterThisYear = Number(todayMadrid.slice(0, 4));
+  const quarterThisFrom = `${quarterThisYear}-${String((currentQuarter - 1) * 3 + 1).padStart(2, "0")}-01`;
+  const quarterThisTo = new Date(Date.UTC(quarterThisYear, currentQuarter * 3, 0)).toISOString().slice(0, 10);
+  const quarterIsSelected = range.from === quarterRange.from && range.to === quarterRange.to;
 
   return (
     <div className="space-y-10">
+      <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold">Período de consulta de Finanzas</h2>
+            <p className="mt-1 text-xs text-muted">Filtra el resumen económico, los movimientos y las facturas por las fechas seleccionadas.</p>
+          </div>
+          <div className="flex flex-wrap gap-1.5 text-[11px]">
+            <a href={financeUrl(monthFrom, monthTo)} className="rounded-lg border border-border px-2.5 py-1.5 font-semibold hover:bg-surface-2">Este mes</a>
+            <a href={financeUrl(prevMonthFrom, prevMonthTo)} className="rounded-lg border border-border px-2.5 py-1.5 font-semibold hover:bg-surface-2">Mes anterior</a>
+            <a href={financeUrl(last30From, todayMadrid)} className="rounded-lg border border-border px-2.5 py-1.5 font-semibold hover:bg-surface-2">Últimos 30 días</a>
+            <a href={financeUrl(quarterThisFrom, quarterThisTo)} className="rounded-lg border border-border px-2.5 py-1.5 font-semibold hover:bg-surface-2">Trimestre actual</a>
+          </div>
+        </div>
+        <form method="GET" action="/finanzas" className="flex flex-wrap items-end gap-3">
+          <input type="hidden" name="tab" value="finanzas" />
+          <label className="flex min-w-[155px] flex-col gap-1 text-xs font-semibold">Desde
+            <input type="date" name="from" required min="2000-01-01" max="2100-12-31" defaultValue={range.from} className="rounded-lg border border-border bg-white px-3 py-2.5 text-sm text-text" />
+          </label>
+          <label className="flex min-w-[155px] flex-col gap-1 text-xs font-semibold">Hasta (inclusive)
+            <input type="date" name="to" required min="2000-01-01" max="2100-12-31" defaultValue={range.to} className="rounded-lg border border-border bg-white px-3 py-2.5 text-sm text-text" />
+          </label>
+          <button type="submit" className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg hover:opacity-90">Aplicar fechas</button>
+        </form>
+        {range.validationError && (
+          <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            {range.validationError} Se muestra el mes actual.
+          </p>
+        )}
+        <p className="mt-3 text-xs font-semibold text-primary">Mostrando: {range.label}</p>
+      </section>
+
       {/* ── Resumen fiscal del periodo ─────────────────────────── */}
       <section>
         <h2 className="mb-3 text-lg font-bold">Resumen fiscal</h2>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div className="rounded-2xl border border-border bg-surface p-5">
             <p className="mb-3 text-xs uppercase tracking-wider text-muted">
-              Mes · {monthLabel(thisMonth)}
+              Período seleccionado · {range.label}
             </p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <FiscalCell label="Ingresos" value={fmtEur(monthEstimate.period.ingresos, 2)} />
-              <FiscalCell label="Gastos" value={fmtEur(monthEstimate.period.gastos, 2)} />
+              <FiscalCell label="Ingresos" value={fmtEur(selectedEstimate.period.ingresos, 2)} />
+              <FiscalCell label="Gastos" value={fmtEur(selectedEstimate.period.gastos, 2)} />
               <FiscalCell
                 label="Beneficio bruto"
-                value={fmtEur(monthEstimate.period.base, 2)}
-                emphasis={monthEstimate.period.base >= 0 ? "pos" : "neg"}
+                value={fmtEur(selectedEstimate.period.base, 2)}
+                emphasis={selectedEstimate.period.base >= 0 ? "pos" : "neg"}
               />
               <FiscalCell
                 label="Margen"
@@ -111,24 +193,24 @@ export async function FinanzasTab() {
             <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-4 sm:grid-cols-3">
               <FiscalCell
                 label={`IVA repercutido ${taxCfg.vatExempt ? "(exento)" : `(${taxCfg.vatRate}%)`}`}
-                value={fmtEur(monthEstimate.vatOwed, 2)}
+                value={fmtEur(selectedEstimate.vatOwed, 2)}
                 emphasis="muted"
               />
               <FiscalCell
                 label={`IRPF retenido (${taxCfg.irpfIncomeRate}%)`}
-                value={fmtEur(monthEstimate.irpfWithheld, 2)}
+                value={fmtEur(selectedEstimate.irpfWithheld, 2)}
                 emphasis="muted"
               />
               <FiscalCell
                 label="Neto estimado"
-                value={fmtEur(monthEstimate.netAfterTaxes, 2)}
-                emphasis={monthEstimate.netAfterTaxes >= 0 ? "pos" : "neg"}
+                value={fmtEur(selectedEstimate.netAfterTaxes, 2)}
+                emphasis={selectedEstimate.netAfterTaxes >= 0 ? "pos" : "neg"}
               />
             </div>
           </div>
           <div className="rounded-2xl border border-border bg-surface p-5">
             <p className="mb-3 text-xs uppercase tracking-wider text-muted">
-              Trimestre · Q{quarterNumber} {now.getUTCFullYear()}
+              Trimestre fiscal de referencia · Q{quarterNumber} {endYear}
             </p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <FiscalCell label="Ingresos" value={fmtEur(quarterEstimate.period.ingresos, 2)} />
@@ -150,9 +232,19 @@ export async function FinanzasTab() {
                 {taxCfg.irpfQuarterlyRate}% de {fmtEur(quarterEstimate.period.base, 2)} − retenciones ya practicadas (
                 {fmtEur(quarterEstimate.irpfWithheld, 2)}).
               </p>
+              <p className="mt-2 text-[11px] leading-relaxed text-muted">
+                {quarterIsSelected
+                  ? "Has seleccionado el trimestre completo."
+                  : `Esta tarjeta muestra el trimestre natural Q${quarterNumber} ${endYear}, que contiene la fecha «Hasta». No es una cuota calculada para el intervalo personalizado.`}
+              </p>
             </div>
           </div>
         </div>
+        <p className="mt-3 text-[11px] leading-relaxed text-muted">
+          Los importes del período se basan en movimientos registrados según la fecha de España peninsular.
+          Los cálculos de IVA, retenciones y neto son estimaciones con la configuración fiscal actual;
+          no sustituyen la liquidación oficial ni contemplan todos los ajustes fiscales posibles.
+        </p>
 
         {/* Configuración fiscal plegable */}
         <details className="mt-4 rounded-2xl border border-dashed border-border bg-surface/60 p-4">
@@ -225,7 +317,7 @@ export async function FinanzasTab() {
             <Repeat size={18} className="text-primary" /> Gastos fijos mensuales
           </h2>
           <p className="text-xs text-muted">
-            Se añaden solos al mes en curso cuando llega el día configurado.
+            Configuración general (no se filtra por fechas). Los cargos registrados aparecen en Movimientos.
           </p>
         </div>
 
@@ -323,7 +415,10 @@ export async function FinanzasTab() {
 
       {/* ── Movimientos ───────────────────────────────────────── */}
       <section>
-        <h2 className="mb-3 text-lg font-bold">Movimientos</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-bold">Movimientos</h2>
+          <p className="text-xs text-muted">{movementCount} movimiento(s) en el período · {MOVEMENT_PAGE_SIZE} por página</p>
+        </div>
 
         {/* Alta de movimiento */}
         <form action={createTransaction} className="mb-5 rounded-2xl border border-border bg-surface p-5">
@@ -357,7 +452,10 @@ export async function FinanzasTab() {
         </form>
 
         {transactions.length === 0 ? (
-          <p className="text-sm text-muted">Sin movimientos todavía.</p>
+          <div className="rounded-xl border border-border p-4 text-sm text-muted">
+            {movementCount ? "No hay movimientos en esta página del intervalo." : "No hay movimientos registrados en las fechas seleccionadas."}
+            {movementCount > 0 && <a className="ml-2 font-semibold text-primary underline" href={financeUrl(range.from, range.to)}>Ir a la primera página</a>}
+          </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-border">
             <table className="w-full text-sm">
@@ -374,7 +472,7 @@ export async function FinanzasTab() {
               <tbody>
                 {transactions.map((t) => (
                   <tr key={t.id} className="border-t border-border">
-                    <td className="px-4 py-2.5 text-muted">{t.date.toLocaleDateString("es-ES")}</td>
+                    <td className="px-4 py-2.5 text-muted">{t.date.toLocaleDateString("es-ES", { timeZone: "Europe/Madrid" })}</td>
                     <td className="px-4 py-2.5">
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -401,13 +499,27 @@ export async function FinanzasTab() {
                 ))}
               </tbody>
             </table>
+            {movementCount > MOVEMENT_PAGE_SIZE && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface-2 px-4 py-3 text-xs">
+                <span className="text-muted">Página {page} de {Math.ceil(movementCount / MOVEMENT_PAGE_SIZE)}</span>
+                <div className="flex gap-2">
+                  {page > 1 && <a href={financeUrl(range.from, range.to, page - 1)} className="rounded-lg border border-border bg-white px-3 py-1.5 font-medium hover:bg-surface">Anterior</a>}
+                  {page * MOVEMENT_PAGE_SIZE < movementCount && <a href={financeUrl(range.from, range.to, page + 1)} className="rounded-lg border border-border bg-white px-3 py-1.5 font-medium hover:bg-surface">Siguiente</a>}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
 
       {/* ── Facturas del equipo ──────────────────────────────── */}
       <section>
-        <h2 className="mb-3 text-lg font-bold">Facturas del equipo</h2>
+        <h2 className="mb-2 text-lg font-bold">Facturas del equipo</h2>
+        <p className="mb-3 text-xs leading-relaxed text-muted">
+          Se muestran las facturas de los meses naturales que coincidan con el intervalo seleccionado
+          ({range.from.slice(0, 7)} a {range.to.slice(0, 7)}). La factura de un mes es indivisible,
+          aunque hayas seleccionado solo algunos días. No se recalculan importes ni se alteran estados.
+        </p>
 
         {professionals.length === 0 ? (
           <p className="text-sm text-muted">Aún no hay miembros del equipo.</p>
@@ -443,7 +555,7 @@ export async function FinanzasTab() {
         )}
 
         {payrolls.length === 0 ? (
-          <p className="text-sm text-muted">Sin facturas registradas.</p>
+          <p className="text-sm text-muted">Sin facturas de los meses seleccionados.</p>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-border">
             <table className="w-full text-sm">

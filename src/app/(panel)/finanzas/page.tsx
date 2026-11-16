@@ -17,13 +17,15 @@ const TABS = [
 export default async function FinanzasPage({
   searchParams,
 }: {
-  searchParams: { tab?: string; from?: string; to?: string };
+  searchParams: { tab?: string; from?: string; to?: string; movementPage?: string };
 }) {
   const prof = await requireProfessional();
   if (prof.role !== "ceo") redirect("/");
 
   const active = TABS.find((t) => t.key === searchParams.tab) ?? TABS[0];
-  const teamRange = resolveFinanceRange({ from: searchParams.from, to: searchParams.to });
+  const selectedRange = resolveFinanceRange({ from: searchParams.from, to: searchParams.to });
+  const dateQuery = searchParams.from || searchParams.to
+    ? `&from=${encodeURIComponent(selectedRange.from)}&to=${encodeURIComponent(selectedRange.to)}` : "";
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -36,7 +38,7 @@ export default async function FinanzasPage({
         {TABS.map((t) => (
           <Link
             key={t.key}
-            href={`/finanzas${t.key === "panel" ? "" : `?tab=${t.key}`}`}
+            href={t.key === "panel" ? "/finanzas" : `/finanzas?tab=${t.key}${dateQuery}`}
             className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-sm transition ${
               t.key === active.key
                 ? "border-primary font-semibold text-primary"
@@ -51,9 +53,9 @@ export default async function FinanzasPage({
       {active.key === "panel" ? (
         <CuadroTab />
       ) : active.key === "equipo" ? (
-        <EquipoTab range={teamRange} />
+        <EquipoTab range={selectedRange} />
       ) : (
-        <FinanzasTab />
+        <FinanzasTab range={selectedRange} movementPage={searchParams.movementPage} />
       )}
     </div>
   );
